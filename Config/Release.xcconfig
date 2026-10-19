@@ -1,0 +1,9 @@
+// Release.xcconfig: App Store build against the hosted Supabase project.
+
+#include "Shared.xcconfig"
+#include "SharedRelease.xcconfig"
+#include "Hosted.xcconfig"
+
+// The support address shipped in the App Store build (Account > Contact support, Privacy Policy and
+// Terms). Required: a Release build fails until it is set. Example:
+// SUPPORT_EMAIL = support@yourdomain.com

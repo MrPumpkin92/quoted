@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Margin - Library</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap">
+<style>
+body{margin:0}
+a{color:#2B44C9}a:hover{color:#1F33A0}
+.q{font-family:'Newsreader',serif;font-optical-sizing:auto}
+.au{font-size:13px;line-height:16px;letter-spacing:.06em;text-transform:uppercase;color:rgba(22,22,26,.62)}
+.b{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;outline:0;box-sizing:border-box;-webkit-appearance:none;appearance:none}
+.b::placeholder{color:rgba(22,22,26,.62);opacity:1}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; background: #F8F8F6; font-family: -apple-system, system-ui, sans-serif; color: #16161A">
+
+  <div style="position: absolute; top: 54px; left: 24px; right: 24px; height: 44px; display: flex; align-items: center; justify-content: flex-end;">
+    <button class="b" type="button" aria-label="Add quote" style="width: 44px; height: 44px; border-radius: 22px; background: #2B44C9; color: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(43,68,201,0.2);"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  </div>
+
+  <main style="position: absolute; top: 98px; left: 24px; right: 24px;">
+    <h1 style="margin: 0; font-size: 34px; line-height: 40px; font-weight: 600; letter-spacing: -0.01em;">Library</h1>
+
+    <div role="search" style="margin-top: 8px;">
+      <label for="lib-search" class="vh">Search quotes</label>
+      <div style="height: 44px; box-sizing: border-box; padding: 0 16px; border-radius: 22px; background: rgba(22,22,26,0.06); display: flex; align-items: center; gap: 8px; color: rgba(22,22,26,0.62);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/></svg>
+        <input id="lib-search" class="b" type="text" enterkeyhint="search" placeholder="Search quotes and authors" style="flex: 1; min-width: 0; height: 22px; font-size: 17px; line-height: 22px; color: #16161A;">
+      </div>
+    </div>
+
+    <button class="b" type="button" style="margin-top: 16px; width: 100%; height: 64px; padding: 0 16px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #E6E4DF, 0 4px 16px rgba(22,22,26,0.04); display: flex; align-items: center; gap: 12px; text-align: left;">
+      <span aria-hidden="true" style="display: flex; flex: none;">
+        <span style="width: 32px; height: 32px; border-radius: 16px; background: #F3E3DC; color: #8A3B1E; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; box-shadow: 0 0 0 2px #FFFFFF;">M</span>
+        <span style="margin-left: -8px; width: 32px; height: 32px; border-radius: 16px; background: #DFEBE3; color: #2E6143; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; box-shadow: 0 0 0 2px #FFFFFF;">J</span>
+      </span>
+      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+        <span style="font-size: 17px; line-height: 22px; font-weight: 600;">2 shared with you</span>
+        <span style="font-size: 13px; line-height: 16px; color: rgba(22,22,26,0.62);">From Maya and Jordan</span>
+      </span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(22,22,26,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>
+    </button>
+
+    <div style="margin-top: 24px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; line-height: 16px; color: rgba(22,22,26,0.62);">
+      <h2 style="margin: 0; font-size: 13px; line-height: 16px; font-weight: 600;">8 quotes</h2>
+      <span style="display: flex; align-items: center; gap: 8px;"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 3px; background: #2B44C9;"></span>In rotation</span>
+    </div>
+
+    <ul style="list-style: none; margin: 8px 0 0; padding: 0;">
+
+      <li style="position: relative; padding: 16px 0; border-top: 1px solid #E6E4DF;">
+        <span role="img" aria-label="In rotation" style="position: absolute; left: -15px; top: 27px; width: 6px; height: 6px; border-radius: 3px; background: #2B44C9;"></span>
+        <p class="q" style="margin: 0; font-size: 20px; line-height: 28px;"><strong style="font-weight: 600;">Trust thyself</strong>: every heart vibrates to that iron string.</p>
+        <div style="margin-top: 8px; height: 16px; display: flex; align-items: center; justify-content: space-between;">
+          <p style="margin: 0; display: flex; align-items: baseline; gap: 8px;"><span class="au">Ralph Waldo Emerson</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Self-Reliance</cite></p>
+          <button class="b" type="button" aria-label="Share quote by Ralph Waldo Emerson" style="flex: none; width: 44px; height: 44px; margin-right: -12px; display: flex; align-items: center; justify-content: center; color: rgba(22,22,26,0.62);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14V3.5"/><path d="M8 7.5l4-4 4 4"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1.5"/></svg></button>
+        </div>
+      </li>
+
+      <li style="position: relative; padding: 16px 0; border-top: 1px solid #E6E4DF;">
+        <span role="img" aria-label="In rotation" style="position: absolute; left: -15px; top: 27px; width: 6px; height: 6px; border-radius: 3px; background: #2B44C9;"></span>
+        <p class="q" style="margin: 0; font-size: 20px; line-height: 28px;">Beware; for I am <em>fearless</em>, and therefore powerful.</p>
+        <div style="margin-top: 8px; height: 16px; display: flex; align-items: center; justify-content: space-between;">
+          <p style="margin: 0; display: flex; align-items: baseline; gap: 8px;"><span class="au">Mary Shelley</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Frankenstein</cite></p>
+          <button class="b" type="button" aria-label="Share quote by Mary Shelley" style="flex: none; width: 44px; height: 44px; margin-right: -12px; display: flex; align-items: center; justify-content: center; color: rgba(22,22,26,0.62);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14V3.5"/><path d="M8 7.5l4-4 4 4"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1.5"/></svg></button>
+        </div>
+      </li>
+
+      <li style="position: relative; padding: 16px 0; border-top: 1px solid #E6E4DF;">
+        <span role="img" aria-label="In rotation" style="position: absolute; left: -15px; top: 27px; width: 6px; height: 6px; border-radius: 3px; background: #2B44C9;"></span>
+        <p class="q" style="margin: 0; font-size: 20px; line-height: 28px;">While we are postponing, <u style="text-decoration-thickness: 1px; text-underline-offset: 4px;">life</u> speeds by.</p>
+        <div style="margin-top: 8px; height: 16px; display: flex; align-items: center; justify-content: space-between;">
+          <p style="margin: 0; display: flex; align-items: baseline; gap: 8px;"><span class="au">Seneca</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Letters to Lucilius</cite></p>
+          <button class="b" type="button" aria-label="Share quote by Seneca" style="flex: none; width: 44px; height: 44px; margin-right: -12px; display: flex; align-items: center; justify-content: center; color: rgba(22,22,26,0.62);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14V3.5"/><path d="M8 7.5l4-4 4 4"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1.5"/></svg></button>
+        </div>
+      </li>
+
+      <li style="position: relative; padding: 16px 0; border-top: 1px solid #E6E4DF;">
+        <p class="q" style="margin: 0; font-size: 20px; line-height: 28px;">I am large, I contain multitudes.</p>
+        <div style="margin-top: 8px; height: 16px; display: flex; align-items: center; justify-content: space-between;">
+          <p style="margin: 0; display: flex; align-items: baseline; gap: 8px;"><span class="au">Walt Whitman</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Song of Myself</cite></p>
+          <button class="b" type="button" aria-label="Share quote by Walt Whitman" style="flex: none; width: 44px; height: 44px; margin-right: -12px; display: flex; align-items: center; justify-content: center; color: rgba(22,22,26,0.62);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14V3.5"/><path d="M8 7.5l4-4 4 4"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1.5"/></svg></button>
+        </div>
+      </li>
+
+      <li style="position: relative; padding: 16px 0; border-top: 1px solid #E6E4DF;">
+        <span role="img" aria-label="In rotation" style="position: absolute; left: -15px; top: 27px; width: 6px; height: 6px; border-radius: 3px; background: #2B44C9;"></span>
+        <p class="q" style="margin: 0; font-size: 20px; line-height: 28px;">I went to the woods because I wished to live deliberately.</p>
+        <div style="margin-top: 8px; height: 16px; display: flex; align-items: center; justify-content: space-between;">
+          <p style="margin: 0; display: flex; align-items: baseline; gap: 8px;"><span class="au">Henry David Thoreau</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Walden</cite></p>
+          <button class="b" type="button" aria-label="Share quote by Henry David Thoreau" style="flex: none; width: 44px; height: 44px; margin-right: -12px; display: flex; align-items: center; justify-content: center; color: rgba(22,22,26,0.62);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14V3.5"/><path d="M8 7.5l4-4 4 4"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1.5"/></svg></button>
+        </div>
+      </li>
+    </ul>
+  </main>
+
+  <nav aria-label="Tabs" style="position: absolute; left: 16px; right: 16px; bottom: 32px; height: 64px; box-sizing: border-box; padding: 4px; display: flex; gap: 4px; border-radius: 32px; background: rgba(255,255,255,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 0 0 1px rgba(22,22,26,0.06), 0 8px 24px rgba(22,22,26,0.08);">
+    <button class="b" type="button" aria-current="page" style="flex: 1; height: 56px; border-radius: 28px; background: rgba(43,68,201,0.08); color: #2B44C9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; line-height: 16px; font-weight: 600;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7c-1.6-1.4-4-2.2-7.5-2.2H4v13.4h.5c3.5 0 5.9.8 7.5 2.2 1.6-1.4 4-2.2 7.5-2.2h.5V4.8h-.5C16 4.8 13.6 5.6 12 7z"/><path d="M12 7v13"/></svg><span>Library</span></button>
+    <button class="b" type="button" style="flex: 1; height: 56px; border-radius: 28px; color: rgba(22,22,26,0.62); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; line-height: 16px; font-weight: 600;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 12v-1a5 5 0 0 1 5-5h11"/><path d="M7 21l-3-3 3-3"/><path d="M20 12v1a5 5 0 0 1-5 5H4"/></svg><span>Rotation</span></button>
+    <button class="b" type="button" style="flex: 1; height: 56px; border-radius: 28px; color: rgba(22,22,26,0.62); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; line-height: 16px; font-weight: 600;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.4-3.4 3-5.5 6.5-5.5s6.1 2.1 6.5 5.5"/><path d="M15.5 4.7a3.5 3.5 0 0 1 0 6.6"/><path d="M18 14.8c2 .7 3.3 2.5 3.5 5.2"/></svg><span>Friends</span></button>
+  </nav>
+
+  <div aria-hidden="true" style="position: absolute; left: 128px; bottom: 8px; width: 134px; height: 5px; border-radius: 3px; background: #16161A;"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

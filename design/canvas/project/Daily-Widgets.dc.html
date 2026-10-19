@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Daily - Widgets</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&display=swap">
+<style>
+body{margin:0}
+a{color:#C63F24}a:hover{color:#A8341D}
+.q{font-family:'Fraunces',ui-serif,serif;font-optical-sizing:auto}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.ic{position:absolute;width:64px;height:64px;box-sizing:border-box;border-radius:16px;background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.10)}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; background: #3A4A41; font-family: 'Figtree', -apple-system, system-ui, sans-serif; color: #1F1A17">
+  <div role="status" aria-label="Notification from Quoted" style="position:absolute;top:62px;left:16px;right:16px;box-sizing:border-box;padding:16px;display:flex;align-items:flex-start;gap:12px;border-radius:24px;background:rgba(255,255,255,0.84);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.5);box-shadow:0 8px 24px rgba(15,25,20,0.28)">
+    <span aria-hidden="true" class="q" style="width:38px;height:38px;flex:none;box-sizing:border-box;padding-top:10px;border-radius:10px;background:#C63F24;color:#FFFFFF;text-align:center;font-size:22px;line-height:28px;font-weight:600">&ldquo;</span>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+        <span style="font-size:15px;line-height:20px;font-weight:600">Quoted</span>
+        <span style="font-size:13px;line-height:18px;color:rgba(31,26,23,0.72)">now</span>
+      </div>
+      <p style="margin:0;font-size:15px;line-height:20px">While we are postponing, life speeds by. &mdash; Seneca</p>
+    </div>
+  </div>
+
+  <figure aria-label="Quoted widget, medium" style="position:absolute;top:182px;left:26px;width:338px;height:158px;box-sizing:border-box;margin:0;padding:16px;border-radius:22px;background:#F3EBDD;box-shadow:0 8px 24px rgba(15,25,20,0.30);display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;line-height:18px;font-weight:600;color:rgba(31,26,23,0.72)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.75v1.75M12 19.5v1.75M2.75 12h1.75M19.5 12h1.75M5.46 5.46l1.24 1.24M17.3 17.3l1.24 1.24M5.46 18.54l1.24-1.24M17.3 6.7l1.24-1.24"></path></svg>
+      <span>Today&rsquo;s card</span>
+    </div>
+    <blockquote class="q" style="margin:auto 0 0;font-size:22px;line-height:28px"><strong style="font-weight:600">Trust thyself</strong>: every heart vibrates to that iron string.</blockquote>
+    <figcaption style="margin-top:8px;font-size:13px;line-height:18px;color:rgba(31,26,23,0.72)"><span style="font-weight:600;color:#1F1A17">Ralph Waldo Emerson</span> &middot; Self-Reliance</figcaption>
+  </figure>
+
+  <figure aria-label="Quoted widget, small" style="position:absolute;top:364px;left:26px;width:158px;height:158px;box-sizing:border-box;margin:0;padding:16px;border-radius:22px;background:#F6E3E1;box-shadow:0 8px 24px rgba(15,25,20,0.30);display:flex;flex-direction:column">
+    <blockquote class="q" style="margin:0;font-size:17px;line-height:22px">This above all: to thine own self be true.</blockquote>
+    <figcaption style="margin-top:auto;font-size:13px;line-height:18px;font-weight:600">William Shakespeare</figcaption>
+  </figure>
+
+  <div aria-hidden="true">
+    <div class="ic" style="top:364px;left:209px"></div>
+    <div class="ic" style="top:364px;left:300px"></div>
+    <div class="ic" style="top:458px;left:209px"></div>
+    <div class="ic" style="top:458px;left:300px"></div>
+    <div class="ic" style="top:552px;left:26px"></div>
+    <div class="ic" style="top:552px;left:117px"></div>
+    <div class="ic" style="top:552px;left:209px"></div>
+    <div class="ic" style="top:552px;left:300px"></div>
+  </div>
+
+  <div aria-hidden="true" style="position:absolute;top:676px;left:153px;width:84px;height:28px;box-sizing:border-box;border-radius:14px;background:rgba(255,255,255,0.18);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:center;gap:4px;color:#FFFFFF;font-size:13px;line-height:18px;font-weight:600">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.75" cy="10.75" r="6.25"></circle><path d="M15.5 15.5l4.75 4.75"></path></svg>
+    <span>Search</span>
+  </div>
+
+  <div aria-hidden="true" style="position:absolute;top:728px;left:12px;right:12px;height:88px;border-radius:32px;background:rgba(255,255,255,0.14);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.10)">
+    <div class="ic" style="top:11px;left:13px"></div>
+    <div class="ic" style="top:11px;left:104px"></div>
+    <div class="ic" style="top:11px;left:196px"></div>
+    <div class="ic" style="top:11px;left:287px"></div>
+  </div>
+  <div aria-hidden="true" style="position:absolute;left:128px;bottom:8px;width:134px;height:5px;border-radius:3px;background:#FFFFFF"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

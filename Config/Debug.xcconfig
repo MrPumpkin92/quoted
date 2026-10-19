@@ -1,0 +1,5 @@
+// Debug.xcconfig: Debug build against the hosted Supabase project (default Run).
+
+#include "Shared.xcconfig"
+#include "SharedDebug.xcconfig"
+#include "Hosted.xcconfig"

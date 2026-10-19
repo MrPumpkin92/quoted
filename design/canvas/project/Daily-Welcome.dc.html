@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Daily - Welcome</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&display=swap">
+<style>
+body{margin:0}
+a{color:#C63F24}a:hover{color:#A8341D}
+.q{font-family:'Fraunces',ui-serif,serif;font-optical-sizing:auto}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.btn{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cursor:pointer;text-align:inherit;-webkit-appearance:none;appearance:none}
+.fld{font:inherit;color:inherit;border:0;background:transparent;outline:none;padding:0;margin:0;min-width:0;-webkit-appearance:none;appearance:none}
+.fld::placeholder{color:rgba(31,26,23,0.66)}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; background: #FFFFFF; font-family: 'Figtree', -apple-system, system-ui, sans-serif; color: #1F1A17">
+  <main style="position:absolute;top:54px;left:0;right:0;bottom:34px;box-sizing:border-box;padding:40px 16px 16px;display:flex;flex-direction:column">
+    <header style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span aria-hidden="true" class="q" style="width:44px;height:44px;flex:none;box-sizing:border-box;padding-top:12px;border-radius:12px;background:#C63F24;color:#FFFFFF;text-align:center;font-size:34px;line-height:41px;font-weight:600">&ldquo;</span>
+        <h1 class="q" style="margin:0;font-size:34px;line-height:41px;font-weight:600;letter-spacing:-0.5px">Quoted</h1>
+      </div>
+      <p style="margin:0;font-size:17px;line-height:24px;color:rgba(31,26,23,0.8)">Collect the words that move you.</p>
+    </header>
+
+    <div style="position:relative;margin-top:32px;height:224px">
+      <div aria-hidden="true" style="position:absolute;top:24px;left:24px;right:24px;height:200px;border-radius:32px;background:#E1ECF6"></div>
+      <div aria-hidden="true" style="position:absolute;top:12px;left:12px;right:12px;height:200px;border-radius:32px;background:#E3EDE4;box-shadow:0 4px 12px rgba(60,100,70,0.10)"></div>
+      <figure style="position:absolute;top:0;left:0;right:0;height:200px;box-sizing:border-box;margin:0;padding:24px;border-radius:32px;background:#F6E3E1;box-shadow:0 8px 24px rgba(150,70,60,0.14);display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;line-height:18px;font-weight:600;color:rgba(31,26,23,0.72)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.75v1.75M12 19.5v1.75M2.75 12h1.75M19.5 12h1.75M5.46 5.46l1.24 1.24M17.3 17.3l1.24 1.24M5.46 18.54l1.24-1.24M17.3 6.7l1.24-1.24"></path></svg>
+          <span>Today&rsquo;s card</span>
+        </div>
+        <blockquote class="q" style="margin:auto 0 0;font-size:22px;line-height:30px">Beware; for I am <em>fearless</em>, and therefore powerful.</blockquote>
+        <figcaption style="margin-top:12px;font-size:13px;line-height:18px;color:rgba(31,26,23,0.72)">Mary Shelley &middot; Frankenstein</figcaption>
+      </figure>
+    </div>
+
+    <form style="margin-top:auto;display:flex;flex-direction:column">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label for="email" style="font-size:13px;line-height:18px;font-weight:600;color:rgba(31,26,23,0.66)">Email</label>
+        <input id="email" class="fld" type="email" autocomplete="email" placeholder="you@example.com" style="height:52px;box-sizing:border-box;padding:0 16px;border-radius:16px;background:#F7F5F2;box-shadow:inset 0 0 0 1px rgba(31,26,23,0.08);font-size:17px;line-height:24px">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+        <label for="password" style="font-size:13px;line-height:18px;font-weight:600;color:rgba(31,26,23,0.66)">Password</label>
+        <input id="password" class="fld" type="password" autocomplete="current-password" placeholder="Your password" style="height:52px;box-sizing:border-box;padding:0 16px;border-radius:16px;background:#F7F5F2;box-shadow:inset 0 0 0 1px rgba(31,26,23,0.08);font-size:17px;line-height:24px">
+      </div>
+      <button class="btn" type="submit" style="margin-top:32px;height:52px;border-radius:26px;background:#C63F24;color:#FFFFFF;text-align:center;font-size:17px;line-height:24px;font-weight:600;box-shadow:0 8px 24px rgba(198,63,36,0.24)">Sign in</button>
+      <button class="btn" type="button" style="margin-top:8px;height:44px;text-align:center;font-size:17px;line-height:24px;font-weight:600">Create account</button>
+    </form>
+  </main>
+  <div aria-hidden="true" style="position:absolute;left:128px;bottom:8px;width:134px;height:5px;border-radius:3px;background:#1F1A17"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

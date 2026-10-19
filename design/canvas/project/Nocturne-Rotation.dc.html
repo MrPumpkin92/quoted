@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nocturne - Rotation</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,500;0,700;1,500;1,700&display=swap">
+<style>
+body{margin:0}
+a{color:#FFB547}a:hover{color:#FFC978}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer}
+.q{font-family:'Schibsted Grotesk',-apple-system,system-ui,sans-serif}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.t1{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; background: #0C0C0E; font-family: -apple-system, system-ui, sans-serif; color: #F5F5F4; font-weight: 500">
+  <div style="position: absolute; top: 0; left: 0; right: 0; height: 812px; overflow: hidden">
+  <div style="height: 54px"></div>
+
+  <header style="height: 44px; display: flex; align-items: center; padding: 0 16px">
+    <button type="button" aria-label="Back to Quotes" style="width: 44px; height: 44px; box-sizing: border-box; border-radius: 22px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; color: #F5F5F4">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+    </button>
+  </header>
+  <h1 class="q" style="margin: 0; padding: 0 16px; font-size: 34px; line-height: 40px; font-weight: 700; letter-spacing: -0.01em">Rotation</h1>
+
+  <main style="padding: 16px 16px 0">
+    <div style="background: #161619; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px">
+      <div style="height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 16px">
+        <span style="flex: 1; display: flex; flex-direction: column">
+          <span id="nr-rem" style="font-size: 17px; line-height: 22px">Reminders</span>
+          <span style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">Every day · Next at 8:00 PM</span>
+        </span>
+        <button type="button" role="switch" aria-checked="true" aria-labelledby="nr-rem" style="width: 52px; height: 44px; flex: none; display: flex; align-items: center">
+          <span aria-hidden="true" style="position: relative; display: block; width: 52px; height: 32px; border-radius: 16px; background: #FFB547">
+            <span style="position: absolute; top: 2px; left: 22px; width: 28px; height: 28px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 2px 4px rgba(26,18,6,0.32)"></span>
+          </span>
+        </button>
+      </div>
+      <div aria-hidden="true" style="height: 1px; margin-left: 16px; background: rgba(255,255,255,0.08)"></div>
+
+      <div style="height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 16px">
+        <span style="flex: 1; font-size: 17px; line-height: 22px; color: rgba(245,245,244,0.64)">How often</span>
+        <span style="font-size: 17px; line-height: 22px">3× a day</span>
+        <span role="group" aria-label="Reminders per day" style="position: relative; width: 96px; height: 44px; display: flex; flex: none">
+          <span aria-hidden="true" style="position: absolute; top: 4px; bottom: 4px; left: 0; right: 0; border-radius: 18px; background: rgba(255,255,255,0.08)"></span>
+          <span aria-hidden="true" style="position: absolute; top: 14px; left: 48px; width: 1px; height: 16px; background: rgba(255,255,255,0.16)"></span>
+          <button type="button" aria-label="Fewer per day" style="position: relative; width: 48px; height: 44px; display: flex; align-items: center; justify-content: center; color: #F5F5F4">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+          </button>
+          <button type="button" aria-label="More per day" style="position: relative; width: 48px; height: 44px; display: flex; align-items: center; justify-content: center; color: #F5F5F4">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </span>
+      </div>
+      <div aria-hidden="true" style="height: 1px; margin-left: 16px; background: rgba(255,255,255,0.08)"></div>
+
+      <div style="height: 60px; display: flex; align-items: center; gap: 8px; padding: 0 16px">
+        <span style="flex: 1; font-size: 17px; line-height: 22px; color: rgba(245,245,244,0.64)">Between</span>
+        <button type="button" aria-label="Start time, 8:00 AM" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 4px solid transparent; background: rgba(255,255,255,0.08); background-clip: padding-box; border-radius: 16px; font-size: 17px; color: #F5F5F4">8:00 AM</button>
+        <span aria-hidden="true" style="font-size: 17px; color: rgba(245,245,244,0.64)">–</span>
+        <button type="button" aria-label="End time, 9:00 PM" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 4px solid transparent; background: rgba(255,255,255,0.08); background-clip: padding-box; border-radius: 16px; font-size: 17px; color: #F5F5F4">9:00 PM</button>
+      </div>
+      <div aria-hidden="true" style="height: 1px; margin-left: 16px; background: rgba(255,255,255,0.08)"></div>
+
+      <div role="group" aria-label="Days" style="height: 60px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 16px">
+        <button type="button" aria-label="Sunday" aria-pressed="true" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,181,71,0.16); color: #FFB547; font-size: 13px; font-weight: 700">S</button>
+        <button type="button" aria-label="Monday" aria-pressed="true" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,181,71,0.16); color: #FFB547; font-size: 13px; font-weight: 700">M</button>
+        <button type="button" aria-label="Tuesday" aria-pressed="true" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,181,71,0.16); color: #FFB547; font-size: 13px; font-weight: 700">T</button>
+        <button type="button" aria-label="Wednesday" aria-pressed="true" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,181,71,0.16); color: #FFB547; font-size: 13px; font-weight: 700">W</button>
+        <button type="button" aria-label="Thursday" aria-pressed="true" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,181,71,0.16); color: #FFB547; font-size: 13px; font-weight: 700">T</button>
+        <button type="button" aria-label="Friday" aria-pressed="true" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,181,71,0.16); color: #FFB547; font-size: 13px; font-weight: 700">F</button>
+        <button type="button" aria-label="Saturday" aria-pressed="true" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,181,71,0.16); color: #FFB547; font-size: 13px; font-weight: 700">S</button>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px; height: 44px; display: flex; align-items: center; gap: 12px">
+      <h2 style="flex: 1; margin: 0; padding-left: 16px; font-size: 13px; line-height: 16px; font-weight: 500; color: rgba(245,245,244,0.64)">6 quotes</h2>
+      <div role="radiogroup" aria-label="Order" style="width: 200px; height: 44px; display: flex; border-radius: 22px; background: rgba(255,255,255,0.08)">
+        <button type="button" role="radio" aria-checked="true" style="flex: 1; height: 44px; box-sizing: border-box; border: 4px solid transparent; background: rgba(255,255,255,0.16); background-clip: padding-box; border-radius: 22px; font-size: 13px; font-weight: 700; color: #F5F5F4">In order</button>
+        <button type="button" role="radio" aria-checked="false" style="flex: 1; height: 44px; border-radius: 22px; font-size: 13px; color: rgba(245,245,244,0.64)">Shuffle</button>
+      </div>
+    </div>
+
+    <ol style="list-style: none; margin: 8px 0 0; padding: 0; background: #161619; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; overflow: hidden">
+      <li style="height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 16px">
+        <span style="width: 16px; flex: none; font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">1</span>
+        <span style="flex: 1; min-width: 0">
+          <span class="q t1" style="font-size: 17px; line-height: 22px"><strong style="font-weight: 700">Trust thyself</strong>: every heart vibrates to that iron string.</span>
+          <span class="t1" style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">Ralph Waldo Emerson, Self-Reliance</span>
+        </span>
+        <button type="button" aria-label="Reorder Trust thyself" style="width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; color: rgba(245,245,244,0.64)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+        </button>
+      </li>
+      <li aria-hidden="true" style="height: 1px; margin-left: 44px; background: rgba(255,255,255,0.08)"></li>
+      <li style="height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 16px">
+        <span style="width: 16px; flex: none; font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">2</span>
+        <span style="flex: 1; min-width: 0">
+          <span class="q t1" style="font-size: 17px; line-height: 22px">Beware; for I am <em style="font-style: italic">fearless</em>, and therefore powerful.</span>
+          <span class="t1" style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">Mary Shelley, Frankenstein</span>
+        </span>
+        <button type="button" aria-label="Reorder Beware" style="width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; color: rgba(245,245,244,0.64)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+        </button>
+      </li>
+      <li aria-hidden="true" style="height: 1px; margin-left: 44px; background: rgba(255,255,255,0.08)"></li>
+      <li style="height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 16px">
+        <span style="width: 16px; flex: none; font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">3</span>
+        <span style="flex: 1; min-width: 0">
+          <span class="q t1" style="font-size: 17px; line-height: 22px">While we are postponing, <span style="text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px">life</span> speeds by.</span>
+          <span class="t1" style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">Seneca, Letters to Lucilius</span>
+        </span>
+        <button type="button" aria-label="Reorder While we are postponing" style="width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; color: rgba(245,245,244,0.64)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+        </button>
+      </li>
+      <li aria-hidden="true" style="height: 1px; margin-left: 44px; background: rgba(255,255,255,0.08)"></li>
+      <li style="height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 16px">
+        <span style="width: 16px; flex: none; font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">4</span>
+        <span style="flex: 1; min-width: 0">
+          <span class="q t1" style="font-size: 17px; line-height: 22px">I went to the woods because I wished to live deliberately.</span>
+          <span class="t1" style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">Henry David Thoreau, Walden</span>
+        </span>
+        <button type="button" aria-label="Reorder I went to the woods" style="width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; color: rgba(245,245,244,0.64)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+        </button>
+      </li>
+      <li aria-hidden="true" style="height: 1px; margin-left: 44px; background: rgba(255,255,255,0.08)"></li>
+      <li style="height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 16px">
+        <span style="width: 16px; flex: none; font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">5</span>
+        <span style="flex: 1; min-width: 0">
+          <span class="q t1" style="font-size: 17px; line-height: 22px">“Hope” is the thing with feathers – That perches in the soul –</span>
+          <span class="t1" style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">Emily Dickinson</span>
+        </span>
+        <button type="button" aria-label="Reorder Hope is the thing with feathers" style="width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; color: rgba(245,245,244,0.64)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+        </button>
+      </li>
+      <li aria-hidden="true" style="height: 1px; margin-left: 44px; background: rgba(255,255,255,0.08)"></li>
+      <li style="height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 16px">
+        <span style="width: 16px; flex: none; font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">6</span>
+        <span style="flex: 1; min-width: 0">
+          <span class="q t1" style="font-size: 17px; line-height: 22px">This above all: to thine own self be true.</span>
+          <span class="t1" style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">William Shakespeare, Hamlet</span>
+        </span>
+        <button type="button" aria-label="Reorder This above all" style="width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; color: rgba(245,245,244,0.64)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+        </button>
+      </li>
+    </ol>
+  </main>
+  </div>
+
+  <nav aria-label="Main" style="position: absolute; left: 16px; right: 16px; bottom: 32px; height: 64px; display: flex; gap: 12px">
+    <div role="tablist" aria-label="Tabs" style="flex: 1; display: flex; padding: 4px; box-sizing: border-box; border-radius: 32px; background: rgba(30,30,34,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 24px rgba(4,4,8,0.56)">
+      <button type="button" role="tab" aria-selected="true" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 28px; background: rgba(255,255,255,0.10); color: #FFB547">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path fill="currentColor" stroke-width="1" d="M3 13.5C3 9.5 5.2 6.9 9 6l.6 1.6c-2 .8-3.1 2-3.3 3.6.3-.1.7-.2 1.1-.2 1.7 0 3.1 1.3 3.1 3s-1.4 3-3.2 3C4.9 17 3 15.6 3 13.5z"/><path fill="currentColor" stroke-width="1" d="M13 13.5c0-4 2.2-6.6 6-7.5l.6 1.6c-2 .8-3.1 2-3.3 3.6.3-.1.7-.2 1.1-.2 1.7 0 3.1 1.3 3.1 3s-1.4 3-3.2 3c-2.4 0-4.3-1.4-4.3-3.5z"/></svg>
+        <span style="font-size: 13px; line-height: 16px">Quotes</span>
+      </button>
+      <button type="button" role="tab" aria-selected="false" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 28px; color: rgba(245,245,244,0.64)">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 19.5c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5"/><path d="M15.5 4.7a3.5 3.5 0 0 1 0 6.6"/><path d="M17.5 14.3c2 .7 3.4 2.5 4 5.2"/></svg>
+        <span style="font-size: 13px; line-height: 16px">Friends</span>
+      </button>
+    </div>
+    <button type="button" aria-label="Search" style="width: 64px; height: 64px; flex: none; box-sizing: border-box; border-radius: 32px; background: rgba(30,30,34,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 24px rgba(4,4,8,0.56); display: flex; align-items: center; justify-content: center; color: #F5F5F4">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/></svg>
+    </button>
+  </nav>
+
+  <div aria-hidden="true" style="position: absolute; left: 128px; bottom: 8px; width: 134px; height: 5px; border-radius: 3px; background: #F5F5F4"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

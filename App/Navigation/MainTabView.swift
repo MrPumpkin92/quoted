@@ -1,0 +1,129 @@
+import SwiftUI
+
+/// The signed-in app: an iOS 26 `TabView` with Library, Friends (badged) and the search-role tab.
+///
+/// Each tab owns a `NavigationStack` bound to the router's typed path, with every `Route` mapped by
+/// `.routeDestinations()`. The search tab's stack is `.searchable` (bound to `router.searchText`), so the
+/// field lives only in the search tab. Shell sheets are presented from here; when one is dismissed, a
+/// deep link that waited for it (`Router.pendingLink`) opens.
+struct MainTabView: View {
+    @Environment(Router.self) private var router
+    @Environment(LibraryStore.self) private var library
+    @Environment(SocialStore.self) private var social
+    @Environment(RecentSearches.self) private var recentSearches
+
+    var body: some View {
+        @Bindable var router = router
+        TabView(selection: tabSelection) {
+            Tab("Library", systemImage: "books.vertical", value: AppTab.library) {
+                NavigationStack(path: $router.libraryPath) {
+                    LibraryView()
+                        .routeDestinations()
+                }
+            }
+            Tab("Friends", systemImage: "person.2", value: AppTab.friends) {
+                NavigationStack(path: $router.friendsPath) {
+                    FriendsView()
+                        .routeDestinations()
+                }
+            }
+            .badge(social.badgeCount)
+            Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) {
+                NavigationStack(path: $router.searchPath) {
+                    SearchView()
+                        .routeDestinations()
+                }
+                .searchable(text: $router.searchText, isPresented: $router.isSearchPresented, prompt: Text("Quotes, authors, sources"))
+                .onSubmit(of: .search) {
+                    // The keyboard's Search key remembers the term (Recent on the empty search screen).
+                    recentSearches.add(router.searchText)
+                }
+            }
+        }
+        .sheet(item: $router.sheet, onDismiss: openPendingLink) { sheet in
+            SheetHost(sheet: sheet)
+        }
+    }
+
+    /// A reminder or widget tapped while a sheet with unsaved input was up opens now.
+    private func openPendingLink() {
+        router.openPendingLink(reminderQuoteIDs: library.reminderQuotes.map(\.id))
+    }
+
+    /// Re-tapping the selected tab pops it to its root.
+    private var tabSelection: Binding<AppTab> {
+        Binding(
+            get: { router.selectedTab },
+            set: { router.select($0) }
+        )
+    }
+}
+
+// MARK: Destinations
+
+extension View {
+    /// Maps every `Route` to its screen. The shell applies it to each tab's stack root; feature views
+    /// never add their own `navigationDestination(for: Route.self)`.
+    func routeDestinations() -> some View {
+        navigationDestination(for: Route.self) { route in
+            RouteDestination(route: route)
+        }
+    }
+}
+
+/// The screen for a pushed `Route`.
+struct RouteDestination: View {
+    let route: Route
+
+    var body: some View {
+        switch route {
+        case .quote(let id, let contextIDs):
+            QuoteDetailView(quoteID: id, contextIDs: contextIDs)
+        case .reminders:
+            RemindersView()
+        case .sharedInbox:
+            SharedInboxView()
+        case .account:
+            AccountView()
+        case .blockedUsers:
+            BlockedUsersView()
+        case .textPage(let page):
+            TextPageView(page: page)
+        }
+    }
+}
+
+/// The view for a presented `SheetRoute`, with its own toast host.
+struct SheetHost: View {
+    let sheet: SheetRoute
+
+    var body: some View {
+        content
+            .toastHost()
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch sheet {
+        case .addQuote:
+            AddEditQuoteView(editing: nil)
+        case .editQuote(let quote):
+            AddEditQuoteView(editing: quote)
+        case .share(let quote):
+            ShareQuoteSheet(quote: quote)
+        case .widgetGuide:
+            WidgetGuideView()
+        case .reminderPicker:
+            ReminderQuotePicker()
+        case .starterPack:
+            StarterFlowView(mode: .addMore)
+        case .safari(let url):
+            SafariView(url: url)
+        }
+    }
+}
+
+#Preview("Main tabs") {
+    MainTabView()
+        .previewEnvironment()
+}

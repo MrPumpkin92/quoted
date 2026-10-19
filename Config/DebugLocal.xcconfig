@@ -1,0 +1,6 @@
+// DebugLocal.xcconfig: Debug build against the local Supabase stack
+// (`supabase start`). Used for UI tests and offline development.
+
+#include "Shared.xcconfig"
+#include "SharedDebug.xcconfig"
+#include "Local.xcconfig"

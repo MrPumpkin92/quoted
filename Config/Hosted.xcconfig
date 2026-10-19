@@ -1,0 +1,6 @@
+// Hosted.xcconfig
+// Hosted Supabase project. The publishable key is designed to ship in clients.
+// The $() breaks up "//" so it is not parsed as an xcconfig comment.
+
+SUPABASE_URL = https:/$()/yyajndbishiyugtbpzmk.supabase.co
+SUPABASE_PUBLISHABLE_KEY = sb_publishable_0ef6aBmCQiYeWmKqbdskmQ_BKqXCC7w

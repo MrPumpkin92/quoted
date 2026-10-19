@@ -1,0 +1,256 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-19T03:26:38Z"
+ },
+ "title": "Quoted UI Mockups",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 390,
+   "h": 844,
+   "title": "Margin · Welcome / sign in",
+   "radius": 44
+  },
+  "Margin-Starter.dc.html": {
+   "x": 470,
+   "y": 0,
+   "w": 390,
+   "h": 844,
+   "title": "Margin · Starter pack",
+   "radius": 44
+  },
+  "Margin-Home.dc.html": {
+   "x": 940,
+   "y": 0,
+   "w": 390,
+   "h": 844,
+   "title": "Margin · Home",
+   "radius": 44
+  },
+  "Margin-Search.dc.html": {
+   "x": 1410,
+   "y": 0,
+   "w": 390,
+   "h": 844,
+   "title": "Margin · Search: “courage”",
+   "radius": 44
+  },
+  "Margin-Add.dc.html": {
+   "x": 1880,
+   "y": 0,
+   "w": 390,
+   "h": 844,
+   "title": "Margin · Add quote",
+   "radius": 44
+  },
+  "Margin-Rotation.dc.html": {
+   "x": 2350,
+   "y": 0,
+   "w": 390,
+   "h": 844,
+   "title": "Margin · Rotation & reminders",
+   "radius": 44
+  },
+  "Margin-Friends.dc.html": {
+   "x": 2820,
+   "y": 0,
+   "w": 390,
+   "h": 844,
+   "title": "Margin · Friends & shared",
+   "radius": 44
+  },
+  "Margin-Widgets.dc.html": {
+   "x": 3290,
+   "y": 0,
+   "w": 390,
+   "h": 844,
+   "title": "Margin · Widgets & notification",
+   "radius": 44
+  },
+  "Daily-Welcome.dc.html": {
+   "x": 0,
+   "y": 1264,
+   "w": 390,
+   "h": 844,
+   "title": "Daily · Welcome / sign in",
+   "radius": 44
+  },
+  "Daily-Starter.dc.html": {
+   "x": 470,
+   "y": 1264,
+   "w": 390,
+   "h": 844,
+   "title": "Daily · Starter pack",
+   "radius": 44
+  },
+  "Daily-Home.dc.html": {
+   "x": 940,
+   "y": 1264,
+   "w": 390,
+   "h": 844,
+   "title": "Daily · Home",
+   "radius": 44
+  },
+  "Daily-Search.dc.html": {
+   "x": 1410,
+   "y": 1264,
+   "w": 390,
+   "h": 844,
+   "title": "Daily · Search: “courage”",
+   "radius": 44
+  },
+  "Daily-Add.dc.html": {
+   "x": 1880,
+   "y": 1264,
+   "w": 390,
+   "h": 844,
+   "title": "Daily · Add quote",
+   "radius": 44
+  },
+  "Daily-Rotation.dc.html": {
+   "x": 2350,
+   "y": 1264,
+   "w": 390,
+   "h": 844,
+   "title": "Daily · Rotation & reminders",
+   "radius": 44
+  },
+  "Daily-Friends.dc.html": {
+   "x": 2820,
+   "y": 1264,
+   "w": 390,
+   "h": 844,
+   "title": "Daily · Friends & shared",
+   "radius": 44
+  },
+  "Daily-Widgets.dc.html": {
+   "x": 3290,
+   "y": 1264,
+   "w": 390,
+   "h": 844,
+   "title": "Daily · Widgets & notification",
+   "radius": 44
+  },
+  "Nocturne-Welcome.dc.html": {
+   "x": 0,
+   "y": 2528,
+   "w": 390,
+   "h": 844,
+   "title": "Nocturne · Welcome / sign in",
+   "radius": 44
+  },
+  "Nocturne-Starter.dc.html": {
+   "x": 470,
+   "y": 2528,
+   "w": 390,
+   "h": 844,
+   "title": "Nocturne · Starter pack",
+   "radius": 44
+  },
+  "Nocturne-Home.dc.html": {
+   "x": 940,
+   "y": 2528,
+   "w": 390,
+   "h": 844,
+   "title": "Nocturne · Home",
+   "radius": 44
+  },
+  "Nocturne-Search.dc.html": {
+   "x": 1410,
+   "y": 2528,
+   "w": 390,
+   "h": 844,
+   "title": "Nocturne · Search: “courage”",
+   "radius": 44
+  },
+  "Nocturne-Add.dc.html": {
+   "x": 1880,
+   "y": 2528,
+   "w": 390,
+   "h": 844,
+   "title": "Nocturne · Add quote",
+   "radius": 44
+  },
+  "Nocturne-Rotation.dc.html": {
+   "x": 2350,
+   "y": 2528,
+   "w": 390,
+   "h": 844,
+   "title": "Nocturne · Rotation & reminders",
+   "radius": 44
+  },
+  "Nocturne-Friends.dc.html": {
+   "x": 2820,
+   "y": 2528,
+   "w": 390,
+   "h": 844,
+   "title": "Nocturne · Friends & shared",
+   "radius": 44
+  },
+  "Nocturne-Widgets.dc.html": {
+   "x": 3290,
+   "y": 2528,
+   "w": 390,
+   "h": 844,
+   "title": "Nocturne · Widgets & notification",
+   "radius": 44
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Margin-Starter.dc.html",
+  "Margin-Home.dc.html",
+  "Margin-Search.dc.html",
+  "Margin-Add.dc.html",
+  "Margin-Rotation.dc.html",
+  "Margin-Friends.dc.html",
+  "Margin-Widgets.dc.html",
+  "Daily-Welcome.dc.html",
+  "Daily-Starter.dc.html",
+  "Daily-Home.dc.html",
+  "Daily-Search.dc.html",
+  "Daily-Add.dc.html",
+  "Daily-Rotation.dc.html",
+  "Daily-Friends.dc.html",
+  "Daily-Widgets.dc.html",
+  "Nocturne-Welcome.dc.html",
+  "Nocturne-Starter.dc.html",
+  "Nocturne-Home.dc.html",
+  "Nocturne-Search.dc.html",
+  "Nocturne-Add.dc.html",
+  "Nocturne-Rotation.dc.html",
+  "Nocturne-Friends.dc.html",
+  "Nocturne-Widgets.dc.html"
+ ],
+ "notes": {
+  "title-margin": {
+   "x": 0,
+   "y": -300,
+   "text": "1 · Margin: editorial calm, light",
+   "kind": "title1",
+   "maxW": 3680
+  },
+  "title-daily": {
+   "x": 0,
+   "y": 964,
+   "text": "2 · Daily: one quote at a time, card-first",
+   "kind": "title1",
+   "maxW": 3680
+  },
+  "title-nocturne": {
+   "x": 0,
+   "y": 2228,
+   "text": "3 · Nocturne: dark, bold, search in the thumb zone",
+   "kind": "title1",
+   "maxW": 3680
+  }
+ },
+ "designSystems": []
+}

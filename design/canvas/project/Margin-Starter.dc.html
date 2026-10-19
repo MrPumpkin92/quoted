@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Margin - Starter pack</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap">
+<style>
+body{margin:0}
+a{color:#2B44C9}a:hover{color:#1F33A0}
+.q{font-family:'Newsreader',serif;font-optical-sizing:auto}
+.au{font-size:13px;line-height:16px;letter-spacing:.06em;text-transform:uppercase;color:rgba(22,22,26,.62)}
+.b{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;outline:0;box-sizing:border-box;-webkit-appearance:none;appearance:none}
+.b::placeholder{color:rgba(22,22,26,.62);opacity:1}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; background: #F8F8F6; font-family: -apple-system, system-ui, sans-serif; color: #16161A">
+
+  <div style="position: absolute; top: 54px; left: 24px; right: 24px; height: 44px; display: flex; align-items: center; justify-content: flex-end;">
+    <button class="b" type="button" style="height: 44px; padding: 0 4px; font-size: 17px; line-height: 22px; color: rgba(22,22,26,0.62);">Skip</button>
+  </div>
+
+  <div style="position: absolute; top: 98px; left: 24px; right: 24px;">
+    <h1 style="margin: 0; font-size: 34px; line-height: 40px; font-weight: 600; letter-spacing: -0.01em;">Pick a few to start</h1>
+    <p style="margin: 8px 0 0; font-size: 17px; line-height: 22px; color: rgba(22,22,26,0.62);">They’ll appear in widgets and reminders.</p>
+
+    <ul aria-label="Starter quotes" style="list-style: none; margin: 16px 0 0; padding: 0;">
+
+      <li style="border-top: 1px solid #E6E4DF;">
+        <button class="b" type="button" role="checkbox" aria-checked="true" style="width: 100%; padding: 12px 0; display: flex; align-items: center; gap: 16px; text-align: left;">
+          <span style="flex: 1; min-width: 0;">
+            <span class="q" style="display: block; font-size: 17px; line-height: 22px;">Beware; for I am <em>fearless</em>, and therefore powerful.</span>
+            <span style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;"><span class="au">Mary Shelley</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Frankenstein</cite></span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 28px; height: 28px; border-radius: 14px; background: #2B44C9; color: #FFFFFF; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        </button>
+      </li>
+
+      <li style="border-top: 1px solid #E6E4DF;">
+        <button class="b" type="button" role="checkbox" aria-checked="false" style="width: 100%; padding: 12px 0; display: flex; align-items: center; gap: 16px; text-align: left;">
+          <span style="flex: 1; min-width: 0;">
+            <span class="q" style="display: block; font-size: 17px; line-height: 22px;">I went to the woods because I wished to live deliberately.</span>
+            <span style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;"><span class="au">Henry David Thoreau</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Walden</cite></span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 28px; height: 28px; box-sizing: border-box; border-radius: 14px; border: 1.5px solid rgba(22,22,26,0.5);"></span>
+        </button>
+      </li>
+
+      <li style="border-top: 1px solid #E6E4DF;">
+        <button class="b" type="button" role="checkbox" aria-checked="true" style="width: 100%; padding: 12px 0; display: flex; align-items: center; gap: 16px; text-align: left;">
+          <span style="flex: 1; min-width: 0;">
+            <span class="q" style="display: block; font-size: 17px; line-height: 22px;"><strong style="font-weight: 600;">Trust thyself</strong>: every heart vibrates to that iron string.</span>
+            <span style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;"><span class="au">Ralph Waldo Emerson</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Self-Reliance</cite></span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 28px; height: 28px; border-radius: 14px; background: #2B44C9; color: #FFFFFF; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        </button>
+      </li>
+
+      <li style="border-top: 1px solid #E6E4DF;">
+        <button class="b" type="button" role="checkbox" aria-checked="false" style="width: 100%; padding: 12px 0; display: flex; align-items: center; gap: 16px; text-align: left;">
+          <span style="flex: 1; min-width: 0;">
+            <span class="q" style="display: block; font-size: 17px; line-height: 22px;">“Hope” is the thing with feathers – That perches in the soul –</span>
+            <span style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;"><span class="au">Emily Dickinson</span></span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 28px; height: 28px; box-sizing: border-box; border-radius: 14px; border: 1.5px solid rgba(22,22,26,0.5);"></span>
+        </button>
+      </li>
+
+      <li style="border-top: 1px solid #E6E4DF;">
+        <button class="b" type="button" role="checkbox" aria-checked="true" style="width: 100%; padding: 12px 0; display: flex; align-items: center; gap: 16px; text-align: left;">
+          <span style="flex: 1; min-width: 0;">
+            <span class="q" style="display: block; font-size: 17px; line-height: 22px;">While we are postponing, <u style="text-decoration-thickness: 1px; text-underline-offset: 3px;">life</u> speeds by.</span>
+            <span style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;"><span class="au">Seneca</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Letters to Lucilius</cite></span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 28px; height: 28px; border-radius: 14px; background: #2B44C9; color: #FFFFFF; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        </button>
+      </li>
+
+      <li style="border-top: 1px solid #E6E4DF; border-bottom: 1px solid #E6E4DF;">
+        <button class="b" type="button" role="checkbox" aria-checked="false" style="width: 100%; padding: 12px 0; display: flex; align-items: center; gap: 16px; text-align: left;">
+          <span style="flex: 1; min-width: 0;">
+            <span class="q" style="display: block; font-size: 17px; line-height: 22px;">This above all: to thine own self be true.</span>
+            <span style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;"><span class="au">William Shakespeare</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Hamlet</cite></span>
+          </span>
+          <span aria-hidden="true" style="flex: none; width: 28px; height: 28px; box-sizing: border-box; border-radius: 14px; border: 1.5px solid rgba(22,22,26,0.5);"></span>
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <div style="position: absolute; left: 24px; right: 24px; bottom: 40px;">
+    <button class="b" type="button" style="width: 100%; height: 56px; border-radius: 28px; background: #2B44C9; color: #FFFFFF; font-size: 17px; line-height: 22px; font-weight: 600;">Continue with 3 quotes</button>
+  </div>
+
+  <div aria-hidden="true" style="position: absolute; left: 128px; bottom: 8px; width: 134px; height: 5px; border-radius: 3px; background: #16161A;"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

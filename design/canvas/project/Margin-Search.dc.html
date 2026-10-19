@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Margin - Search</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap">
+<style>
+body{margin:0}
+a{color:#2B44C9}a:hover{color:#1F33A0}
+.q{font-family:'Newsreader',serif;font-optical-sizing:auto}
+.au{font-size:13px;line-height:16px;letter-spacing:.06em;text-transform:uppercase;color:rgba(22,22,26,.62)}
+.b{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;outline:0;box-sizing:border-box;-webkit-appearance:none;appearance:none}
+.b::placeholder{color:rgba(22,22,26,.62);opacity:1}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; background: #F8F8F6; font-family: -apple-system, system-ui, sans-serif; color: #16161A">
+
+  <div role="search" style="position: absolute; top: 62px; left: 24px; right: 24px; height: 44px; display: flex; align-items: center; gap: 8px;">
+    <label for="search" class="vh">Search quotes</label>
+    <div style="flex: 1; min-width: 0; height: 44px; box-sizing: border-box; padding: 0 0 0 16px; border-radius: 22px; background: rgba(22,22,26,0.06); display: flex; align-items: center; gap: 8px; color: rgba(22,22,26,0.62);">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/></svg>
+      <input id="search" class="b" type="text" enterkeyhint="search" value="courage" style="flex: 1; min-width: 0; height: 22px; font-size: 17px; line-height: 22px; color: #16161A;">
+      <button class="b" type="button" aria-label="Clear search" style="flex: none; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: rgba(22,22,26,0.45);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"/><path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6" stroke="#FFFFFF"/></svg></button>
+    </div>
+    <button class="b" type="button" style="flex: none; height: 44px; padding: 0 4px; font-size: 17px; line-height: 22px; font-weight: 600;">Cancel</button>
+  </div>
+
+  <main style="position: absolute; top: 130px; left: 24px; right: 24px;">
+
+    <section aria-labelledby="h-lib">
+      <h2 id="h-lib" style="margin: 0; font-size: 13px; line-height: 16px; font-weight: 600; color: rgba(22,22,26,0.62);">In your library</h2>
+      <ul style="list-style: none; margin: 8px 0 0; padding: 0;">
+        <li style="padding: 16px 0; border-top: 1px solid #E6E4DF;">
+          <p class="q" style="margin: 0; font-size: 20px; line-height: 28px;">There is a stubbornness about me that never can bear to be frightened at the will of others. My <mark style="background: rgba(43,68,201,0.12); color: inherit; font-weight: 600; border-radius: 4px; padding: 0 2px;">courage</mark> always rises at every attempt to intimidate me.</p>
+          <p style="margin: 8px 0 0; display: flex; align-items: baseline; gap: 8px;"><span class="au">Jane Austen</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Pride and Prejudice</cite></p>
+        </li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="h-shared" style="margin-top: 24px;">
+      <h2 id="h-shared" style="margin: 0; font-size: 13px; line-height: 16px; font-weight: 600; color: rgba(22,22,26,0.62);">Shared with you</h2>
+      <ul style="list-style: none; margin: 8px 0 0; padding: 0;">
+        <li style="padding: 16px 0; border-top: 1px solid #E6E4DF;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span aria-hidden="true" style="flex: none; width: 24px; height: 24px; border-radius: 12px; background: #DFEBE3; color: #2E6143; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600;">J</span>
+            <span style="font-size: 13px; line-height: 16px; color: rgba(22,22,26,0.62);"><span style="font-weight: 600; color: #16161A;">Jordan Lee</span> · yesterday</span>
+          </div>
+          <p class="q" style="margin: 8px 0 0; font-size: 20px; line-height: 28px;">But screw your <mark style="background: rgba(43,68,201,0.12); color: inherit; font-weight: 600; border-radius: 4px; padding: 0 2px;">courage</mark> to the sticking-place, and we’ll not fail.</p>
+          <p style="margin: 8px 0 0; display: flex; align-items: baseline; gap: 8px;"><span class="au">William Shakespeare</span><cite class="q" style="font-size: 13px; line-height: 16px; font-style: italic; color: rgba(22,22,26,0.62);">Macbeth</cite></p>
+        </li>
+      </ul>
+    </section>
+
+    <a href="https://www.google.com/search?q=courage+quotes" style="margin-top: 24px; display: flex; align-items: flex-start; gap: 12px; padding: 16px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #E6E4DF, 0 4px 16px rgba(22,22,26,0.04); text-decoration: none; color: #16161A;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(22,22,26,0.62)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none;"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3z"/></svg>
+      <span style="flex: 1; min-width: 0;">
+        <span style="display: block; font-size: 17px; line-height: 22px; color: #2B44C9; text-wrap: balance;">Search the web for “courage” quotes</span>
+        <span style="display: block; margin-top: 4px; font-size: 13px; line-height: 16px; color: rgba(22,22,26,0.62);">Opens Google. Copy a quote, then tap Paste in Add.</span>
+      </span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2B44C9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 1px;"><path d="M7 17L17 7"/><path d="M8.5 7H17v8.5"/></svg>
+    </a>
+  </main>
+
+  <nav aria-label="Tabs" style="position: absolute; left: 16px; right: 16px; bottom: 32px; height: 64px; box-sizing: border-box; padding: 4px; display: flex; gap: 4px; border-radius: 32px; background: rgba(255,255,255,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 0 0 1px rgba(22,22,26,0.06), 0 8px 24px rgba(22,22,26,0.08);">
+    <button class="b" type="button" aria-current="page" style="flex: 1; height: 56px; border-radius: 28px; background: rgba(43,68,201,0.08); color: #2B44C9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; line-height: 16px; font-weight: 600;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7c-1.6-1.4-4-2.2-7.5-2.2H4v13.4h.5c3.5 0 5.9.8 7.5 2.2 1.6-1.4 4-2.2 7.5-2.2h.5V4.8h-.5C16 4.8 13.6 5.6 12 7z"/><path d="M12 7v13"/></svg><span>Library</span></button>
+    <button class="b" type="button" style="flex: 1; height: 56px; border-radius: 28px; color: rgba(22,22,26,0.62); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; line-height: 16px; font-weight: 600;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 12v-1a5 5 0 0 1 5-5h11"/><path d="M7 21l-3-3 3-3"/><path d="M20 12v1a5 5 0 0 1-5 5H4"/></svg><span>Rotation</span></button>
+    <button class="b" type="button" style="flex: 1; height: 56px; border-radius: 28px; color: rgba(22,22,26,0.62); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; line-height: 16px; font-weight: 600;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.4-3.4 3-5.5 6.5-5.5s6.1 2.1 6.5 5.5"/><path d="M15.5 4.7a3.5 3.5 0 0 1 0 6.6"/><path d="M18 14.8c2 .7 3.3 2.5 3.5 5.2"/></svg><span>Friends</span></button>
+  </nav>
+
+  <div aria-hidden="true" style="position: absolute; left: 128px; bottom: 8px; width: 134px; height: 5px; border-radius: 3px; background: #16161A;"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

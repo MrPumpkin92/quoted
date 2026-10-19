@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Margin - Add quote</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap">
+<style>
+body{margin:0}
+a{color:#2B44C9}a:hover{color:#1F33A0}
+.q{font-family:'Newsreader',serif;font-optical-sizing:auto}
+.au{font-size:13px;line-height:16px;letter-spacing:.06em;text-transform:uppercase;color:rgba(22,22,26,.62)}
+.b{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;outline:0;box-sizing:border-box;-webkit-appearance:none;appearance:none}
+.b::placeholder{color:rgba(22,22,26,.62);opacity:1}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; background: #BDBDBA; font-family: -apple-system, system-ui, sans-serif; color: #16161A">
+
+  <div aria-hidden="true" style="position: absolute; top: 54px; left: 24px; right: 24px; height: 40px; border-radius: 16px 16px 0 0; background: #D3D3D0;"></div>
+
+  <section role="dialog" aria-modal="true" aria-labelledby="sheet-title" style="position: absolute; top: 64px; left: 0; right: 0; bottom: 0; background: #F8F8F6; border-radius: 32px 32px 0 0; box-shadow: 0 -8px 24px rgba(22,22,26,0.08);">
+
+    <div aria-hidden="true" style="position: absolute; top: 8px; left: 177px; width: 36px; height: 5px; border-radius: 3px; background: rgba(22,22,26,0.2);"></div>
+
+    <header style="position: absolute; top: 20px; left: 24px; right: 24px; height: 44px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;">
+      <button class="b" type="button" style="justify-self: start; height: 44px; padding: 0 8px; margin-left: -8px; font-size: 17px; line-height: 22px; color: rgba(22,22,26,0.8);">Cancel</button>
+      <h2 id="sheet-title" style="margin: 0; font-size: 17px; line-height: 22px; font-weight: 600;">New quote</h2>
+      <button class="b" type="submit" style="justify-self: end; height: 44px; padding: 0 20px; border-radius: 22px; background: #2B44C9; color: #FFFFFF; font-size: 17px; line-height: 22px; font-weight: 600;">Save</button>
+    </header>
+
+    <div style="position: absolute; top: 80px; left: 24px; right: 24px; display: flex; flex-direction: column; gap: 16px;">
+
+      <div style="min-height: 240px; box-sizing: border-box; padding: 24px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #E6E4DF, 0 4px 16px rgba(22,22,26,0.04);">
+        <span id="quote-label" class="vh">Quote text</span>
+        <div role="textbox" aria-multiline="true" aria-labelledby="quote-label" class="q" style="font-size: 34px; line-height: 40px; letter-spacing: -0.01em;"><span style="position: relative; background: rgba(43,68,201,0.16); border-radius: 2px; padding-right: 2px;"><span aria-hidden="true" style="position: absolute; left: -2px; top: -2px; bottom: 0; width: 2px; background: #2B44C9;"></span><span aria-hidden="true" style="position: absolute; left: -5px; top: -10px; width: 8px; height: 8px; border-radius: 4px; background: #2B44C9;"></span><strong style="font-weight: 600;">Trust thyself</strong><span aria-hidden="true" style="position: absolute; right: -4px; top: 0; bottom: -2px; width: 2px; background: #2B44C9;"></span><span aria-hidden="true" style="position: absolute; right: -7px; bottom: -10px; width: 8px; height: 8px; border-radius: 4px; background: #2B44C9;"></span></span>: every heart vibrates to that <u style="text-decoration-thickness: 1.5px; text-underline-offset: 6px;">iron string</u>.</div>
+      </div>
+
+      <div style="border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #E6E4DF, 0 4px 16px rgba(22,22,26,0.04);">
+        <div style="height: 64px; box-sizing: border-box; padding: 12px 16px;">
+          <label for="author" style="display: block; font-size: 13px; line-height: 16px; color: rgba(22,22,26,0.62);">Author</label>
+          <input id="author" class="b" type="text" value="Ralph Waldo Emerson" style="display: block; width: 100%; margin-top: 4px; height: 20px; font-size: 17px; line-height: 20px; color: #16161A;">
+        </div>
+        <div aria-hidden="true" style="height: 1px; margin-left: 16px; background: #E6E4DF;"></div>
+        <div style="height: 64px; box-sizing: border-box; padding: 12px 16px;">
+          <label for="source" style="display: block; font-size: 13px; line-height: 16px; color: rgba(22,22,26,0.62);">Source (optional)</label>
+          <input id="source" class="b" type="text" value="Self-Reliance" style="display: block; width: 100%; margin-top: 4px; height: 20px; font-size: 17px; line-height: 20px; color: #16161A;">
+        </div>
+      </div>
+
+      <div style="height: 64px; box-sizing: border-box; padding: 0 16px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 0 0 1px #E6E4DF, 0 4px 16px rgba(22,22,26,0.04); display: flex; align-items: center; gap: 16px;">
+        <div style="flex: 1; min-width: 0;">
+          <div id="rot-label" style="font-size: 17px; line-height: 22px;">Add to rotation</div>
+          <div style="font-size: 13px; line-height: 16px; color: rgba(22,22,26,0.62);">Shows up in widgets and reminders</div>
+        </div>
+        <button class="b" type="button" role="switch" aria-checked="true" aria-labelledby="rot-label" style="flex: none; width: 52px; height: 44px; display: flex; align-items: center;">
+          <span aria-hidden="true" style="position: relative; width: 52px; height: 32px; border-radius: 16px; background: #2B44C9;"><span style="position: absolute; top: 2px; right: 2px; width: 28px; height: 28px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 2px 4px rgba(22,22,26,0.2);"></span></span>
+        </button>
+      </div>
+    </div>
+
+    <div role="toolbar" aria-label="Formatting" style="position: absolute; left: 16px; right: 16px; bottom: 32px; height: 64px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 4px; border-radius: 32px; background: rgba(255,255,255,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 0 0 1px rgba(22,22,26,0.06), 0 8px 24px rgba(22,22,26,0.08);">
+      <button class="b" type="button" aria-label="Bold" aria-pressed="true" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(43,68,201,0.12); color: #2B44C9; font-size: 17px; line-height: 22px; font-weight: 600;">B</button>
+      <button class="b" type="button" aria-label="Italic" aria-pressed="false" style="width: 44px; height: 44px; border-radius: 22px; font-size: 17px; line-height: 22px; font-style: italic;">I</button>
+      <button class="b" type="button" aria-label="Underline" aria-pressed="false" style="width: 44px; height: 44px; border-radius: 22px; font-size: 17px; line-height: 22px; text-decoration: underline; text-underline-offset: 3px;">U</button>
+      <span aria-hidden="true" style="flex: 1;"></span>
+      <button class="b" type="button" style="height: 44px; padding: 0 16px; border-radius: 22px; background: rgba(22,22,26,0.06); display: flex; align-items: center; gap: 8px; font-size: 17px; line-height: 22px; font-weight: 600;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5h1.5a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2H9"/><rect x="9" y="3" width="6" height="3.5" rx="1"/></svg>Paste</button>
+    </div>
+
+    <div aria-hidden="true" style="position: absolute; left: 128px; bottom: 8px; width: 134px; height: 5px; border-radius: 3px; background: #16161A;"></div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

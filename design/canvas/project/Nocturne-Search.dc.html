@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nocturne - Search</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,500;0,700;1,500;1,700&display=swap">
+<style>
+body{margin:0}
+a{color:#FFB547}a:hover{color:#FFC978}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer}
+input{font:inherit;color:inherit}
+.q{font-family:'Schibsted Grotesk',-apple-system,system-ui,sans-serif}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; position: relative; background: #0C0C0E; font-family: -apple-system, system-ui, sans-serif; color: #F5F5F4; font-weight: 500">
+  <div style="height: 98px"></div>
+  <h1 class="q" style="margin: 0; padding: 0 16px; font-size: 34px; line-height: 40px; font-weight: 700; letter-spacing: -0.01em">Search</h1>
+
+  <main style="padding: 24px 16px 0">
+
+    <section aria-labelledby="ns-lib">
+      <h2 id="ns-lib" style="margin: 0 0 8px; padding: 0 16px; font-size: 13px; line-height: 16px; font-weight: 500; color: rgba(245,245,244,0.64)">In your library</h2>
+      <a href="#q2" style="display: block; padding: 16px; background: #161619; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; color: #F5F5F4; text-decoration: none">
+        <span class="q" style="display: block; font-size: 17px; line-height: 22px">There is a stubbornness about me that never can bear to be frightened at the will of others. My <mark style="background: none; color: #FFB547; font-weight: 700">courage</mark> always rises at every attempt to intimidate me.</span>
+        <span style="display: block; margin-top: 8px; font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">Jane Austen, Pride and Prejudice</span>
+      </a>
+    </section>
+
+    <section aria-labelledby="ns-shared" style="margin-top: 24px">
+      <h2 id="ns-shared" style="margin: 0 0 8px; padding: 0 16px; font-size: 13px; line-height: 16px; font-weight: 500; color: rgba(245,245,244,0.64)">Shared with you</h2>
+      <a href="#q9" style="display: block; padding: 16px; background: #161619; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; color: #F5F5F4; text-decoration: none">
+        <span class="q" style="display: block; font-size: 17px; line-height: 22px">But screw your <mark style="background: none; color: #FFB547; font-weight: 700">courage</mark> to the sticking-place, and we’ll not fail.</span>
+        <span style="display: block; margin-top: 8px; font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">William Shakespeare, Macbeth</span>
+        <span style="display: flex; align-items: center; gap: 8px; margin-top: 12px">
+          <span aria-hidden="true" style="width: 24px; height: 24px; border-radius: 12px; background: #8FB0FF; color: #0C0C0E; font-size: 13px; line-height: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none">J</span>
+          <span style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">From Jordan · Yesterday</span>
+        </span>
+      </a>
+    </section>
+
+    <a href="#web" style="margin-top: 24px; display: flex; align-items: center; gap: 12px; padding: 16px; background: #161619; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; color: #F5F5F4; text-decoration: none">
+      <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 20px; background: #1E1E22; color: #FFB547; display: flex; align-items: center; justify-content: center; flex: none">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3z"/></svg>
+      </span>
+      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+        <span style="font-size: 17px; line-height: 22px; color: #F5F5F4">Search the web for “courage” quotes</span>
+        <span style="font-size: 13px; line-height: 16px; color: rgba(245,245,244,0.64)">Opens Google. Copy a quote, then tap Paste in Add.</span>
+      </span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(245,245,244,0.64)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>
+    </a>
+  </main>
+
+  <div style="position: absolute; left: 16px; right: 16px; bottom: 32px; height: 64px; display: flex; gap: 12px">
+    <button type="button" aria-label="Back to Quotes tab" style="width: 64px; height: 64px; flex: none; box-sizing: border-box; border-radius: 32px; background: rgba(30,30,34,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 24px rgba(4,4,8,0.56); display: flex; align-items: center; justify-content: center; color: rgba(245,245,244,0.8)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path fill="currentColor" stroke-width="1" d="M3 13.5C3 9.5 5.2 6.9 9 6l.6 1.6c-2 .8-3.1 2-3.3 3.6.3-.1.7-.2 1.1-.2 1.7 0 3.1 1.3 3.1 3s-1.4 3-3.2 3C4.9 17 3 15.6 3 13.5z"/><path fill="currentColor" stroke-width="1" d="M13 13.5c0-4 2.2-6.6 6-7.5l.6 1.6c-2 .8-3.1 2-3.3 3.6.3-.1.7-.2 1.1-.2 1.7 0 3.1 1.3 3.1 3s-1.4 3-3.2 3c-2.4 0-4.3-1.4-4.3-3.5z"/></svg>
+    </button>
+    <div role="search" style="flex: 1; min-width: 0; height: 64px; box-sizing: border-box; border-radius: 32px; background: rgba(30,30,34,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 24px rgba(4,4,8,0.56); display: flex; align-items: center; gap: 8px; padding: 0 8px 0 20px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(245,245,244,0.64)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/></svg>
+      <label for="ns-q" class="vh">Search your quotes and quotes shared with you</label>
+      <input id="ns-q" type="text" enterkeyhint="search" value="courage" style="flex: 1; min-width: 0; height: 44px; padding: 0; background: none; border: 0; outline: none; font-size: 17px; color: #F5F5F4; caret-color: #FFB547">
+      <button type="button" aria-label="Clear search" style="width: 44px; height: 44px; flex: none; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: rgba(245,245,244,0.64)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div aria-hidden="true" style="position: absolute; left: 128px; bottom: 8px; width: 134px; height: 5px; border-radius: 3px; background: #F5F5F4"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

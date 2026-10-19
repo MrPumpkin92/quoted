@@ -1,0 +1,177 @@
+# XcodeGen spec for Quoted. After editing, run `xcodegen generate` (or
+# scripts/build.sh) and commit the regenerated Quoted.xcodeproj.
+#
+# Build settings live in Config/*.xcconfig. `settingPresets: none` keeps
+# XcodeGen from writing defaults into the project file that would override them,
+# so this file only carries structure and per-target identity.
+
+name: Quoted
+
+options:
+  minimumXcodeGenVersion: 2.46.0
+  xcodeVersion: "27.0"
+  developmentLanguage: en
+  settingPresets: none
+  createIntermediateGroups: true
+  groupSortPosition: top
+  defaultConfig: Debug
+
+configs:
+  Debug: debug
+  Debug-Local: debug
+  Release: release
+
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Debug-Local: Config/DebugLocal.xcconfig
+  Release: Config/Release.xcconfig
+
+packages:
+  QuotedKit:
+    path: Packages/QuotedKit
+
+fileGroups:
+  - Config
+  - project.yml
+
+targets:
+  Quoted:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hwei.quoted
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: App/Quoted.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+    preBuildScripts:
+      # Release builds go to App Store Connect, so they must carry a support address (Account >
+      # Contact support, and the contact line in the Privacy Policy and Terms) and final legal text.
+      # Debug builds skip the check. Runs on every build (no outputs), so dependency analysis is off.
+      - name: Check release settings
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        inputFiles:
+          - $(SRCROOT)/App/Resources/Legal/privacy.md
+          - $(SRCROOT)/App/Resources/Legal/terms.md
+          - $(SRCROOT)/App/Resources/Legal/community-guidelines.md
+        script: |
+          [ "${CONFIGURATION}" = "Release" ] || exit 0
+          status=0
+          case "${SUPPORT_EMAIL}" in
+            "")
+              echo "error: Set SUPPORT_EMAIL in Config/Release.xcconfig before archiving. It is the Contact support address in Account and in the Privacy Policy and Terms (docs/app-store-submission.md)."
+              status=1 ;;
+            *[[:space:]]* | *@*@*) bad_email=1 ;;
+            ?*@?*.?*) ;;
+            *) bad_email=1 ;;
+          esac
+          if [ -n "${bad_email:-}" ]; then
+            echo "error: SUPPORT_EMAIL ('${SUPPORT_EMAIL}') is not an email address. Fix it in Config/Release.xcconfig."
+            status=1
+          fi
+          # Script sandboxing adds this script itself to the inputs, so look at the .md files only.
+          i=0
+          while [ "$i" -lt "${SCRIPT_INPUT_FILE_COUNT}" ]; do
+            eval "file=\${SCRIPT_INPUT_FILE_$i}"
+            case "$file" in
+              *.md)
+                if grep -qi "draft - review" "$file"; then
+                  echo "${file}:1: error: Remove the draft banner from this legal page before archiving."
+                  status=1
+                fi ;;
+            esac
+            i=$((i + 1))
+          done
+          exit "$status"
+    dependencies:
+      - package: QuotedKit
+        product: QuotedKit
+      - package: QuotedKit
+        product: QuotedCore
+      - target: QuotedWidgets
+        embed: true
+
+  QuotedWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hwei.quoted.widgets
+        INFOPLIST_FILE: Widgets/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Widgets/QuotedWidgets.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        ENABLE_PREVIEWS: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
+    dependencies:
+      # The widget links QuotedCore only (no Supabase) to keep the extension small.
+      - package: QuotedKit
+        product: QuotedCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+
+  QuotedUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hwei.quoted.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        # XCTest symbolicates a failure's call stack; through the debug map of a `dwarf` build that
+        # stalls the runner for minutes. A dSYM makes failures report at once.
+        DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @loader_path/Frameworks"
+    dependencies:
+      - target: Quoted
+
+schemes:
+  Quoted:
+    build:
+      targets:
+        Quoted: all
+        QuotedUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug-Local
+      gatherCoverageData: false
+      targets:
+        - QuotedUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+  Quoted Local:
+    build:
+      targets:
+        Quoted: all
+        QuotedUITests: [test]
+    run:
+      config: Debug-Local
+    test:
+      config: Debug-Local
+      gatherCoverageData: false
+      targets:
+        - QuotedUITests
+    profile:
+      config: Debug-Local
+    analyze:
+      config: Debug-Local
+    archive:
+      config: Release
