@@ -30,3 +30,6 @@ supabase/functions/.env
 .env
 .env.*
 !.env.example
+
+# Local signing (team ID); see Config/Signing.xcconfig.example
+Config/Signing.xcconfig

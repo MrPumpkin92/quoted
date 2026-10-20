@@ -5,5 +5,5 @@
 #include "Hosted.xcconfig"
 
 // The support address shipped in the App Store build (Account > Contact support, Privacy Policy and
-// Terms). Required: a Release build fails until it is set. Example:
-// SUPPORT_EMAIL = support@yourdomain.com
+// Terms) comes from SUPPORT_EMAIL in Shared.xcconfig. Override it here only if the App Store build
+// should use a different address. A Release build fails while it is empty.

@@ -40,8 +40,8 @@ Related: `docs/system-design.md` §7 (the daily report check) and §10 (founder 
 
 The Release build carries a support address in Info.plist (`SupportEmail = $(SUPPORT_EMAIL)`). It drives Account > Contact support and the contact line at the end of the Privacy Policy, the Terms and the Community Guidelines (`TextPageView` fills in `{{SUPPORT_EMAIL}}`).
 
-1. Create a mailbox you will actually read, for example `support@yourdomain`.
-2. In `Config/Release.xcconfig`, uncomment and set `SUPPORT_EMAIL = support@yourdomain`.
+1. The support address is `hanningwei92@gmail.com`, set as `SUPPORT_EMAIL` in `Config/Shared.xcconfig`, so every configuration uses it. To ship a different address in the App Store build only, override it in `Config/Release.xcconfig`.
+2. Use the same address in App Store Connect and on the hosted Support page (step 4).
 3. The `Check release settings` build phase (`project.yml`, `preBuildScripts`) fails any Release build or archive while `SUPPORT_EMAIL` is empty or not an address, with "Set SUPPORT_EMAIL in Config/Release.xcconfig before archiving". It also fails if a legal page still carries a "Draft - review" banner. Debug builds skip it; with no address they hide the Contact support row and drop the contact sentences.
 4. Answer support mail. Users write there to ask about their data, to appeal a block or ban, and to report something outside the app.
 
@@ -95,12 +95,14 @@ If any of this changes (a crash reporter, new analytics, a new field), update th
 Answer the questionnaire as follows:
 
 - Content descriptions (violence, sexual content, profanity, drugs, horror, mature themes, medical, gambling, contests): **None**. The app ships no such content; quotes come from users and the public-domain starter pack.
-- **Unrestricted web access: Yes.** "Search the web" opens Google in an in-app browser (`SFSafariViewController`), from which any site is reachable. This gives the highest age rating. It is the founder's deliberate choice (`docs/decisions/2026-10-19-web-search-browser.md`). To lower the rating, switch the row to open the Safari app and answer No.
+- **Unrestricted web access: Yes.** "Search the web" opens Google in an in-app browser (`SFSafariViewController`), from which any site is reachable. Apple maps this capability to **16+** (Age ratings values and definitions, checked 2026-10-19). It is the founder's deliberate choice (`docs/decisions/2026-10-19-web-search-browser.md`). To lower the rating, switch the row to open the Safari app and answer No.
 - **User-generated content: Yes.** Users write quotes and notes, pick a display name and share with friends. Report and Block exist on every shared quote, request and friend.
 - **Messaging and chat: Yes.** A shared quote can carry a short note to an accepted friend.
+- **Social media: No.** Apple defines it as a feed or discovery method that spreads content to many users (that would mean 13+). Quoted only sends a quote to chosen, accepted friends; there is no feed.
+- **Expected result: 16+**, driven only by unrestricted web access. User-generated content and messaging do not raise the rating.
 - Advertising, gambling, loot boxes, parental controls, age assurance: No.
 
-The Terms require users to be at least 13. If the calculated rating is lower than 13+, choose 13+ where App Store Connect lets you set a higher rating.
+The Terms require users to be at least 13, which fits the 16+ rating. If you later switch web search to the Safari app, the rating drops to 4+; then raise it to 13+ where App Store Connect lets you set a higher rating, to match the Terms.
 
 ## 8. Demo accounts for App Review
 

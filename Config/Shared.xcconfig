@@ -28,16 +28,18 @@ ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES
 
 // MARK: Support
 // The address behind Account > Contact support and the contact line in the bundled Privacy Policy
-// and Terms (Info.plist `SupportEmail`, read by `AppInfo.supportEmail`). Empty here on purpose:
-// Debug builds hide the row and the sentence. Set it in Release.xcconfig; the "Check release
-// settings" build phase (project.yml) fails a Release build while it is empty.
-SUPPORT_EMAIL =
+// and Terms (Info.plist `SupportEmail`, read by `AppInfo.supportEmail`). Set for every
+// configuration so Debug builds show the row too. The "Check release settings" build phase
+// (project.yml) fails a Release build if this is ever emptied.
+SUPPORT_EMAIL = hanningwei92@gmail.com
 
 // MARK: Signing
-// The founder sets DEVELOPMENT_TEAM (Xcode > Signing & Capabilities) before
-// running on a device or archiving for App Store Connect.
+// Device builds and App Store archives need an Apple Developer team. Put yours in
+// Config/Signing.xcconfig (gitignored; copy Config/Signing.xcconfig.example).
+// Simulator builds work without it.
 CODE_SIGN_STYLE = Automatic
 DEVELOPMENT_TEAM =
+#include? "Signing.xcconfig"
 
 // MARK: Xcode template defaults (Base_ProjectSettings, Xcode 27)
 ALWAYS_SEARCH_USER_PATHS = NO

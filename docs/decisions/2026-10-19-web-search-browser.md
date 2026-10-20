@@ -14,6 +14,6 @@ The founder chose to keep the in-app browser for the smoother flow: no app switc
 
 ## Consequences
 
-- **App Store Connect age rating:** answer **Unrestricted Web Access = Yes**. This gives Quoted the highest age rating in the questionnaire. Answering "No" would risk a 2.3.6 rejection (inaccurate age rating). Also answer **User-Generated Content = Yes** and **Messaging = Yes** (friend sharing with notes). See `docs/app-store-submission.md` §7.
+- **App Store Connect age rating:** answer **Unrestricted Web Access = Yes**. Apple maps unrestricted web access to the **16+** tier (App Store Connect Help, "Age ratings values and definitions", checked 2026-10-19). Answering "No" would risk a 2.3.6 rejection (inaccurate age rating). Also answer **User-Generated Content = Yes** and **Messaging = Yes** (friend sharing with notes). See `docs/app-store-submission.md` §7.
 - **Terms of Use:** they state a minimum age of 13. The store rating describes content, not legal capacity, so this is not a contradiction. Review the wording with the legal pass anyway.
 - **Reversal:** to switch to the Safari app later, replace `router.present(.safari(url))` in `SearchView.searchWeb` with `openURL(url)`, change the caption, and re-answer the questionnaire with Unrestricted Web Access = No.
