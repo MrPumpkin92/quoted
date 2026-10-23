@@ -68,11 +68,11 @@ struct RootView: View {
 }
 
 /// Launch: `Ground` with the wordmark. A spinner appears only after a second; a failed launch
-/// (offline on the first sign-in, or when the anonymous account can't be created) shows the message
-/// and Try again.
+/// (offline, or the server did not answer) shows the message and Try again. The app also retries by
+/// itself; while any retry runs, the button shows progress. DEBUG builds add the diagnostic and the
+/// backend URL under it.
 struct LaunchView: View {
     @Environment(SessionStore.self) private var session
-    @State private var isRetrying = false
 
     var body: some View {
         VStack(spacing: Theme.Spacing.l) {
@@ -84,16 +84,29 @@ struct LaunchView: View {
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("Try again") {
-                        isRetrying = true
-                        Task {
-                            await session.retryLaunch()
-                            isRetrying = false
-                        }
+                    Button {
+                        Task { await session.retryLaunch() }
+                    } label: {
+                        // The title keeps its space while the spinner shows, so nothing moves.
+                        Text("Try again")
+                            .opacity(session.isRetryingLaunch ? 0 : 1)
+                            .overlay {
+                                if session.isRetryingLaunch { ProgressView() }
+                            }
                     }
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
-                    .disabled(isRetrying)
+                    .disabled(session.isRetryingLaunch)
+                    .accessibilityLabel(session.isRetryingLaunch ? "Trying again" : "Try again")
+                    #if DEBUG
+                    if let detail = session.launchErrorDetail {
+                        Text(detail)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                            .textSelection(.enabled)
+                    }
+                    #endif
                 }
                 .padding(.horizontal, Theme.Spacing.xl)
             } else {

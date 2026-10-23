@@ -97,6 +97,17 @@ public struct AuthService: Sendable {
         }
     }
 
+    /// Exchanges the stored refresh token for a new session now. For a request the server rejected
+    /// although the SDK still considers the token valid: the device clock runs behind, or the server
+    /// rotated its signing key. When the server no longer knows the session (the user was deleted, or
+    /// the refresh token was revoked or reused) the SDK removes it, ``sessionChanges`` reports the
+    /// sign-out and ``currentUserID`` becomes nil.
+    public func refreshSession() async throws {
+        try await mappingErrors {
+            _ = try await client.auth.refreshSession()
+        }
+    }
+
     /// Signed-in user changes: the stored user (or nil) first, then a value on each sign-in,
     /// sign-out or account switch. Consecutive duplicates (token refreshes) are dropped.
     public var sessionChanges: AsyncStream<UUID?> {

@@ -9,8 +9,7 @@ enum SessionPhase: Hashable, Sendable {
     /// Restoring the session at launch, or creating the anonymous account (Ground + wordmark;
     /// `launchError` offers a retry).
     case launching
-    /// No session: `AuthFlowView` with email accounts. With anonymous accounts only the moment before
-    /// a new one is created, shown as the launch screen.
+    /// No session: `AuthFlowView` with email accounts, `WelcomeView` (Get started) with anonymous ones.
     case signedOut
     /// Signed in without a profile: `UsernameView`.
     case needsUsername
@@ -47,7 +46,10 @@ final class SessionStore {
     // MARK: State
 
     /// The current phase.
-    private(set) var phase: SessionPhase = .launching
+    private(set) var phase: SessionPhase = .launching {
+        // Leaving the launch screen ends a failed launch and its automatic retries.
+        didSet { if phase != .launching { clearLaunchFailure() } }
+    }
     /// The signed-in user's ID.
     private(set) var userID: UUID?
     /// The signed-in user's email. Nil for an anonymous account.
@@ -62,8 +64,15 @@ final class SessionStore {
     private(set) var profile: Profile?
     /// Set after `signUp` when the server sent a confirmation email: show "Check your inbox".
     private(set) var pendingConfirmationEmail: String?
-    /// A launch failure (offline on first launch after sign-in). The launch screen offers `retryLaunch()`.
+    /// A launch failure (offline, or the server did not answer). The launch screen shows it with Try
+    /// again (`retryLaunch()`), and the app retries by itself: on a timer, and when it comes back to
+    /// the foreground.
     private(set) var launchError: String?
+    /// The failed launch's diagnostic and the backend URL. The launch screen shows it in DEBUG
+    /// builds, where a stopped local stack and a server bug would otherwise look the same.
+    private(set) var launchErrorDetail: String?
+    /// True while `retryLaunch()` runs: the launch screen keeps `launchError` up and shows progress.
+    private(set) var isRetryingLaunch = false
     /// Why Welcome is showing again: the anonymous account on this iPhone can no longer be opened
     /// (the server deleted it, or its session can't be refreshed). Cleared once a new account starts.
     private(set) var signedOutNotice: String?
@@ -95,6 +104,10 @@ final class SessionStore {
     @ObservationIgnored private var activeUserID: UUID?
     /// True while `startAccount()` waits for the server, so one tap creates one account.
     @ObservationIgnored private var isCreatingAccount = false
+    /// The pending automatic launch retry (`scheduleLaunchRetry()`).
+    @ObservationIgnored private var launchRetryTimer: Task<Void, Never>?
+    /// Failed launch attempts in a row; picks the next retry's delay.
+    @ObservationIgnored private var launchFailures = 0
     /// True while `signOut()` or `deleteAccount()` runs. The sign-out they cause reaches
     /// `handleSessionChange` too, and must not read as a lost account.
     @ObservationIgnored private var isLeavingAccount = false
@@ -147,16 +160,25 @@ final class SessionStore {
         }
     }
 
-    /// Retries a launch that failed (`launchError`).
+    /// Retries a launch that failed (`launchError`). The message stays up while it runs.
     func retryLaunch() async {
+        guard !isRetryingLaunch else { return }
+        launchRetryTimer?.cancel()
         guard let id = activeUserID ?? backend.auth.currentUserID else {
-            launchError = nil
             phase = .signedOut
             return
         }
+        isRetryingLaunch = true
+        defer { isRetryingLaunch = false }
         activeUserID = nil
-        launchError = nil
         await beginSession(userID: id)
+    }
+
+    /// Retries the launch if the launch screen shows a failure: when the app comes back to the
+    /// foreground, and when the retry timer fires.
+    func retryLaunchIfFailed() async {
+        guard phase == .launching, launchError != nil else { return }
+        await retryLaunch()
     }
 
     // MARK: Auth
@@ -477,12 +499,85 @@ final class SessionStore {
     /// Whether a `.notSignedIn` answer should end the session here. Always for an email account (the
     /// user signs in again). An anonymous account has no way back in, so it ends only once the SDK
     /// has dropped the session itself (it does for a refresh token the server no longer knows); until
-    /// then a launch offers Try again, and a ready app stays where it is.
+    /// then a launch refreshes it (`shouldRetryLaunchStep`), and a ready app stays where it is.
     private var shouldEndRejectedSession: Bool { !backend.auth.isAnonymous }
 
     /// Ends a session the server rejected and shows the signed-out screen.
     private func endRejectedSession() async {
         await replaceLostSession()
+    }
+
+    /// Handles a launch step that failed with `error`, and says whether to run the step again.
+    ///
+    /// `.notSignedIn` ends an email account's session. An anonymous account's session is refreshed
+    /// instead (when `mayRefresh`, once per step), since the stored token can be rejected while the
+    /// SDK still thinks it valid: a device clock running behind, or a signing key the server rotated.
+    /// After a new token the step runs again (true). If the server no longer knows the session, the
+    /// SDK removes it and the account is lost: Welcome says so. Any other failure shows on the launch
+    /// screen with Try again.
+    private func shouldRetryLaunchStep(after error: QuotedError, step: String, userID id: UUID, mayRefresh: Bool) async -> Bool {
+        guard error == .notSignedIn else {
+            failLaunch(error, step: step)
+            return false
+        }
+        if shouldEndRejectedSession {
+            await endRejectedSession()
+            return false
+        }
+        guard mayRefresh else {
+            failLaunch(error, step: step)
+            return false
+        }
+        do {
+            try await backend.auth.refreshSession()
+        } catch {
+            guard activeUserID == id else { return false }
+            if backend.auth.currentUserID == nil {
+                Logger.session.error("\(step, privacy: .public): the server no longer knows this session")
+                await replaceLostSession()
+            } else {
+                failLaunch(QuotedError(error), step: "\(step) session refresh")
+            }
+            return false
+        }
+        guard activeUserID == id, backend.auth.currentUserID == id else { return false }
+        Logger.session.info("\(step, privacy: .public): refreshed a session the server rejected")
+        return true
+    }
+
+    /// Shows a failed launch step on the launch screen and schedules the next automatic attempt.
+    private func failLaunch(_ error: QuotedError, step: String) {
+        Logger.session.error("\(step, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+        launchError = ToastCenter.message(for: error) ?? error.userMessage
+        launchErrorDetail = "\(String(describing: error)) \u{2014} \(backend.config.url.absoluteString)"
+        phase = .launching
+        scheduleLaunchRetry()
+    }
+
+    /// Seconds before each automatic launch retry; the last one repeats while the launch keeps failing.
+    private static let launchRetryDelays: [Duration] = [.seconds(3), .seconds(10), .seconds(30)]
+
+    /// Retries a failed launch after a pause, so a dropped connection or a short outage clears by
+    /// itself while the launch screen shows the error.
+    private func scheduleLaunchRetry() {
+        launchRetryTimer?.cancel()
+        let delay = Self.launchRetryDelays[min(launchFailures, Self.launchRetryDelays.count - 1)]
+        launchFailures += 1
+        launchRetryTimer = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            // Its own task: cancelling the timer later must not cancel the retry's requests.
+            Task { await self.retryLaunchIfFailed() }
+        }
+    }
+
+    /// Forgets a failed launch: its message, its retry timer and the failure count.
+    private func clearLaunchFailure() {
+        launchError = nil
+        launchErrorDetail = nil
+        launchFailures = 0
+        launchRetryTimer?.cancel()
+        launchRetryTimer = nil
     }
 
     /// Shows the cached library and decides the phase. Idempotent per user.
@@ -499,7 +594,8 @@ final class SessionStore {
         if backend.auth.currentUserID == id {
             preferences.hadAnonymousSession = isAnonymous
         }
-        launchError = nil
+        // `launchError` stays: a retry keeps the message up until it succeeds (the phase changes) or
+        // fails again (`failLaunch`).
         pendingConfirmationEmail = nil
         library.prepare(for: id)
 
@@ -509,7 +605,11 @@ final class SessionStore {
             await refreshProfile(userID: id)
             return
         }
+        await loadProfile(userID: id)
+    }
 
+    /// Fetches the profile at launch and decides the phase: Choose a username without one.
+    private func loadProfile(userID id: UUID, mayRefreshSession: Bool = true) async {
         do {
             let fetched = try await backend.social.myProfile()
             guard activeUserID == id else { return }
@@ -522,14 +622,9 @@ final class SessionStore {
             }
         } catch {
             guard activeUserID == id else { return }
-            let mapped = QuotedError(error)
-            if mapped == .notSignedIn, shouldEndRejectedSession {
-                await endRejectedSession()
-                return
+            if await shouldRetryLaunchStep(after: QuotedError(error), step: "Profile load", userID: id, mayRefresh: mayRefreshSession) {
+                await loadProfile(userID: id, mayRefreshSession: false)
             }
-            Logger.session.error("Profile load failed: \(String(describing: mapped), privacy: .public)")
-            launchError = ToastCenter.message(for: mapped) ?? mapped.userMessage
-            phase = .launching
         }
     }
 
@@ -538,7 +633,7 @@ final class SessionStore {
     /// Without the onboarding flag (a new device, or a reinstall that kept the Keychain session) an
     /// empty library is checked with the server. If that check fails, the user may well have quotes,
     /// so the launch screen shows the error with "Try again" instead of the starter pack.
-    private func resolvePhaseAfterProfile(userID id: UUID) async {
+    private func resolvePhaseAfterProfile(userID id: UUID, mayRefreshSession: Bool = true) async {
         if preferences.hasCompletedOnboarding(userID: id) {
             enterReady()
             return
@@ -548,13 +643,9 @@ final class SessionStore {
             guard activeUserID == id else { return }
             if !answered, library.isEmpty {
                 let error = library.lastError ?? .network
-                if error == .notSignedIn, shouldEndRejectedSession {
-                    await endRejectedSession()
-                    return
+                if await shouldRetryLaunchStep(after: error, step: "Library check", userID: id, mayRefresh: mayRefreshSession) {
+                    await resolvePhaseAfterProfile(userID: id, mayRefreshSession: false)
                 }
-                Logger.session.error("Library check failed: \(String(describing: error), privacy: .public)")
-                launchError = ToastCenter.message(for: error) ?? error.userMessage
-                phase = .launching
                 return
             }
         }

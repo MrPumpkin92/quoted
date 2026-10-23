@@ -133,9 +133,15 @@ final class AppModel {
 
     // MARK: Scene phase
 
-    /// The app came to the foreground: refresh (if stale), re-read permission and replan.
+    /// The app came to the foreground: refresh (if stale), re-read permission and replan. Before the
+    /// main tabs, retries a failed launch.
     func sceneDidBecomeActive() async {
-        guard sideEffects, session.phase == .ready else { return }
+        guard sideEffects else { return }
+        guard session.phase == .ready else {
+            // Back in the foreground with a failed launch on screen: try again now.
+            await session.retryLaunchIfFailed()
+            return
+        }
         Task { await touchActivityIfDue() }
         await reminders.refreshPermission()
         reminders.replan()
