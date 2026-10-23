@@ -22,7 +22,7 @@ App/
 ## 1. Rules for feature code
 
 - **State lives in stores.** Views read store properties and call store methods. Nothing else talks to `Backend`. Never set `SessionStore.phase` or edit store arrays from a view.
-- **Errors become toasts.** Store mutations show their own error toast (and roll back), so views don't. Form-style calls (`SessionStore.signIn`, `createProfile`, ...) throw for inline errors instead. A plain `catch` binds `any Error`, so write `catch { errorText = error.friendlyMessage }`. Never show a raw error string.
+- **Errors become toasts.** Store mutations show their own error toast (and roll back), so views don't. Form-style calls (`SessionStore.createProfile`, `deleteAccount`, the dormant `signIn`, ...) throw for inline errors instead. A plain `catch` binds `any Error`, so write `catch { errorText = error.friendlyMessage }`. Never show a raw error string.
 - **Optimistic by default.** Mutations update the UI first, then the server. They return `Bool` or an optional value so you can decide whether to dismiss. Two calls wait for the server because a sheet shows progress: `create` and `importStarter`. Show a `ProgressView` on the button (`PrimaryButton(isLoading:)`) and keep the sheet open when they return nil or false.
 - **Loading.** Show cached data first. Show a spinner only on a cold load with no data: `!store.hasLoaded`, using `DelayedProgressView()`, which appears after 1 s. Pull to refresh calls `await store.refresh(userInitiated: true)`, which toasts when it fails.
 - **Navigation.** Tab roots (`LibraryView`, `FriendsView`, `SearchView`) are already inside a `NavigationStack`, so don't add one. Push with `router.push(_:)` or `NavigationLink(value: Route.x)`. Never add `navigationDestination(for: Route.self)`; the shell maps every route. Views shown as sheets, plus the root views `AuthFlowView`, `UsernameView` and `StarterFlowView`, bring their own `NavigationStack` when they need a toolbar.
@@ -38,9 +38,9 @@ Keep every type name and initializer exactly as listed. The shell's routing call
 
 | File | Type and initializer | Shown by | Owner |
 |---|---|---|---|
-| Features/Auth/AuthFlowView.swift | `AuthFlowView()` | Root, phase `.signedOut` | auth |
-| Features/Auth/NewPasswordView.swift | `NewPasswordView()` | Root sheet while `session.isRecoveringPassword` (any phase) | auth |
-| Features/Onboarding/UsernameView.swift | `UsernameView()` | Root, phase `.needsUsername` | auth |
+| Features/Auth/AuthFlowView.swift | `AuthFlowView()` | Root, phase `.signedOut`, only with `AccountMode.emailPassword` (unreachable while accounts are anonymous) | auth |
+| Features/Auth/NewPasswordView.swift | `NewPasswordView()` | Root sheet while `session.isRecoveringPassword` (any phase); unreachable while accounts are anonymous (no reset email) | auth |
+| Features/Onboarding/UsernameView.swift | `UsernameView()` | Root, phase `.needsUsername` (the first screen with anonymous accounts) | auth |
 | Features/Onboarding/StarterFlowView.swift | `StarterFlowView(mode: StarterFlowMode)`, `enum StarterFlowMode { case onboarding, addMore }` | Root, phase `.needsStarter` (`.onboarding`); sheet `.starterPack` (`.addMore`) | auth |
 | Features/Library/LibraryView.swift | `LibraryView()` | Library tab root | library |
 | Features/Library/WidgetGuideView.swift | `WidgetGuideView()` | sheet `.widgetGuide` | library |
@@ -108,16 +108,30 @@ All stores are `@Observable @MainActor final class`. State is `private(set)`. Mu
 
 ```swift
 enum SessionPhase { case launching, signedOut, needsUsername, needsStarter, ready }
+enum AccountMode { case anonymous, emailPassword
+    static let current: AccountMode = .anonymous }  // docs/decisions/2026-10-20-anonymous-accounts.md
 
 private(set) var phase: SessionPhase
 private(set) var userID: UUID?
-private(set) var email: String?
+private(set) var email: String?                    // nil for an anonymous account
+private(set) var isAnonymous: Bool                 // no email or password to sign back in with
+var canSignOut: Bool                               // AccountMode.current == .emailPassword && !isAnonymous: show Sign out only when true
 private(set) var profile: Profile?                 // your own profile (username, displayName, handle)
-private(set) var pendingConfirmationEmail: String? // non-nil after signUp needed email confirmation
 private(set) var launchError: String?              // LaunchView shows it with "Try again"
+
+func isUsernameAvailable(_ username: String) async throws(QuotedError) -> Bool
+func createProfile(username: String, displayName: String?) async throws(QuotedError)
+func updateDisplayName(_ displayName: String?) async throws(QuotedError)
+func completeOnboarding()
+func signOut() async                               // offered only when canSignOut (never in anonymous mode)
+func deleteAccount() async throws(QuotedError)
+func retryLaunch() async                           // also retries creating the anonymous account
+// private: startAnonymousAccountIfNeeded()        // no session → signInAnonymously → beginSession
+
+// Email accounts only. Dormant while AccountMode.current == .anonymous.
+private(set) var pendingConfirmationEmail: String? // non-nil after signUp needed email confirmation
 var isRecoveringPassword: Bool                     // a reset link signed the user in: RootView shows NewPasswordView
 static let minimumPasswordLength = 8
-
 func signIn(email: String, password: String) async throws(QuotedError)
 @discardableResult func signUp(email: String, password: String) async throws(QuotedError) -> SignUpResult
 func clearPendingConfirmation()
@@ -126,22 +140,19 @@ func handleAuthCallback(_ url: URL) async          // AppModel calls it for quot
 func updatePassword(_ password: String) async throws(QuotedError)
 func setNewPassword(_ password: String) async throws(QuotedError)  // NewPasswordView Save: ≥ 8 chars, clears isRecoveringPassword, toasts "Password updated"
 func cancelPasswordRecovery()                      // NewPasswordView "Not now" / swipe: stays signed in
-func isUsernameAvailable(_ username: String) async throws(QuotedError) -> Bool
-func createProfile(username: String, displayName: String?) async throws(QuotedError)
-func updateDisplayName(_ displayName: String?) async throws(QuotedError)
-func completeOnboarding()
-func signOut() async
-func deleteAccount() async throws(QuotedError)
-func retryLaunch() async
 ```
 
-- Phases change only inside the store. After `signIn`, `createProfile` or `completeOnboarding`, RootView switches by itself.
-- `signUp` returns `.confirmationRequired(email:)` and sets `pendingConfirmationEmail` → show "Check your inbox". **Resend** calls `signUp` again with the same email and password. "Open Mail" is the auth agent's own UI.
+- Phases change only inside the store. After `createProfile` or `completeOnboarding` (or `signIn` with email accounts), RootView switches by itself.
+- **Anonymous accounts** (`AccountMode.current == .anonymous`, the default). With no session, the private `startAnonymousAccountIfNeeded()` sets `.launching`, calls `AuthService.signInAnonymously()` and begins the new session, which has no profile yet, so the phase becomes `.needsUsername`. It runs once at a time, never during `signOut()` or `deleteAccount()`, and never while a session exists. If it fails (offline on the first launch, or anonymous sign-ins turned off on the server), the phase stays `.launching` with `launchError`, and `retryLaunch()` tries again. `.signedOut` lasts only until the new account exists; RootView shows the launch screen for it. There is no Sign out in this mode. Account and UsernameView show it only when `canSignOut`, which needs `AccountMode.current == .emailPassword` and an account that is not anonymous, so no account gets it in this build, including a leftover or DEBUG email session. To leave the DEBUG demo account locally, launch with `-UITestReset` or reinstall.
+- **Lost sessions.** `AppPreferences.hadAnonymousSession` (in `UserDefaults.standard`, which iOS deletes with the app) records that this install's last session was an anonymous account the user did not leave on purpose; `signOut()` and a successful `deleteAccount()` clear it. When the SDK drops a session (the stream reports a sign-out because the server no longer accepts its refresh token), or the server rejects one the SDK has already dropped, the store ends the session, starts a new anonymous account and, once that account exists and the app is in front (`showPendingLostAccountNotice()`, also called from `AppModel.sceneDidBecomeActive()`), toasts "Your session ended, so Quoted started a new account on this iPhone." A reinstall never shows it. If no new account can start, the phase stays `.launching` with `launchError` and Try again, never a bare spinner.
+- **`.notSignedIn` with the session still held.** A `.notSignedIn` answer while the SDK still holds the anonymous session keeps the account (nothing could sign back in). Before the session is ready (no cached profile, or the empty-library check without the onboarding flag), the phase stays `.launching` with `launchError` and Try again. Otherwise the app stays where it is: background refreshes fail quietly, and actions toast "Your session has ended. Try again in a moment." until the SDK refreshes or drops the session. Email sessions end on `.notSignedIn` (with `AccountMode.emailPassword` the app returns to `AuthFlowView`).
+- `signUp` returns `.confirmationRequired(email:)` and sets `pendingConfirmationEmail` → show "Check your inbox". **Resend** calls `signUp` again with the same email and password. "Open Mail" is the auth agent's own UI. (Email accounts only.)
 - Thrown errors are `QuotedError`: `.usernameTaken`, `.validation(message)` (the message is user-facing), `.network`, and so on. Show `error.friendlyMessage` inline.
-- **Phase rules.** Signed in with no profile → `.needsUsername`. With a profile → `.ready` if this user finished onboarding on this device or already has quotes, else `.needsStarter`. A cached profile makes an offline launch go straight to `.ready`. Without the onboarding flag (new device, reinstall) an empty library is checked with the server first; if that check fails, the phase stays `.launching` with `launchError` and "Try again" (an existing user is never sent to the starter pack because a fetch failed).
-- **Password reset.** The reset email's link opens `quoted://auth-callback`; `handleAuthCallback` signs the user in and, for a recovery link (`AuthCallbackResult.passwordRecovery`), sets `isRecoveringPassword`. `RootView` then presents `NewPasswordView()` as a sheet over whatever phase follows. The screen asks for the new password twice, ticks off the two rules (8+ characters, both match) as they are met and checks them on Save, which then calls `setNewPassword(_:)` (throws `.validation` under 8 characters, else the server's error; shown inline with `error.friendlyMessage`); success closes the sheet and the user carries on signed in. "Not now" calls `cancelPasswordRecovery()`.
-- `signOut()` and `deleteAccount()` commit pending deferred toasts, then wipe the App Group (library cache, widget snapshot, rotation state) after any queued cache write has landed, cancel pending and delivered reminders, reload widgets, empty the HTTP cache (`Backend.purgeHTTPCaches()`), clear recent searches and reset every store and the router. **Reminder settings are per device**: sign-out and session expiry keep them (reminders resume as configured at the next sign-in); only `deleteAccount()` resets them to the defaults. Both run under background time.
-- `deleteAccount()` throws (and keeps the account) if the server call fails. A retry after a lost answer succeeds (QuotedKit confirms the user is gone). `.notSignedIn` means the session is unusable while the account may still exist: the store signs out on this device, toasts "Your session has ended. Sign in again to delete your account." and rethrows.
+- **Phase rules.** No session → anonymous sign-in → `.needsUsername` (with email accounts: `.signedOut`). Signed in with no profile → `.needsUsername`. With a profile → `.ready` if this user finished onboarding on this device or already has quotes, else `.needsStarter`. A cached profile makes an offline launch go straight to `.ready`. Without the onboarding flag (new device, reinstall) an empty library is checked with the server first; if that check fails, the phase stays `.launching` with `launchError` and "Try again" (an existing user is never sent to the starter pack because a fetch failed).
+- **Password reset** (email accounts only). The reset email's link opens `quoted://auth-callback`; `handleAuthCallback` signs the user in and, for a recovery link (`AuthCallbackResult.passwordRecovery`), sets `isRecoveringPassword`. `RootView` then presents `NewPasswordView()` as a sheet over whatever phase follows. The screen asks for the new password twice, ticks off the two rules (8+ characters, both match) as they are met and checks them on Save, which then calls `setNewPassword(_:)` (throws `.validation` under 8 characters, else the server's error; shown inline with `error.friendlyMessage`); success closes the sheet and the user carries on signed in. "Not now" calls `cancelPasswordRecovery()`.
+- `signOut()` and `deleteAccount()` commit pending deferred toasts, then wipe the App Group (library cache, widget snapshot, rotation state) after any queued cache write has landed, cancel pending and delivered reminders, reload widgets, empty the HTTP cache (`Backend.purgeHTTPCaches()`), clear recent searches and reset every store and the router. **Reminder settings are per device**: sign-out and session expiry keep them (reminders resume as configured at the next sign-in); only `deleteAccount()` resets them to the defaults. Both run under background time. With anonymous accounts both then start a new account (`signOut()` is offered only when `canSignOut`, never in anonymous mode).
+- `deleteAccount()` throws (and keeps the account) if the server call fails. A retry after a lost answer succeeds (QuotedKit confirms the user is gone). After a successful deletion an anonymous user lands on Choose a username with a new, empty account. `.notSignedIn` means the session is unusable while the account may still exist. With `AccountMode.emailPassword` an email account is signed out on this device, toasts "Your session has ended. Sign in again to delete your account." and rethrows. An anonymous account keeps its session (signing out would lose it without deleting it) and throws `.validation("Quoted couldn't confirm your account with the server. Try again in a moment.")`. If the SDK drops the anonymous session during the attempt, the account could not be deleted (it stays on the server, unreachable): the app starts a new account and toasts "Your session ended, so Quoted started a new account on this iPhone." (Lost sessions above).
+- **DEBUG password sign-in.** In DEBUG builds whose Supabase URL host is `127.0.0.1` or `localhost`, the launch-environment variables `QUOTED_DEBUG_SIGNIN_EMAIL` and `QUOTED_DEBUG_SIGNIN_PASSWORD` replace the anonymous sign-in when no session is stored (for example after `-UITestReset`): the app signs in with that email and password. A failure shows on the launch screen with Try again; there is no anonymous fallback. With a stored session they are ignored. UI tests and `scripts/sign-in-local-demo.sh` use it to reach a known account.
 
 ### LibraryStore: quotes, reminder membership, offline cache
 
@@ -272,7 +283,7 @@ extension ReminderSettings {                // bindings for DatePicker(.hourAndM
 - `ReminderStatusSummary { kind (.active/.remindersOff/.needsPermission/.notificationsDenied), title, detail, isOff, actionTitle }` covers the StatusCard copy, for example "6 quotes in your reminders" / "3× daily · Next at 8:00 PM", or "Notifications off in Settings" with "Turn on".
 - Order (In order / Shuffle) is `settings.order` (`.inOrder` / `.shuffle`). Times per day is `settings.timesPerDay` (1...12, so use a `Stepper` with `in: ReminderSettings.timesPerDayRange`). The banner "Notifications are off for Quoted · Open Settings" shows when `permission == .denied`.
 - Settings are per device and kept across sign-out and session expiry (only account deletion resets them; `SessionStore` calls the internal `reset(keepingSettings:)` after wiping the App Group).
-- **Replan** means: rotation state (`RotationState.updated(with:at:seed:settings:calendar:)`: unchanged when the set and order are the same; otherwise the anchor stays and `startIndex` moves so the cycle continues after the quote shown last instead of restarting at the top) → `ReminderPlanner.plan` (≤ 60) → replace the pending `reminder-` notifications → write the widget snapshot → reload widget timelines. It runs on launch, foreground, background refresh, every library mutation and every settings change.
+- **Replan** means: rotation state (`RotationState.updated(with:at:seed:settings:previousSettings:calendar:)` with the settings of the last plan: unchanged when the set, order and schedule are the same; otherwise the anchor stays and `startIndex` moves so the cycle continues after the quote shown last instead of restarting at the top) → `ReminderPlanner.plan` (≤ 60) → replace the pending `reminder-` notifications → write the widget snapshot → reload widget timelines. It runs on launch, foreground, background refresh, every library mutation and every settings change.
 
 ### StarterStore
 
@@ -295,7 +306,8 @@ func clear()
 
 ```swift
 var widgetTipDismissed: Bool                 // set true when the Library widget tip is dismissed (persists)
-// per-user onboarding flag and cached profile are used by SessionStore only
+// per-user onboarding flag, cached profile and hadAnonymousSession are used by SessionStore only
+// (hadAnonymousSession lives in UserDefaults.standard, which iOS deletes with the app; see Lost sessions)
 ```
 
 Hide the widget tip when `preferences.widgetTipDismissed || await model.widgets.hasInstalledWidget()`.
@@ -418,22 +430,24 @@ Preview data: `Samples.emerson / shelley / seneca / whitman / thoreau / dickinso
 
 ## 7. Flows
 
-- **Launch.** `QuotedApp` builds the Backend (a misconfigured build shows `ConfigurationErrorView`). On the first launch after an install (no `quoted.installMarker` in `UserDefaults.standard`, which iOS deletes with the app) it calls `AuthService.clearLocalSession()`, because Keychain items outlive the app and would otherwise sign the previous user back in. It empties `URLCache.shared` (`Backend.purgeHTTPCaches()`), then builds `AppModel` and installs `NotificationDelegate`. `RootView.onAppear` → `start()` → the session stream. With a stored session, the cached library appears immediately, the cached profile picks the phase, and refreshes run in the background. Signed out → `AuthFlowView`. On the first launch after sign-in, if the profile fetch fails offline, `LaunchView` shows the error and "Try again".
+- **Launch.** `QuotedApp` builds the Backend (a misconfigured build shows `ConfigurationErrorView`). On the first launch after an install (no `quoted.installMarker` in `UserDefaults.standard`, which iOS deletes with the app) it calls `AuthService.clearLocalSession()`, because Keychain items outlive the app and would otherwise sign the previous user back in (with anonymous accounts this is why a reinstall starts a new account). It empties `URLCache.shared` (`Backend.purgeHTTPCaches()`), then builds `AppModel` and installs `NotificationDelegate`. `RootView.onAppear` → `start()` → the session stream. With a stored session, the cached library appears immediately, the cached profile picks the phase, and refreshes run in the background. With no session, `SessionStore` creates an anonymous account (`signInAnonymously`) behind the launch screen, and RootView then shows `UsernameView` (with `AccountMode.emailPassword`: `AuthFlowView`). If creating the account fails (offline, or anonymous sign-ins off on the server), or the profile fetch fails offline on the first launch of an account, `LaunchView` shows the error and "Try again".
 - **Ready.** Entering `.ready` applies any deferred deep link, schedules the BG refresh, refreshes permission, replans, and refreshes the library (if stale) and social data.
-- **Deep links** (`quoted://`): `auth-callback` → `SessionStore.handleAuthCallback` (a password-reset link then shows `NewPasswordView`). `quote/<id>` → the Library tab, with the stack set to `[.quote(id, contextIDs: reminder IDs)]`. `rotation` → Library, then `[.reminders]`. **A link never discards a draft:** when the open sheet may hold unsaved input (Add, Edit, Share, the reminder picker, the starter pack), the sheet stays and the link waits in `router.pendingLink`; it opens as soon as the sheet is dismissed (saved or cancelled), from `MainTabView`'s `.sheet(item:onDismiss:)`. The widget guide closes at once. Links that arrive before `.ready` also wait in `router.pendingLink`.
-- **Notifications.** The identifier is `reminder-<unix seconds>`. The body is `“body” — Author`, with no title, `threadIdentifier` `reminders`, and `userInfo["quoteID"]`. While the app is open, reminders show as banners. A tap becomes `DeepLink.quote(id)` → `AppModel.open`.
+- **Deep links** (`quoted://`): `auth-callback` → `SessionStore.handleAuthCallback` (email accounts only; a password-reset link then shows `NewPasswordView`). `quote/<id>` → the Library tab, with the stack set to `[.quote(id, contextIDs: reminder IDs)]`. `rotation` → Library, then `[.reminders]`. **A link never discards a draft:** when the open sheet may hold unsaved input (Add, Edit, Share, the reminder picker, the starter pack), the sheet stays and the link waits in `router.pendingLink`; it opens as soon as the sheet is dismissed (saved or cancelled), from `MainTabView`'s `.sheet(item:onDismiss:)`. The widget guide closes at once. Links that arrive before `.ready` also wait in `router.pendingLink`.
+- **Notifications.** The identifier is `reminder-<unix seconds>`. The subtitle is the author (so a long quote never pushes it out of the banner) and the body is `“body”` with the quote's line breaks (`RichText.collapseWhitespaceKeepingLines`), with no title, `threadIdentifier` `reminders`, and `userInfo["quoteID"]`. While the app is open, reminders show as banners. A tap becomes `DeepLink.quote(id)` → `AppModel.open`.
 - **Widgets.** Each replan writes `widget-snapshot.json` (QuotedCore `WidgetSnapshot`: the reminder quotes in order, settings, rotation) and reloads all timelines. The widget runs the same `ReminderPlanner`, so it matches the last reminder. An empty or signed-out snapshot shows the widget's empty state, which links to `quoted://rotation`. `widgets.hasInstalledWidget()` asks WidgetKit whether any Quoted widget exists.
 - **Background refresh.** `BGAppRefreshTask` `com.hwei.quoted.refresh` runs about every 12 h, registered by `.backgroundTask(.appRefresh(...))`. It refreshes the library if signed in, then replans and reschedules itself. The app also schedules it when going to the background.
 - **Scene phase.** Becoming active re-reads permission, replans and refreshes if stale (60 s). Going to the background commits pending deferred toasts under background time and schedules the BG refresh. `.inactive` (Control Center, the app switcher) commits nothing.
 - **Background time.** Every store write (create, edit, delete and its Undo, reminder changes, starter import, save shared, send and its Undo, friend actions, blocks, reports, sign-out, account deletion) holds a `BackgroundTaskAssertion` while its request runs, so leaving the app right after an action finishes it instead of failing on resume.
-- **Sign-out and delete account.** See SessionStore. Both leave no user data in the App Group, the HTTP cache, the notifications or the stores; only the per-device reminder settings survive a sign-out.
-- **Support address and legal pages.** Info.plist `SupportEmail` is `$(SUPPORT_EMAIL)` from the xcconfigs: empty in `Config/Shared.xcconfig`, set by the founder in `Config/Release.xcconfig`. The `Check release settings` pre-build phase (`project.yml`) fails Release builds while it is empty or not an address, or while a legal page still has a draft banner. `AppInfo.supportEmail` drives Account > Contact support, and `TextPageView` turns `{{SUPPORT_EMAIL}}` in `App/Resources/Legal/*.md` into a `mailto:` link (`LegalMarkdown.resolvingPlaceholders(in:supportEmail:)`). Without an address (Debug) it drops each sentence that mentions it, then any section left empty.
+- **Sign-out and delete account.** See SessionStore. Both leave no user data in the App Group, the HTTP cache, the notifications or the stores; only the per-device reminder settings survive a sign-out. Sign out is offered only when `canSignOut` (`AccountMode.emailPassword` and an account that is not anonymous), so this build offers it to no account. Deleting an anonymous account starts a new, empty one, and the app shows Choose a username again.
+- **Support address and legal pages.** Info.plist `SupportEmail` is `$(SUPPORT_EMAIL)` from the xcconfigs: set in `Config/Shared.xcconfig` for every configuration (`Config/Release.xcconfig` may override it for the App Store build). The `Check release settings` pre-build phase (`project.yml`) fails Release builds while it is empty or not an address, or while a legal page still has a draft banner. `AppInfo.supportEmail` drives Account > Contact support, and `TextPageView` turns `{{SUPPORT_EMAIL}}` in `App/Resources/Legal/*.md` into a `mailto:` link (`LegalMarkdown.resolvingPlaceholders(in:supportEmail:)`). Without an address it drops each sentence that mentions it, then any section left empty.
 
 ## 8. Debug aids
 
 - `xcrun simctl launch <udid> com.hwei.quoted -QuotedDemo` boots into `AppModel.preview()`: signed in as Alex, eight quotes, a request each way and two unseen shares. There is no backend and no side effects. Use it for screenshots of your screens.
 - `-QuotedGallery [-QuotedGalleryPage 1|2|3]` shows every design component, in either appearance (`xcrun simctl ui <udid> appearance dark`).
-- Both are DEBUG builds only. `Logger.app / .session / .library / .social / .reminders / .ui` log to the `com.hwei.quoted` subsystem.
+- `-UITestReset` wipes the Keychain session, the App Group and the `quoted.*` defaults before the backend is built, so the app starts with no account. With anonymous accounts it then creates a new one and opens on Choose a username.
+- `QUOTED_DEBUG_SIGNIN_EMAIL` and `QUOTED_DEBUG_SIGNIN_PASSWORD` in the launch environment sign in with that email and password instead of creating an anonymous account, when no session is stored and the Supabase URL host is `127.0.0.1` or `localhost` (see SessionStore). `scripts/sign-in-local-demo.sh` uses them for the local demo account.
+- All of these are DEBUG builds only. `Logger.app / .session / .library / .social / .reminders / .ui` log to the `com.hwei.quoted` subsystem.
 
 ## 9. Known gaps and decisions
 

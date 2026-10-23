@@ -46,6 +46,10 @@ final class LibraryStore {
     @ObservationIgnored private var refreshAfterWrites = false
     @ObservationIgnored private var refreshTask: Task<RefreshOutcome, Never>?
     @ObservationIgnored private var refreshSerial = 0
+    /// New quote IDs for starter quotes (by starter ID) and saved shares (by share ID), kept for the
+    /// session so a retry after a lost answer finds the first insert (`QuotesRepository`).
+    @ObservationIgnored private var starterImportIDs: [Int: UUID] = [:]
+    @ObservationIgnored private var sharedSaveIDs: [UUID: UUID] = [:]
     @ObservationIgnored private var cacheWrite: Task<Void, Never>?
     @ObservationIgnored private var rotationWrite: Task<Bool, Never>?
     @ObservationIgnored private var rotationSerial = 0
@@ -137,8 +141,11 @@ final class LibraryStore {
     /// Saves a new quote. With `includeInReminders` it joins the end of the reminders. Waits for the
     /// server (the Add sheet shows progress); on failure shows a toast and returns nil, so the sheet
     /// stays open.
+    ///
+    /// `id` is the new quote's ID: the Add sheet keeps one per draft, so Save after a lost answer
+    /// returns the quote the first Save created instead of adding a copy.
     @discardableResult
-    func create(draft: QuoteDraft, includeInReminders: Bool, origin: QuoteOrigin = .manual) async -> Quote? {
+    func create(draft: QuoteDraft, id: UUID = UUID(), includeInReminders: Bool, origin: QuoteOrigin = .manual) async -> Quote? {
         let owner = userID
         let position = includeInReminders ? nextReminderPosition : nil
         beginWrite()
@@ -148,7 +155,7 @@ final class LibraryStore {
             endWrite()
         }
         do {
-            let quote = try await backend.quotes.create(draft, origin: origin, rotationPosition: position)
+            let quote = try await backend.quotes.create(draft, id: id, origin: origin, rotationPosition: position)
             guard userID == owner else { return nil }
             upsertLocal(quote)
             writeCache()
@@ -324,7 +331,14 @@ final class LibraryStore {
             endWrite()
         }
         do {
-            let inserted = try await backend.quotes.importStarter(starters, addToRotation: true)
+            // The same starter gets the same new ID on a retry, so a lost answer adds nothing twice.
+            let ids = starters.map { starter in
+                if let id = starterImportIDs[starter.id] { return id }
+                let id = UUID()
+                starterImportIDs[starter.id] = id
+                return id
+            }
+            let inserted = try await backend.quotes.importStarter(starters, ids: ids, addToRotation: true)
             guard userID == owner else { return false }
             for quote in inserted { upsertLocal(quote) }
             hasLoaded = true
@@ -399,6 +413,8 @@ final class LibraryStore {
     /// write is queued until the next `prepare(for:)`.
     func reset() {
         quotes = []
+        starterImportIDs = [:]
+        sharedSaveIDs = [:]
         hasLoaded = false
         isRefreshing = false
         lastError = nil
@@ -487,6 +503,8 @@ final class LibraryStore {
 
     // MARK: Private: writes
 
+    /// The position after the last reminder in the local copy. If the copy is stale and another quote
+    /// already holds it, the server moves the new quote to the end (`quotes_place_in_rotation`).
     private var nextReminderPosition: Int {
         (quotes.compactMap(\.rotationPosition).max() ?? -1) + 1
     }
@@ -587,7 +605,9 @@ final class LibraryStore {
             endWrite()
         }
         do {
-            let quote = try await backend.quotes.saveShared(share, addToRotation: addToReminders)
+            let quoteID = sharedSaveIDs[share.id] ?? UUID()
+            sharedSaveIDs[share.id] = quoteID
+            let quote = try await backend.quotes.saveShared(share, id: quoteID, addToRotation: addToReminders)
             guard userID == owner else { return nil }
             upsertLocal(quote)
             social?.markSavedLocally(share.id)

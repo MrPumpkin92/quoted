@@ -204,8 +204,8 @@ select results_eq(
 
 select throws_ok(
   $$ insert into public.friendships (addressee_id) values (tests.uid('a')) $$,
-  '42501', null,
-  'C (the blocker) cannot send A a request'
+  '23503', null,
+  'C (the blocker) cannot send A a request (it fails like an unknown username)'
 );
 
 select throws_ok(
@@ -224,8 +224,8 @@ select tests.authenticate_as('a');
 
 select throws_ok(
   $$ insert into public.friendships (addressee_id) values (tests.uid('c')) $$,
-  '42501', null,
-  'A (blocked) cannot send C a request'
+  '23503', null,
+  'A (blocked) cannot send C a request (it fails like an unknown username)'
 );
 
 select is_empty(

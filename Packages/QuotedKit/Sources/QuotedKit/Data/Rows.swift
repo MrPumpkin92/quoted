@@ -23,6 +23,13 @@ enum Table {
 enum RPC {
     /// `public.set_rotation(ordered uuid[], removed uuid[]) returns setof quotes` (SECURITY INVOKER).
     static let setRotation = "set_rotation"
+    /// `public.find_profile(p_username text)`: at most one profile, exact username, none for a
+    /// blocked pair or yourself (migration `20261021090000_abuse_limits_privacy_cleanup`).
+    static let findProfile = "find_profile"
+    /// `public.is_username_available(p_username text) returns boolean` (reserved names are taken).
+    static let isUsernameAvailable = "is_username_available"
+    /// `public.touch_activity()`: stamps the caller's `profiles.last_active_at`, at most every 12 h.
+    static let touchActivity = "touch_activity"
 }
 
 /// `select` column lists, with embeds through the stable foreign-key names (`<table>_<column>_fkey`).
@@ -53,6 +60,9 @@ enum Columns {
 // MARK: quotes
 
 struct QuoteInsert: Encodable, Equatable, Sendable {
+    /// Chosen by the client, so a retry after a lost answer finds the first insert instead of
+    /// adding a second copy (`QuotesRepository`).
+    var id: UUID
     var body: String
     var format: [TextRun]
     var author: String?
@@ -60,7 +70,8 @@ struct QuoteInsert: Encodable, Equatable, Sendable {
     var origin: QuoteOrigin
     var rotationPosition: Int?
 
-    init(_ validated: QuoteDraft.Validated, origin: QuoteOrigin, rotationPosition: Int?) {
+    init(_ validated: QuoteDraft.Validated, id: UUID, origin: QuoteOrigin, rotationPosition: Int?) {
+        self.id = id
         body = validated.body
         format = validated.format
         author = validated.author
@@ -70,13 +81,14 @@ struct QuoteInsert: Encodable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case body, author, source, origin
+        case id, body, author, source, origin
         case format = "body_format"
         case rotationPosition = "rotation_position"
     }
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
         try container.encode(body, forKey: .body)
         try container.encode(format, forKey: .format)
         try container.encode(author, forKey: .author)
@@ -211,8 +223,13 @@ struct DisplayNameUpdate: Encodable, Equatable, Sendable {
     }
 }
 
-struct IDRow: Decodable, Sendable {
-    var id: UUID
+/// The argument of `public.find_profile` and `public.is_username_available`.
+struct UsernameParam: Encodable, Equatable, Sendable {
+    var username: String
+
+    enum CodingKeys: String, CodingKey {
+        case username = "p_username"
+    }
 }
 
 // MARK: friendships and blocks
@@ -258,6 +275,8 @@ struct BlockedRow: Decodable, Identifiable, Sendable {
 // MARK: shares and reports
 
 struct ShareInsert: Encodable, Equatable, Sendable {
+    /// Chosen by the client (see ``QuoteInsert/id``).
+    var id: UUID
     var recipientID: UUID
     var quoteID: UUID?
     var body: String
@@ -267,6 +286,7 @@ struct ShareInsert: Encodable, Equatable, Sendable {
     var note: String?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case recipientID = "recipient_id"
         case quoteID = "quote_id"
         case body
@@ -276,6 +296,7 @@ struct ShareInsert: Encodable, Equatable, Sendable {
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
         try container.encode(recipientID, forKey: .recipientID)
         try container.encode(quoteID, forKey: .quoteID)
         try container.encode(body, forKey: .body)

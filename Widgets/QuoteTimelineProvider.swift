@@ -12,6 +12,9 @@ struct QuoteEntry: TimelineEntry, Hashable, Sendable {
         case sample(SnapshotQuote)
         /// No quotes in reminders, or signed out. Tapping opens Reminders.
         case empty
+        /// The snapshot exists but can't be read yet (before the first unlock after a restart). A
+        /// redacted placeholder with no call to action: the user may well have quotes.
+        case unavailable
     }
 
     let date: Date
@@ -21,6 +24,7 @@ struct QuoteEntry: TimelineEntry, Hashable, Sendable {
     var quote: SnapshotQuote? {
         switch content {
         case .quote(let quote), .sample(let quote): quote
+        case .unavailable: WidgetSamples.shakespeare
         case .empty: nil
         }
     }
@@ -29,7 +33,7 @@ struct QuoteEntry: TimelineEntry, Hashable, Sendable {
     var url: URL? {
         switch content {
         case .quote(let quote): DeepLink.quote(quote.id).url
-        case .sample: nil
+        case .sample, .unavailable: nil
         case .empty: DeepLink.rotation.url
         }
     }
@@ -37,6 +41,13 @@ struct QuoteEntry: TimelineEntry, Hashable, Sendable {
     static func empty(at date: Date) -> QuoteEntry {
         QuoteEntry(date: date, content: .empty)
     }
+
+    static func unavailable(at date: Date) -> QuoteEntry {
+        QuoteEntry(date: date, content: .unavailable)
+    }
+
+    /// Whether the content is a stand-in drawn redacted (`.unavailable`).
+    var isRedacted: Bool { content == .unavailable }
 
     /// The gallery and placeholder entry (Shakespeare).
     static func sample(at date: Date) -> QuoteEntry {
@@ -78,8 +89,8 @@ enum SnapshotLoad: Sendable {
 struct QuoteTimelineProvider: TimelineProvider {
     /// How far ahead each timeline plans.
     static let horizon: TimeInterval = 24 * 60 * 60
-    /// When to try again after an unreadable snapshot.
-    static let retryInterval: TimeInterval = 30 * 60
+    /// When to try again after an unreadable snapshot (it becomes readable at the first unlock).
+    static let retryInterval: TimeInterval = 5 * 60
 
     func placeholder(in context: Context) -> QuoteEntry {
         .sample(at: .now)
@@ -104,7 +115,7 @@ struct QuoteTimelineProvider: TimelineProvider {
         case .missing:
             return Timeline(entries: [.empty(at: now)], policy: .never)
         case .unreadable:
-            return Timeline(entries: [.empty(at: now)], policy: .after(now.addingTimeInterval(retryInterval)))
+            return Timeline(entries: [.unavailable(at: now)], policy: .after(now.addingTimeInterval(retryInterval)))
         case .loaded(let snapshot):
             let entries = entries(for: snapshot, now: now, calendar: calendar)
             guard !entries.isEmpty else {

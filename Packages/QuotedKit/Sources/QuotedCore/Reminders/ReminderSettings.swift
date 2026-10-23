@@ -100,6 +100,14 @@ public struct ReminderSettings: Hashable, Sendable {
         }
         return result
     }
+
+    /// Whether `other` plays the same cycle: the same daily times, weekdays and order. `enabled` does
+    /// not count, because the widget keeps rotating while reminders are off.
+    func playsSameCycle(as other: ReminderSettings) -> Bool {
+        dailyMinutes == other.dailyMinutes
+            && sanitized.weekdays == other.sanitized.weekdays
+            && order == other.order
+    }
 }
 
 extension ReminderSettings: Codable {
@@ -136,9 +144,10 @@ extension ReminderSettings: Codable {
 /// counts slots from `anchor`. In order, the position indexes `quoteIDs` directly; shuffled, it
 /// indexes a ``SplitMix64`` permutation of `seed` first.
 ///
-/// When the Rotation's members or order change, ``updated(with:at:seed:settings:calendar:)`` keeps
-/// the anchor and moves `startIndex`, so the cycle carries on after the quote it showed last instead
-/// of starting again at the top. Save the result whenever the Rotation changes.
+/// When the Rotation's members or order change, or the reminder schedule does,
+/// ``updated(with:at:seed:settings:previousSettings:calendar:)`` keeps the anchor and moves
+/// `startIndex`, so the cycle carries on after the quote it showed last instead of starting again at
+/// the top or jumping. Save the result whenever the Rotation or the settings change.
 public struct RotationState: Hashable, Sendable {
     /// Rotation quote IDs, in Rotation order.
     public var quoteIDs: [UUID]
@@ -161,33 +170,41 @@ public struct RotationState: Hashable, Sendable {
     public var isEmpty: Bool { quoteIDs.isEmpty }
 
     /// A new state starting the cycle at `now` with a fresh random seed. Use it only when there is no
-    /// saved state; otherwise use ``updated(with:at:seed:settings:calendar:)``.
+    /// saved state; otherwise use ``updated(with:at:seed:settings:previousSettings:calendar:)``.
     public static func starting(with quoteIDs: [UUID], at now: Date = Date(), seed: UInt64 = .random(in: .min ... .max)) -> RotationState {
         RotationState(quoteIDs: quoteIDs, anchor: now, seed: seed)
     }
 
-    /// The state for the Rotation `quoteIDs`, continuing this state's cycle. Returns `self` when
-    /// `quoteIDs` is unchanged.
+    /// The state for the Rotation `quoteIDs` under `settings`, continuing this state's cycle, which ran
+    /// under `previousSettings` (nil means `settings`). Returns `self` when `quoteIDs` is unchanged and
+    /// so is the cycle the settings play (daily times, weekdays and order; `enabled` doesn't count).
     ///
-    /// Otherwise the anchor is kept (moved to `now` only if it lies in the future), `seed` becomes the
-    /// shuffle seed, and `startIndex` is chosen so that the next slot after `now` plays:
-    /// - the quote after the one shown last (the most recent slot's quote) in the new cycle, when a
-    ///   slot has passed since the anchor and that quote is still in the Rotation;
+    /// Otherwise the anchor is kept (moved to `now` only if it lies in the future), the shuffle seed
+    /// becomes `seed` (or stays, when `quoteIDs` is unchanged), and `startIndex` is chosen so that the
+    /// next slot after `now` plays:
+    /// - the quote after the one shown last (the most recent slot's quote, under `previousSettings`)
+    ///   in the new cycle, when a slot has passed since the anchor and that quote is still in the Rotation;
     /// - otherwise the first quote, in this state's cycle order, from the one shown last (exclusive)
     ///   or from the upcoming one (inclusive, when no slot has passed yet) that is still in the Rotation;
     /// - otherwise the first quote of the new cycle.
     ///
-    /// The widget's "now" entry keeps showing the last quote where it is still in the Rotation.
-    /// Evaluate with the settings the cycle ran under (the current ones).
+    /// The widget's "now" entry keeps showing the last quote where it is still in the Rotation, once
+    /// a slot of the new schedule has passed since the anchor; before that it shows the upcoming one.
     public func updated(
         with quoteIDs: [UUID],
         at now: Date = Date(),
         seed: UInt64 = .random(in: .min ... .max),
         settings: ReminderSettings,
+        previousSettings: ReminderSettings? = nil,
         calendar: Calendar = .current
     ) -> RotationState {
-        guard quoteIDs != self.quoteIDs else { return self }
-        return ReminderPlanner.continuation(of: self, with: quoteIDs, at: now, seed: seed, settings: settings, calendar: calendar)
+        let oldSettings = previousSettings ?? settings
+        let unchanged = quoteIDs == self.quoteIDs
+        if unchanged, oldSettings.playsSameCycle(as: settings) { return self }
+        return ReminderPlanner.continuation(
+            of: self, under: oldSettings, with: quoteIDs, at: now,
+            seed: unchanged ? self.seed : seed, settings: settings, calendar: calendar
+        )
     }
 
     /// The IDs of the quotes in the Rotation, ordered by `rotationPosition` (ties by creation date, then ID).

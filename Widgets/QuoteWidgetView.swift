@@ -54,6 +54,7 @@ struct QuoteWidgetContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .redacted(reason: entry.isRedacted ? .placeholder : [])
         // Widgets have a fixed size: past xxxLarge the attribution would crowd out the quote.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }

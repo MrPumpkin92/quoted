@@ -53,6 +53,10 @@ struct ConfigTests {
         #expect(configuration.httpCookieStorage == nil)
         #expect(configuration.urlCredentialStorage == nil)
         #expect(!configuration.httpShouldSetCookies)
+        // Stalled requests fail within seconds, not after URLSession's 60 s and 7 days.
+        #expect(configuration.timeoutIntervalForRequest == Backend.requestTimeout)
+        #expect(configuration.timeoutIntervalForResource == Backend.resourceTimeout)
+        #expect(Backend.requestTimeout <= 20 && Backend.resourceTimeout <= 60)
     }
 
     @Test func purgeHTTPCachesEmptiesTheSharedCache() async throws {

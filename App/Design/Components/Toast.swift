@@ -261,24 +261,75 @@ final class ToastCenter {
 
 // MARK: Host
 
+/// What a toast host keeps its toast clear of at the bottom of the screen.
+enum ToastClearance: Equatable, Sendable {
+    /// A fixed space above the bottom safe area (sheets: `Theme.Spacing.m`).
+    case fixed(CGFloat)
+    /// iOS 26's floating tab bar (the signed-in shell, whose host sits outside the `TabView`).
+    case tabBar
+    /// A `PrimaryButton` pinned to the bottom of the screen (onboarding's Continue).
+    case bottomButton
+
+    /// The floating tab bar's top edge, measured from the bottom edge of the screen. It is the same on
+    /// every iPhone, about 83 pt: on Face ID phones the bar sits inside the 34-pt home-indicator inset,
+    /// on Home-button phones (iPhone SE, no inset) it sits higher above the screen edge. So the
+    /// space the toast needs above the host's safe area depends on that inset.
+    static let tabBarTopFromScreenBottom: CGFloat = 83
+
+    /// The space between the toast and what it clears.
+    static let gap: CGFloat = Theme.Spacing.m
+
+    /// The bottom padding for a host whose bottom safe-area inset is `safeAreaBottom`, with a pinned
+    /// primary button `buttonHeight` tall (it grows with Dynamic Type).
+    func bottomPadding(safeAreaBottom: CGFloat, buttonHeight: CGFloat) -> CGFloat {
+        switch self {
+        case .fixed(let padding):
+            padding
+        case .tabBar:
+            // With the keyboard up the inset is the keyboard, which hides the bar: just a small gap.
+            max(Theme.Spacing.xs, Self.tabBarTopFromScreenBottom + Self.gap - safeAreaBottom)
+        case .bottomButton:
+            // The onboarding bars pin the button `Theme.Spacing.m` above the safe area.
+            buttonHeight + Theme.Spacing.m + Theme.Spacing.xs
+        }
+    }
+}
+
 extension View {
     /// Draws `ToastCenter` toasts over this view. The shell applies it to the root and to every sheet
     /// it presents; add it to the root of any sheet or full-screen cover you present yourself.
     ///
-    /// - Parameter bottomPadding: Extra space below the toast (the root uses it to clear the tab bar).
+    /// - Parameter bottomPadding: Space below the toast, above the bottom safe area.
     func toastHost(bottomPadding: CGFloat = Theme.Spacing.m) -> some View {
-        modifier(ToastHostModifier(bottomPadding: bottomPadding))
+        modifier(ToastHostModifier(clearance: .fixed(bottomPadding)))
+    }
+
+    /// Draws `ToastCenter` toasts over this view, clear of `clearance` (the root: the tab bar once
+    /// signed in, the pinned Continue button during onboarding).
+    func toastHost(clearance: ToastClearance) -> some View {
+        modifier(ToastHostModifier(clearance: clearance))
     }
 }
 
 private struct ToastHostModifier: ViewModifier {
-    let bottomPadding: CGFloat
+    let clearance: ToastClearance
     @Environment(ToastCenter.self) private var center
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @State private var hostID: UUID?
+    /// The host's bottom safe-area inset: the home indicator (0 on Home-button phones), or the
+    /// keyboard while it is up.
+    @State private var safeAreaBottom: CGFloat = 0
+    /// A `PrimaryButton`'s height at the current text size (52 pt by default; it wraps and grows at
+    /// accessibility sizes).
+    @ScaledMetric(relativeTo: .headline) private var buttonHeight: CGFloat = Theme.Metrics.primaryButtonHeight
 
     func body(content: Content) -> some View {
         content
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.safeAreaInsets.bottom
+            } action: { inset in
+                safeAreaBottom = inset
+            }
             .overlay(alignment: .bottom) {
                 if let toast = center.current, hostID != nil, hostID == center.activeHostID {
                     ToastView(
@@ -289,7 +340,10 @@ private struct ToastHostModifier: ViewModifier {
                         onAccessibilityFocusChange: { center.accessibilityFocusChanged($0, toastID: toast.id) }
                     )
                     .padding(.horizontal, Theme.Spacing.gutter)
-                    .padding(.bottom, bottomPadding)
+                    .padding(.bottom, clearance.bottomPadding(
+                        safeAreaBottom: safeAreaBottom,
+                        buttonHeight: max(buttonHeight, Theme.Metrics.primaryButtonHeight)
+                    ))
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .id(toast.id)
                 }
@@ -324,6 +378,10 @@ struct ToastView: View {
     /// How long the toast waits after appearing before taking VoiceOver focus, so the element exists
     /// in the accessibility tree and the screen change from the action has settled.
     private static let focusDelay: Duration = .milliseconds(350)
+
+    /// The glass tint: mostly Surface, so the capsule stays glass but whatever scrolls under it
+    /// can't be read through it.
+    static let glassTint = Color.surface.opacity(0.9)
 
     var body: some View {
         capsule
@@ -371,7 +429,9 @@ struct ToastView: View {
         .padding(.trailing, toast.actionTitle == nil ? Theme.Spacing.m : Theme.Spacing.xxs)
         .padding(.vertical, toast.actionTitle == nil ? Theme.Spacing.s : 0)
         .frame(minHeight: Theme.Metrics.minTouchTarget + 4)
-        .glassEffect(.regular, in: shape)
+        // Tinted with Surface so the rows behind wash out instead of reading through the message
+        // and the Undo (plain `.regular` glass is clear enough to read a quote through it).
+        .glassEffect(.regular.tint(Self.glassTint), in: shape)
         .contentShape(shape)
         .gesture(
             DragGesture(minimumDistance: 12).onEnded { value in

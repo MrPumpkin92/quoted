@@ -58,7 +58,10 @@ insert into public.friendships (requester_id, addressee_id, status) values
   (tests.uid('a'), tests.uid('b'), 'accepted');
 insert into public.shares (id, sender_id, recipient_id, body, author, source) values
   ('5a000000-0000-4000-8000-000000000001', tests.uid('a'), tests.uid('b'), 'A quote', 'Ann', 'Notebook'),
-  ('5a000000-0000-4000-8000-000000000002', tests.uid('a'), tests.uid('b'), 'Plain share', null, null);
+  ('5a000000-0000-4000-8000-000000000002', tests.uid('a'), tests.uid('b'), 'Plain share', null, null),
+  -- A third copy of share 1, because a reporter can file only one report per
+  -- reported user and share (reports_reporter_reported_share_key).
+  ('5a000000-0000-4000-8000-000000000003', tests.uid('a'), tests.uid('b'), 'A quote', 'Ann', 'Notebook');
 -- D to C, for the service-role check.
 insert into public.shares (id, sender_id, recipient_id, body, author) values
   ('5d000000-0000-4000-8000-000000000001', tests.uid('d'), tests.uid('c'), 'D to C', 'Dee');
@@ -125,7 +128,7 @@ select results_eq(
 
 select lives_ok(
   $$ insert into public.reports (id, share_id, reported_user_id, reason, content_body, content_author, content_source)
-     values ('7e000000-0000-4000-8000-000000000003', '5a000000-0000-4000-8000-000000000001', tests.uid('a'), 'other',
+     values ('7e000000-0000-4000-8000-000000000003', '5a000000-0000-4000-8000-000000000003', tests.uid('a'), 'other',
              repeat('x', 5000), repeat('y', 500), repeat('z', 500)) $$,
   'an oversized client snapshot is replaced before the length checks run'
 );
@@ -138,10 +141,11 @@ select results_eq(
 );
 
 -- ---- snapshot kept as sent when share_id is null ----------------------------
+-- About C, because B's one user report about A is filed after the block below.
 select lives_ok(
   $$ insert into public.reports (id, reported_user_id, reason, content_body, content_author, content_verified)
-     values ('7e000000-0000-4000-8000-000000000004', tests.uid('a'), 'inappropriate', 'What B saw', 'Someone', true) $$,
-  'B reports A without a share but with a snapshot'
+     values ('7e000000-0000-4000-8000-000000000004', tests.uid('c'), 'inappropriate', 'What B saw', 'Someone', true) $$,
+  'B reports C without a share but with a snapshot'
 );
 
 select results_eq(
@@ -232,8 +236,7 @@ select results_eq(
   $$ values
        ('7e000000-0000-4000-8000-000000000001', true, 'A quote'::text, 'Ann'::text, 'Notebook'::text, true),
        ('7e000000-0000-4000-8000-000000000002', true, 'Plain share', null, null, true),
-       ('7e000000-0000-4000-8000-000000000003', true, 'A quote', 'Ann', 'Notebook', true),
-       ('7e000000-0000-4000-8000-000000000004', true, 'What B saw', 'Someone', null, false) $$,
+       ('7e000000-0000-4000-8000-000000000003', true, 'A quote', 'Ann', 'Notebook', true) $$,
   'after the block, share_id is null and every snapshot and verified flag is intact'
 );
 

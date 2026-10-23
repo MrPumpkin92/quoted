@@ -68,7 +68,7 @@ private enum Launch {
         if ProcessInfo.processInfo.arguments.contains("-QuotedGallery") {
             return .gallery(AppModel.preview())
         }
-        // `-UITestReset`: start signed out with no local state (UI tests against the local stack).
+        // `-UITestReset`: start with no session or local state (UI tests against the local stack).
         if ProcessInfo.processInfo.arguments.contains("-UITestReset") {
             UITestReset.wipeLocalState()
         }
@@ -112,8 +112,38 @@ enum InstallMarker {
 }
 
 #if DEBUG
+/// A local email account for UI tests and `scripts/sign-in-local-demo.sh`, now that there is no
+/// sign-in screen. With `QUOTED_DEBUG_SIGNIN_EMAIL` and `QUOTED_DEBUG_SIGNIN_PASSWORD` in the launch
+/// environment, a launch with no stored session signs in to that account instead of creating an
+/// anonymous one (`SessionStore`); a stored session wins. Only against the local stack (`127.0.0.1` or
+/// `localhost`), and only in DEBUG builds.
+enum DebugSignIn {
+    struct Credentials: Sendable {
+        let email: String
+        let password: String
+    }
+
+    static let emailKey = "QUOTED_DEBUG_SIGNIN_EMAIL"
+    static let passwordKey = "QUOTED_DEBUG_SIGNIN_PASSWORD"
+
+    static func credentials(
+        for config: SupabaseConfig,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Credentials? {
+        guard let email = environment[emailKey], !email.isEmpty,
+              let password = environment[passwordKey], !password.isEmpty
+        else { return nil }
+        guard let host = config.url.host(), host == "127.0.0.1" || host == "localhost" else {
+            Logger.app.error("DEBUG sign-in ignored: the backend is not the local stack")
+            return nil
+        }
+        return Credentials(email: email, password: password)
+    }
+}
+
 /// `-UITestReset` support: wipes everything a previous run left on the device before the backend is
-/// built, so a UI test always starts on Welcome. DEBUG builds only.
+/// built, so a UI test always starts with no session: on Choose a username with a new anonymous
+/// account (or signed in through `DebugSignIn`). DEBUG builds only.
 enum UITestReset {
     /// The Keychain service supabase-swift's `KeychainLocalStorage` stores the session under.
     private static let authKeychainService = "supabase.gotrue.swift"

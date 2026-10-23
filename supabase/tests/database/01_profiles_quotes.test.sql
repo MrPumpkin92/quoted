@@ -69,10 +69,12 @@ select lives_ok(
 
 select tests.authenticate_as('a');
 
+-- Profiles are not a directory any more (20261021090000): a stranger's handle
+-- is reached by exact username. 12_profile_privacy_cleanup covers the policy.
 select results_eq(
-  $$ select username from public.profiles where id = tests.uid('b') $$,
+  $$ select username from public.find_profile('bob') $$,
   $$ values ('bob') $$,
-  'A can read B''s public handle'
+  'A can look up B''s public handle by exact username'
 );
 
 select is_empty(

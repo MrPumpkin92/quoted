@@ -38,8 +38,24 @@ public struct AuthService: Sendable {
     /// the SDK refreshes it before the next request.
     public var currentUserID: UUID? { client.signedInUserID }
 
-    /// The signed-in user's email, if any.
-    public var currentEmail: String? { client.auth.currentUser?.email }
+    /// The signed-in user's email, if any. Nil for an anonymous account (GoTrue sends `""` for it).
+    public var currentEmail: String? {
+        guard let email = client.auth.currentUser?.email, !email.isEmpty else { return nil }
+        return email
+    }
+
+    /// Whether the stored session belongs to an anonymous account (no email or password).
+    public var isAnonymous: Bool { client.auth.currentUser?.isAnonymous ?? false }
+
+    /// Creates an anonymous account and signs it in (`POST /auth/v1/signup` with no email). The
+    /// session is stored like any other and ``sessionChanges`` reports the new user. Needs "Allow
+    /// anonymous sign-ins" on the project, otherwise throws a ``QuotedError/validation(_:)`` saying so.
+    @discardableResult
+    public func signInAnonymously() async throws -> UUID {
+        try await mappingErrors {
+            try await client.auth.signInAnonymously().user.id
+        }
+    }
 
     /// Signs up. Sends `quoted://auth-callback` as the confirmation redirect.
     public func signUp(email: String, password: String) async throws -> SignUpResult {

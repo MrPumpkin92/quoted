@@ -1,7 +1,9 @@
 // "Choose a username" (docs/ui-spec.md §2).
 //
 // RootView shows `UsernameView()` while `SessionStore.phase == .needsUsername`. `createProfile` moves
-// the phase on by itself (to the starter pack, or the library if the user already has quotes).
+// the phase on by itself (to the starter pack, or the library if the user already has quotes). With
+// anonymous accounts (`AccountMode`) it follows Welcome, which carries the Terms consent line, and has
+// no Sign out.
 
 import Accessibility
 import OSLog
@@ -67,11 +69,13 @@ struct UsernameView: View {
             }
             .groundBackground()
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Sign out") {
-                        Task { await session.signOut() }
+                if session.canSignOut {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Sign out") {
+                            Task { await session.signOut() }
+                        }
+                        .disabled(isSubmitting)
                     }
-                    .disabled(isSubmitting)
                 }
             }
         }
@@ -131,11 +135,21 @@ struct UsernameView: View {
             }
             HairlineDivider(leadingInset: Theme.Spacing.cardPadding)
             AuthFieldRow(label: "Display name", onTap: { focus = .displayName }) {
-                TextField("Display name", text: $displayName, prompt: Text("Optional"))
-                    .textContentType(.name)
-                    .submitLabel(.continue)
-                    .focused($focus, equals: .displayName)
-                    .onSubmit { submit() }
+                // `.nickname`, not `.name`: QuickType would offer the full legal name for a name
+                // every friend and requester sees.
+                VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                    TextField("Display name", text: $displayName, prompt: Text("Optional"))
+                        .textContentType(.nickname)
+                        .submitLabel(.continue)
+                        .focused($focus, equals: .displayName)
+                        .onSubmit { submit() }
+                        .accessibilityHint("Optional. You can change this later.")
+                    Text("You can change this later.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityHidden(true)
+                }
             }
         }
         .disabled(isSubmitting)

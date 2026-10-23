@@ -14,7 +14,7 @@ let package = Package(
         .library(name: "QuotedKit", targets: ["QuotedKit"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/supabase/supabase-swift", from: "2.55.4"),
+        .package(url: "https://github.com/supabase/supabase-swift", exact: "2.55.4"),
     ],
     targets: [
         .target(

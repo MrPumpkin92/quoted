@@ -41,7 +41,7 @@ struct BlockedUsersView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { profile in
-            Text("\(profile.displayName) will be able to find you and send you friend requests again. Your old friendship and shared quotes don\u{2019}t come back.")
+            Text("\(profile.displayName) will be able to find you by username and send you friend requests again. Your old friendship and shared quotes don\u{2019}t come back.")
         }
         .reportUserConfirmation(item: $reportTarget, context: .blockedUser)
     }
@@ -90,7 +90,7 @@ private struct BlockedUsersContent: View {
                     EmptyStateView(
                         systemImage: "hand.raised",
                         title: "No blocked users",
-                        message: "People you block can\u{2019}t send you friend requests or quotes. Block someone from a shared quote\u{2019}s \u{2026} menu or by pressing and holding a friend."
+                        message: "People you block can\u{2019}t find you by username or send you friend requests or quotes. Block someone from the \u{2026} menu next to their name or on a quote they shared."
                     )
                 }
             }
@@ -108,7 +108,11 @@ private struct BlockedUsersContent: View {
                             outerSpacing: Theme.Spacing.xs
                         )
                 }
-                Text("Blocked people can\u{2019}t find you, send you friend requests or send you quotes. They aren\u{2019}t told that you blocked them.")
+                // Each claim holds on the server: the username lookup returns nothing for a blocked
+                // pair (the same as for a name nobody has), friend requests to or from a blocked pair
+                // fail like one to an unknown user, and shares need a friendship, which the block
+                // deleted. Nothing notifies the blocked person.
+                Text("Blocked people can\u{2019}t find you by username, send you friend requests or send you quotes. They aren\u{2019}t told that you blocked them.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .marginPlainRow(top: Theme.Spacing.xs, bottom: Theme.Spacing.l)

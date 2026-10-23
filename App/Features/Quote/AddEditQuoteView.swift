@@ -20,6 +20,9 @@ struct AddEditQuoteView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var form: QuoteForm
+    /// The new quote's ID, kept for the sheet's lifetime: Save after a lost answer finds the quote
+    /// the first Save created instead of adding a copy.
+    @State private var newQuoteID = UUID()
     @State private var isSaving = false
     @State private var attemptedSave = false
     @State private var confirmingDiscard = false
@@ -205,7 +208,9 @@ struct AddEditQuoteView: View {
     private func commit() async -> Bool {
         let draft = form.draft
         guard let editing else {
-            let created = await library.create(draft: draft, includeInReminders: form.includeInReminders, origin: form.origin)
+            let created = await library.create(
+                draft: draft, id: newQuoteID, includeInReminders: form.includeInReminders, origin: form.origin
+            )
             return created != nil
         }
         guard let current = library.quote(id: editing.id) else {
@@ -363,143 +368,6 @@ private struct FormatToggleButton: View {
         .accessibilityLabel(title)
         .accessibilityAddTraits(isOn ? .isSelected : [])
         .sensoryFeedback(.selection, trigger: isOn)
-    }
-}
-
-// MARK: - Paste heuristics (pure)
-
-/// Splits pasted text such as `“Trust thyself.” — Ralph Waldo Emerson, Self-Reliance` or
-/// `"…" - Name, Work` into body, author and source, and strips quotation marks that wrap the whole body.
-///
-/// Conservative by design: an attribution is only split off at a dash that follows a closing quotation
-/// mark or starts a line, so dashes inside a quote ("I am — and therefore …") and hyphenated words
-/// (Self-Reliance) never split. Round-trips `RichText.shareText` (`“body”\n— author, source`).
-enum PastedQuote {
-    struct Parts: Equatable, Sendable {
-        var body: String
-        var author: String?
-        var source: String?
-    }
-
-    /// The longest attribution (author, comma, source) accepted after a dash.
-    static let maxAttributionLength = Limits.authorMaxLength + Limits.sourceMaxLength + 2
-
-    static func parse(_ raw: String) -> Parts {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let (quote, attribution) = splitAttribution(text) {
-            let (author, source) = splitAuthorAndSource(attribution)
-            if author != nil || source != nil {
-                return Parts(body: stripWrappingQuotes(quote), author: author, source: source)
-            }
-        }
-        return Parts(body: stripWrappingQuotes(text), author: nil, source: nil)
-    }
-
-    // MARK: Attribution
-
-    private static let dashes: Set<Character> = ["\u{2014}", "\u{2013}", "\u{2015}", "\u{2012}", "-", "~"]
-    private static let openingQuotes: Set<Character> = [
-        "\u{201C}", "\"", "\u{201E}", "\u{00AB}", "\u{00BB}", "\u{2018}", "'", "\u{300C}", "\u{300E}", "\u{2039}", "\u{201D}",
-    ]
-    private static let closingQuotes: Set<Character> = [
-        "\u{201D}", "\"", "\u{00BB}", "\u{2019}", "'", "\u{300D}", "\u{300F}", "\u{203A}", "\u{201C}",
-    ]
-
-    /// The quote and the attribution after the last qualifying dash, or nil.
-    static func splitAttribution(_ text: String) -> (String, String)? {
-        let characters = Array(text)
-        var index = characters.count - 1
-        while index > 0 {
-            let character = characters[index]
-            guard dashes.contains(character) else {
-                index -= 1
-                continue
-            }
-            // "--" and "——" count as one dash.
-            var start = index
-            while start > 0, characters[start - 1] == character {
-                start -= 1
-            }
-            defer { index = start - 1 }
-
-            let before = String(characters[..<start])
-            let after = String(characters[(index + 1)...])
-            let beforeLine = before.trimmingCharacters(in: .whitespaces)
-            let atLineStart = beforeLine.last?.isNewline ?? false
-            let quoted = before.trimmingCharacters(in: .whitespacesAndNewlines)
-            // `“…” — Name`: the quote must be wrapped in marks, so `He said “no” — and left.` stays whole.
-            let afterQuote = (quoted.last.map(closingQuotes.contains) ?? false)
-                && (quoted.first.map(openingQuotes.contains) ?? false)
-            guard atLineStart || afterQuote else { continue }
-
-            // A hyphen or tilde must stand apart ("” - Name"), unlike "Self-Reliance".
-            let isHyphenLike = character == "-" || character == "~"
-            if isHyphenLike {
-                let spacedBefore = start == 0 || characters[start - 1].isWhitespace
-                guard spacedBefore || index > start || afterQuote else { continue }
-            }
-
-            let attribution = after.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard isPlausibleAttribution(attribution) else { continue }
-            guard !quoted.isEmpty else { continue }
-            return (quoted, attribution)
-        }
-        return nil
-    }
-
-    private static func isPlausibleAttribution(_ text: String) -> Bool {
-        !text.isEmpty
-            && !text.contains(where: \.isNewline)
-            && text.count <= maxAttributionLength
-            && text.contains(where: \.isLetter)
-    }
-
-    /// "Name, Work" → ("Name", "Work"). Keeps suffixes with the name ("Martin Luther King, Jr., Strength to Love").
-    static func splitAuthorAndSource(_ attribution: String) -> (String?, String?) {
-        let parts = attribution.split(separator: ",", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-        guard parts.count > 1 else { return (nonEmpty(attribution), nil) }
-        let suffixes: Set<String> = ["jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "phd", "ph.d.", "md", "m.d."]
-        var authorCount = 1
-        while authorCount < parts.count - 1, suffixes.contains(parts[authorCount].lowercased()) {
-            authorCount += 1
-        }
-        if authorCount == parts.count - 1, suffixes.contains(parts[authorCount].lowercased()) {
-            return (nonEmpty(parts.joined(separator: ", ")), nil)
-        }
-        let author = parts[..<authorCount].joined(separator: ", ")
-        let source = stripWrappingQuotes(parts[authorCount...].joined(separator: ", "))
-        guard author.count <= Limits.authorMaxLength, source.count <= Limits.sourceMaxLength else {
-            return (nil, nil)
-        }
-        return (nonEmpty(author), nonEmpty(source))
-    }
-
-    // MARK: Quotation marks
-
-    private static let quotePairs: [(open: Character, close: Character)] = [
-        ("\u{201C}", "\u{201D}"), ("\"", "\""), ("\u{201E}", "\u{201C}"), ("\u{201E}", "\u{201D}"),
-        ("\u{00AB}", "\u{00BB}"), ("\u{00BB}", "\u{00AB}"), ("\u{2018}", "\u{2019}"), ("'", "'"),
-        ("\u{300C}", "\u{300D}"), ("\u{300E}", "\u{300F}"), ("\u{2039}", "\u{203A}"), ("\u{201D}", "\u{201D}"),
-    ]
-
-    /// Removes one pair of quotation marks wrapping the whole text, unless the inside has its own
-    /// closing mark (`“A” and “B”` stays as is).
-    static func stripWrappingQuotes(_ text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 2, let first = trimmed.first, let last = trimmed.last else { return trimmed }
-        for pair in quotePairs where first == pair.open && last == pair.close {
-            let inner = trimmed.dropFirst().dropLast()
-            guard !inner.contains(pair.close), !inner.contains(pair.open) else { return trimmed }
-            let stripped = inner.trimmingCharacters(in: .whitespacesAndNewlines)
-            return stripped.isEmpty ? trimmed : stripped
-        }
-        return trimmed
-    }
-
-    private static func nonEmpty(_ text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

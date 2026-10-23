@@ -244,6 +244,69 @@ struct RotationContinuityTests {
         #expect(next(updated, at: now, settings: settings, count: 9) == expected)
     }
 
+    /// A schedule change recounts every slot since the anchor under the new times, which used to land
+    /// anywhere in the cycle. Continuing keeps the shown quote and plays the one after it next.
+    @Test("Changing the schedule continues after the current quote", arguments: [
+        ReminderSettings(timesPerDay: 4),
+        ReminderSettings(timesPerDay: 1),
+        ReminderSettings(windowStart: 6 * 60, windowEnd: 23 * 60),
+        ReminderSettings(weekdays: [2, 4, 6]),
+    ])
+    func changingTheScheduleContinuesAfterTheCurrentQuote(_ settings: ReminderSettings) {
+        let ids = Fixture.ids(7)
+        // Two months of 3 a day before the change.
+        let rotation = RotationState(quoteIDs: ids, anchor: Fixture.date(2026, 8, 19), seed: 7)
+        let now = Fixture.date(2026, 10, 19, 15)
+        guard let shown = current(rotation, at: now), let shownIndex = ids.firstIndex(of: shown) else {
+            Issue.record("a quote is on screen")
+            return
+        }
+
+        let updated = rotation.updated(with: ids, at: now, seed: 99, settings: settings, previousSettings: .default, calendar: calendar)
+        #expect(updated.anchor == rotation.anchor)
+        #expect(updated.seed == rotation.seed, "an unchanged Rotation keeps its seed")
+        #expect(current(updated, at: now, settings: settings) == shown, "the widget keeps the last quote")
+        #expect(next(updated, at: now, settings: settings, count: 7) == (1...7).map { ids[(shownIndex + $0) % 7] })
+    }
+
+    @Test func switchingToShuffleContinuesAfterTheCurrentQuote() {
+        let ids = Fixture.ids(6)
+        let rotation = state(ids, seed: 42)
+        let now = Fixture.date(2026, 10, 20, 15) // five slots have played: ids[4] is on screen
+        let shuffle = ReminderSettings(order: .shuffle)
+        let updated = rotation.updated(with: ids, at: now, settings: shuffle, previousSettings: .default, calendar: calendar)
+        #expect(current(updated, at: now, settings: shuffle) == ids[4])
+
+        let order = SplitMix64.permutation(count: 6, seed: 42).map { ids[$0] }
+        guard let shownIndex = order.firstIndex(of: ids[4]) else {
+            Issue.record("the shown quote is in the permutation")
+            return
+        }
+        #expect(next(updated, at: now, settings: shuffle, count: 6) == (1...6).map { order[(shownIndex + $0) % 6] })
+    }
+
+    @Test func beforeTheFirstSlotOfTheNewScheduleTheNextQuoteStillFollows() {
+        let ids = Fixture.ids(4)
+        // Anchored after the 8:00 slot; 14:30 played ids[0]. The new schedule's first slot is 16:00.
+        let rotation = RotationState(quoteIDs: ids, anchor: Fixture.date(2026, 10, 19, 9), seed: 1)
+        let now = Fixture.date(2026, 10, 19, 15)
+        let evening = ReminderSettings(timesPerDay: 1, windowStart: 16 * 60, windowEnd: 22 * 60)
+        let updated = rotation.updated(with: ids, at: now, settings: evening, previousSettings: .default, calendar: calendar)
+        #expect(next(updated, at: now, settings: evening, count: 2) == [ids[1], ids[2]])
+    }
+
+    @Test func settingsThatPlayTheSameCycleKeepTheState() {
+        let ids = Fixture.ids(3)
+        let rotation = state(ids)
+        let now = Fixture.date(2026, 10, 25)
+        var off = ReminderSettings.default
+        off.enabled = false
+        #expect(rotation.updated(with: ids, at: now, seed: 99, settings: off, previousSettings: .default, calendar: calendar) == rotation)
+        // A reversed window sanitizes to the same times.
+        let reversed = ReminderSettings(windowStart: 21 * 60, windowEnd: 8 * 60)
+        #expect(rotation.updated(with: ids, at: now, seed: 99, settings: reversed, previousSettings: .default, calendar: calendar) == rotation)
+    }
+
     /// The review scenario: 10 quotes in order, 3 a day, a new quote appended every 2 days for 30
     /// days. Restarting at the top on each change starved the end of the list; continuing reaches
     /// every quote within one pass of the list.

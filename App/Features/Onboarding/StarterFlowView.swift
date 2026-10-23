@@ -31,8 +31,8 @@ struct StarterFlowView: View {
 
     private enum Step: Equatable {
         case pick
-        /// Priming, with the plain-text sample built from one of the picked quotes.
-        case priming(sample: String)
+        /// Priming, with a sample notification built from one of the picked quotes.
+        case priming(sample: NotificationQuote)
     }
 
     init(mode: StarterFlowMode) {
@@ -55,7 +55,7 @@ struct StarterFlowView: View {
                 .transition(.opacity)
             case .priming(let sample):
                 NotificationPrimingView(
-                    sampleText: sample,
+                    sample: sample,
                     settings: reminders.settings,
                     isRequesting: isRequestingPermission
                 ) {
@@ -92,11 +92,7 @@ struct StarterFlowView: View {
                 await reminders.refreshPermission()
                 isImporting = false
                 if reminders.permission == .notDetermined, let first = picked.first {
-                    step = .priming(sample: NotificationScheduler.bodyText(for: NotificationQuote(
-                        id: UUID(),
-                        body: first.body,
-                        author: first.author
-                    )))
+                    step = .priming(sample: NotificationQuote(id: UUID(), body: first.body, author: first.author))
                 } else {
                     // Already allowed or denied in Settings: the system prompt can't show again,
                     // and the Library status card covers the denied state.
@@ -169,7 +165,7 @@ private struct StarterPickerView: View {
                 PrimaryButton(continueTitle, isLoading: isImporting) {
                     onContinue(pickedQuotes)
                 }
-                .disabled(picked.isEmpty)
+                .disabled(pickedQuotes.isEmpty)
                 // The disabled button is translucent; keep the rows from showing through it.
                 .background(Color.ground, in: Capsule())
                 .padding(.horizontal, Theme.Spacing.l)
@@ -232,12 +228,14 @@ private struct StarterPickerView: View {
         .padding(.horizontal, Theme.Spacing.l)
     }
 
+    /// The picked quotes not already in the library. After a failed import whose insert did land, a
+    /// refresh brings those quotes in; they show as owned and must not count or import again.
     private var pickedQuotes: [StarterQuote] {
-        starter.quotes.filter { picked.contains($0.id) }
+        starter.quotes.filter { picked.contains($0.id) && !library.contains(starter: $0) }
     }
 
     private var continueTitle: LocalizedStringKey {
-        let count = picked.count
+        let count = pickedQuotes.count
         switch mode {
         case .onboarding:
             switch count {
@@ -306,8 +304,8 @@ private struct StarterRow: View {
 /// "Your quotes, a few times a day": a sample notification with one of the picked quotes, the schedule
 /// in plain words, Allow notifications (the system prompt) and Not now.
 private struct NotificationPrimingView: View {
-    /// The notification body, as iOS will show it: `“body” — Author`, plain text.
-    let sampleText: String
+    /// The quote the sample notification shows, laid out as iOS will show it.
+    let sample: NotificationQuote
     let settings: ReminderSettings
     let isRequesting: Bool
     let onAllow: () -> Void
@@ -321,7 +319,7 @@ private struct NotificationPrimingView: View {
                         .font(.largeTitle.bold())
                         .accessibilityAddTraits(.isHeader)
                         .fixedSize(horizontal: false, vertical: true)
-                    SampleNotification(text: sampleText)
+                    SampleNotification(quote: sample)
                         .padding(.vertical, Theme.Spacing.s)
                     Text(scheduleText)
                         .font(.body)
@@ -374,9 +372,13 @@ private struct NotificationPrimingView: View {
     }
 }
 
-/// A plain-text look-alike of an iOS notification banner (notifications can't render runs or serif).
+/// A plain-text look-alike of an iOS notification banner (notifications can't render runs or serif):
+/// "Quoted", the author as the subtitle, then the quote.
 private struct SampleNotification: View {
-    let text: String
+    let quote: NotificationQuote
+
+    private var subtitle: String? { NotificationScheduler.subtitleText(for: quote) }
+    private var text: String { NotificationScheduler.bodyText(for: quote) }
 
     @ScaledMetric(relativeTo: .subheadline) private var iconSize: CGFloat = 38
 
@@ -397,6 +399,11 @@ private struct SampleNotification: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                if let subtitle {
+                    Text(verbatim: subtitle)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                }
                 Text(verbatim: text)
                     .font(.subheadline)
                     .lineLimit(4)
@@ -411,7 +418,7 @@ private struct SampleNotification: View {
                 .strokeBorder(Color.hairline, lineWidth: Theme.Metrics.hairline)
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Sample notification from Quoted: \(text)"))
+        .accessibilityLabel(Text("Sample notification from Quoted: \([text, subtitle].compactMap(\.self).joined(separator: ", "))"))
     }
 }
 
@@ -436,7 +443,7 @@ private struct SampleNotification: View {
 
 #Preview("Notification priming") {
     NotificationPrimingView(
-        sampleText: "\u{201C}Beware; for I am fearless, and therefore powerful.\u{201D} \u{2014} Mary Shelley",
+        sample: NotificationQuote(id: UUID(), body: "Beware; for I am fearless, and therefore powerful.", author: "Mary Shelley"),
         settings: .default,
         isRequesting: false,
         onAllow: {},
@@ -447,7 +454,11 @@ private struct SampleNotification: View {
 
 #Preview("Notification priming, dark") {
     NotificationPrimingView(
-        sampleText: "\u{201C}While we are postponing, life speeds by.\u{201D} \u{2014} Seneca",
+        sample: NotificationQuote(
+            id: UUID(),
+            body: "Hope is the thing with feathers\nThat perches in the soul,\nAnd sings the tune without the words,\nAnd never stops at all.",
+            author: "Emily Dickinson"
+        ),
         settings: .default,
         isRequesting: true,
         onAllow: {},

@@ -10,7 +10,8 @@ import Supabase
 public enum QuotedError: Error, Hashable, Sendable {
     /// The request never reached the server (offline, timed out, DNS, TLS).
     case network
-    /// There is no session, or the server rejected it. Send the user back to sign in.
+    /// There is no session, or the server rejected it. The app ends the session (email accounts sign
+    /// in again; an anonymous account is replaced once the SDK has dropped it).
     case notSignedIn
     /// `profiles.username` is already in use.
     case usernameTaken
@@ -29,7 +30,9 @@ public enum QuotedError: Error, Hashable, Sendable {
         case .network:
             "You seem to be offline. Check your connection and try again."
         case .notSignedIn:
-            "Your session has ended. Please sign in again."
+            // Not "sign in again": an anonymous account has no sign-in. The app ends or replaces the
+            // session itself (SessionStore).
+            "Your session has ended. Try again in a moment."
         case .usernameTaken:
             "That username is taken. Try another one."
         case .notFound:
@@ -96,6 +99,12 @@ extension QuotedError {
     /// Postgres SQLSTATE and PostgREST `PGRST…` codes.
     static func map(postgrest error: PostgrestError) -> QuotedError {
         switch error.code {
+        // The server's write limits (migration 20261021090000_abuse_limits_privacy_cleanup): QR001 is
+        // a rolling 24-hour limit (friend requests, shares, reports), QR002 an account total.
+        case "QR001":
+            return .validation("You've reached today's limit for this. Try again tomorrow.")
+        case "QR002":
+            return .validation("You've reached the limit for your account.")
         case "23505":
             return .validation("That already exists.")
         case "23514", "23502", "22001", "22P02":
@@ -144,6 +153,8 @@ extension QuotedError {
             return .validation("Choose a password you haven't used here before.")
         case .signupDisabled, .emailProviderDisabled:
             return .validation("New sign-ups are turned off right now.")
+        case .anonymousProviderDisabled:
+            return .validation("Quoted can't create your account right now: anonymous sign-ins are turned off on the server.")
         case .flowStateNotFound, .flowStateExpired, .otpExpired, .badCodeVerifier:
             return .validation("This link has expired or was already used. Try signing in.")
         case .sessionNotFound, .sessionExpired, .refreshTokenNotFound, .refreshTokenAlreadyUsed,
@@ -154,9 +165,8 @@ extension QuotedError {
         default:
             if status == 429 { return .rateLimited }
             if status == 401 { return .notSignedIn }
-            if (400..<500).contains(status), !message.isEmpty, message != "Unexpected error" {
-                return .validation(message)
-            }
+            // Anything else keeps GoTrue's English text for the logs only: it is written for
+            // developers (captcha_failed, user_banned, …) and is not localized.
             return .server("Auth \(status) \(code.rawValue): \(message)")
         }
     }

@@ -193,6 +193,19 @@ public enum RichText {
         text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
     }
 
+    /// Like ``collapseWhitespace(_:)``, but keeps line breaks so a poem keeps its shape: each line is
+    /// collapsed on its own, runs of blank lines become one, and blank lines at the ends go.
+    public static func collapseWhitespaceKeepingLines(_ text: String) -> String {
+        var lines: [String] = []
+        for line in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let collapsed = collapseWhitespace(String(line))
+            if collapsed.isEmpty, lines.last?.isEmpty ?? true { continue }
+            lines.append(collapsed)
+        }
+        if lines.last?.isEmpty == true { lines.removeLast() }
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: Helpers
 
     static func clamp(_ value: Int, to count: Int) -> Int {

@@ -105,4 +105,4 @@ if [[ "$SHARES" == 0 ]]; then
 else
   "$ROOT/scripts/seed-local-friend.sh" "$USERNAME" --accept --no-share
 fi
-log "Demo account ready: sign in to the Debug-Local build with the details in build/demo-account.txt."
+log "Demo account ready. The app has no sign-in screen: run scripts/sign-in-local-demo.sh to sign a simulator into it."

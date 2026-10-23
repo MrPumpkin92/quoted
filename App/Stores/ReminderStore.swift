@@ -42,8 +42,8 @@ struct WeekdayOption: Identifiable, Hashable, Sendable {
 /// Reminder settings, notification permission and the reminder coordinator.
 ///
 /// `replan()` is the single path that keeps notifications and the widget in step with the library:
-/// it refreshes the rotation state (when the reminder set or order changes, the cycle carries on after
-/// the quote shown last instead of restarting at the top), runs `ReminderPlanner.plan`, replaces the
+/// it refreshes the rotation state (when the reminder set, order or schedule changes, the cycle carries
+/// on after the quote shown last instead of restarting at the top), runs `ReminderPlanner.plan`, replaces the
 /// pending `reminder-` notifications, writes the widget snapshot and reloads the widget timelines. `LibraryStore` calls it after every mutation, setting
 /// `settings` calls it, and `AppModel` calls it on launch, foreground and background refresh.
 /// Inject with `@Environment(ReminderStore.self)`.
@@ -76,6 +76,8 @@ final class ReminderStore {
     private(set) var rotation: RotationState?
 
     private var storedSettings: ReminderSettings
+    /// The settings `rotation` was last planned under, so a settings change continues its cycle.
+    @ObservationIgnored private var plannedSettings: ReminderSettings
 
     // MARK: Dependencies
 
@@ -92,7 +94,9 @@ final class ReminderStore {
         self.scheduler = scheduler
         self.widgets = widgets
         self.sideEffects = sideEffects
-        storedSettings = appGroup?.loadReminderSettings() ?? .default
+        let settings = appGroup?.loadReminderSettings() ?? .default
+        storedSettings = settings
+        plannedSettings = settings
         rotation = appGroup?.loadRotationState()
     }
 
@@ -136,6 +140,31 @@ final class ReminderStore {
 
     /// "3× a day" (the How often row).
     var frequencyText: String { "\(settings.timesPerDay)\u{00D7} a day" }
+
+    /// Whether reminders actually go out: the toggle is on and Quoted may notify. The Reminders toggle
+    /// and the Account row show this, so neither says "on" while iOS would drop every reminder.
+    var isDelivering: Bool { settings.enabled && permission == .authorized }
+
+    /// The one-line state for the Account row and the Reminders toggle: "3× a day · Next at 8:00 AM"
+    /// (with the days when they aren't every day) while reminders go out, otherwise why they don't.
+    var statusLine: String {
+        guard settings.enabled else { return "Off" }
+        switch permission {
+        case .denied:
+            return "Notifications are off for Quoted in iOS Settings"
+        case .notDetermined:
+            return "Waiting for you to allow notifications"
+        case .authorized:
+            var parts = [frequencyText]
+            if settings.weekdays != Set(1...7) { parts.append(daysDescription) }
+            if let next = nextReminderDate {
+                parts.append(Self.nextText(next))
+            } else if quoteCount == 0 {
+                parts.append("No quotes in your reminders yet")
+            }
+            return parts.joined(separator: " \u{00B7} ")
+        }
+    }
 
     /// "Every day", "Weekdays", "Weekends", "Mon, Wed, Fri" or "No days".
     var daysDescription: String { Self.daysDescription(settings.weekdays) }
@@ -231,6 +260,7 @@ final class ReminderStore {
         } else {
             storedSettings = .default
         }
+        plannedSettings = storedSettings
         rotation = nil
         nextReminderDate = nil
         scheduledCount = 0
@@ -243,8 +273,11 @@ final class ReminderStore {
         let settings = self.settings
         let now = Date.now
         let previous = rotation ?? appGroup?.loadRotationState()
-        // A changed set or order continues the cycle after the quote shown last (see RotationState).
-        let next = previous.map { $0.updated(with: ids, at: now, settings: settings) } ?? RotationState.starting(with: ids, at: now)
+        // A changed set, order or schedule continues the cycle after the quote shown last (see RotationState).
+        let next = previous.map {
+            $0.updated(with: ids, at: now, settings: settings, previousSettings: plannedSettings)
+        } ?? RotationState.starting(with: ids, at: now)
+        plannedSettings = settings
         if next != previous {
             appGroup?.saveRotationState(next)
         }

@@ -143,15 +143,18 @@ final class StubServer: Sendable {
         return "\(encode(#"{"alg":"HS256","typ":"JWT"}"#)).\(encode(claims)).c2lnbmF0dXJl"
     }
 
-    /// A GoTrue session response for ``userID``.
-    static func sessionJSON(userID: UUID = userID, accessToken: String = accessToken) -> String {
+    /// A GoTrue session response for ``userID``. `anonymous` shapes the user the way GoTrue sends an
+    /// anonymous one: an empty email, no provider and `is_anonymous: true`.
+    static func sessionJSON(userID: UUID = userID, accessToken: String = accessToken, anonymous: Bool = false) -> String {
         let expiresAt = Int(Date().timeIntervalSince1970) + 3600
+        let email = anonymous ? "" : "stub@example.com"
+        let appMetadata = anonymous ? "{}" : #"{"provider":"email"}"#
         return """
         {"access_token":"\(accessToken)","token_type":"bearer","expires_in":3600,"expires_at":\(expiresAt),
          "refresh_token":"stub-refresh-token",
          "user":{"id":"\(userID.uuidString.lowercased())","aud":"authenticated","role":"authenticated",
-                 "email":"stub@example.com","app_metadata":{"provider":"email"},"user_metadata":{},
-                 "created_at":"2026-10-19T00:00:00Z","updated_at":"2026-10-19T00:00:00Z","is_anonymous":false}}
+                 "email":"\(email)","app_metadata":\(appMetadata),"user_metadata":{},
+                 "created_at":"2026-10-19T00:00:00Z","updated_at":"2026-10-19T00:00:00Z","is_anonymous":\(anonymous)}}
         """
     }
 }

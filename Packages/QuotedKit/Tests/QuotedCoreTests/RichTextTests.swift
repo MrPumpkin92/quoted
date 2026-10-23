@@ -320,4 +320,12 @@ struct PlainTextTests {
         #expect(RichText.preview("👍🏽👍🏽👍🏽👍🏽", maxCharacters: 3) == "👍🏽👍🏽\u{2026}")
         #expect(RichText.utf16Count(of: "👍🏽") == 4)
     }
+
+    @Test func collapsingKeepsLinesForPoems() {
+        let poem = "\n  Hope is the thing   with feathers\r\nThat perches\tin the soul,\n\n\n\nAnd sings  \n \n"
+        #expect(RichText.collapseWhitespaceKeepingLines(poem) == "Hope is the thing with feathers\nThat perches in the soul,\n\nAnd sings")
+        #expect(RichText.collapseWhitespaceKeepingLines("One line") == "One line")
+        #expect(RichText.collapseWhitespaceKeepingLines(" \n\t\n ") == "")
+        #expect(RichText.collapseWhitespace(poem) == "Hope is the thing with feathers That perches in the soul, And sings")
+    }
 }

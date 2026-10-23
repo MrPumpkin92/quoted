@@ -21,8 +21,9 @@ struct SharedInboxView: View {
     /// so the toast's closures can still update it after the view has gone.
     @State private var pendingDeletion = PendingInboxDeletions()
 
-    /// The inbox shows whole quotes (the body limit is 1,000 characters).
-    private static let fullQuoteLineLimit = 40
+    /// The inbox shows whole quotes, at every text size: a fixed cap (it was 40 lines) cut long
+    /// quotes off at accessibility sizes, where a card has no detail view to read the rest in.
+    private static let fullQuoteLineLimit = Int.max
 
     init() {}
 
@@ -93,26 +94,25 @@ struct SharedInboxView: View {
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        // No destructive role: with it the app-wide accent tint wins over red.
                         // The row goes away because `visibleInbox` drops it.
-                        Button {
+                        Button(role: .destructive) {
                             delete(share)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
-                        .tint(.red)
+                        .tint(SwipeTint.destructive)
                         Button {
                             confirmation = .blockSender(shareID: share.id)
                         } label: {
                             Label("Block", systemImage: "hand.raised")
                         }
-                        .tint(.gray)
+                        .tint(SwipeTint.block)
                         Button {
                             confirmation = .report(shareID: share.id)
                         } label: {
                             Label("Report", systemImage: "flag")
                         }
-                        .tint(.orange)
+                        .tint(SwipeTint.report)
                     }
                 }
                 footer
@@ -146,7 +146,7 @@ struct SharedInboxView: View {
     }
 
     private var footer: some View {
-        Text("Saved quotes go to your library and your reminders. Swipe left to delete. Report or block from a quote\u{2019}s \u{2026} menu.")
+        Text("Saved quotes go to your library and your reminders.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .marginPlainRow(top: Theme.Spacing.s, bottom: Theme.Spacing.l)
@@ -191,24 +191,24 @@ private final class PendingInboxDeletions {
 
 // MARK: - Shared quote card
 
-/// A quote a friend sent, as a card: the sender and when, Save, a "…" menu (Report…, Block @x, and
-/// Delete when `onDelete` is set), the sender's note, the quote and its attribution.
+/// A quote a friend sent, as a card: the sender and when, a "…" menu (Report…, Block @x, and Delete
+/// when `onDelete` is set), the sender's note, the quote and its attribution, then Save (or Saved).
 ///
-/// Used by Friends ("Shared with you", the latest two) and `SharedInboxView` (all of them). Save adds
-/// the quote to the library and to reminders (the same default as Add). The Report and Block
-/// confirmations hang off the "…" button, so they point at this card; set `confirmation` to
-/// `.report` / `.blockSender` with this share's ID (from a swipe action, say) to show them.
+/// Used by `SharedInboxView`. Save sits under the quote at every text size, so the card reads who →
+/// what they said → the quote → act. Save adds the quote to the library and to reminders (the same
+/// default as Add). The Report and Block confirmations hang off the "…" button, so they point at this
+/// card; set `confirmation` to `.report` / `.blockSender` with this share's ID (from a swipe action,
+/// say) to show them.
 struct SharedQuoteCard: View {
     let share: SharedQuote
     /// Line limit for the quote. Nil keeps the compact style's default (6 lines).
     var lineLimit: Int?
     @Binding var confirmation: SocialConfirmation?
-    /// Adds Delete to the "…" menu (the inbox; Friends' preview has none).
+    /// Adds Delete to the "…" menu.
     var onDelete: (() -> Void)?
 
     @Environment(LibraryStore.self) private var library
     @Environment(SocialStore.self) private var social
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isSaving = false
 
     var body: some View {
@@ -217,18 +217,17 @@ struct SharedQuoteCard: View {
                 AvatarCircle(name: senderName, id: share.senderID, size: 28)
                 fromLine
                 Spacer(minLength: Theme.Spacing.xxs)
-                if !dynamicTypeSize.isAccessibilitySize {
-                    saveControl
-                }
                 moreMenu
             }
             if let note {
+                // The note is the one personal line on the card: primary ink, the glyph quiet.
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.xs) {
                     Image(systemName: "text.bubble")
+                        .foregroundStyle(.secondary)
                     Text(note)
+                        .foregroundStyle(.primary)
                 }
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Note from \(senderName): \(note)")
             }
@@ -238,9 +237,7 @@ struct SharedQuoteCard: View {
                 AttributionLine(share)
             }
             .accessibilityElement(children: .combine)
-            if dynamicTypeSize.isAccessibilitySize {
-                saveControl
-            }
+            saveControl
         }
         .padding(.vertical, Theme.Spacing.xxs)
     }
@@ -256,18 +253,31 @@ struct SharedQuoteCard: View {
         return trimmed
     }
 
+    /// Under a minute reads "Just now" rather than "47 sec. ago".
+    private var isJustNow: Bool {
+        Date.now.timeIntervalSince(share.createdAt) < 60
+    }
+
     private var fromLine: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(senderName)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
-            Text(share.createdAt, format: .relative(presentation: .named, unitsStyle: .abbreviated))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            Group {
+                if isJustNow {
+                    Text("Just now")
+                } else {
+                    Text(share.createdAt, format: .relative(presentation: .named, unitsStyle: .abbreviated))
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
         .lineLimit(2)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("From \(senderName), \(share.createdAt, format: .relative(presentation: .named, unitsStyle: .wide))"))
+        .accessibilityLabel(isJustNow
+            ? Text("From \(senderName), just now")
+            : Text("From \(senderName), \(share.createdAt, format: .relative(presentation: .named, unitsStyle: .wide))"))
     }
 
     @ViewBuilder
@@ -276,7 +286,6 @@ struct SharedQuoteCard: View {
             Label("Saved", systemImage: "checkmark")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, Theme.Spacing.xs)
                 .frame(minHeight: Theme.Metrics.minTouchTarget)
                 .accessibilityLabel("Saved to your library")
         } else {
@@ -311,11 +320,7 @@ struct SharedQuoteCard: View {
                 Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: Theme.Metrics.minTouchTarget, height: Theme.Metrics.minTouchTarget)
-                .contentShape(Rectangle())
+            MoreMenuLabel()
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
@@ -343,6 +348,39 @@ struct SharedQuoteCard: View {
             await library.saveShared(share, addToReminders: true)
             isSaving = false
         }
+    }
+}
+
+/// The "…" that holds everything about a person or a quote (Report, Block, Remove, Delete): a
+/// semibold ellipsis in the concrete secondary gray (about 3.5:1 on Surface in light mode, more in
+/// dark), in a 44-pt target. `Color.secondary`, not `.secondary`: inside a borderless button the
+/// hierarchical style resolves against the accent tint and drops to about 2.5:1.
+struct MoreMenuLabel: View {
+    var body: some View {
+        Image(systemName: "ellipsis")
+            .font(.body.weight(.bold))
+            .foregroundStyle(Color.secondary)
+            .frame(width: Theme.Metrics.minTouchTarget, height: Theme.Metrics.minTouchTarget)
+            .contentShape(Rectangle())
+    }
+}
+
+/// Swipe-action fills. Destructive swipes keep `role: .destructive` and say red explicitly, because
+/// the app-wide accent tint would otherwise win. Report and Block use the Increased Contrast light
+/// variants of system orange and gray, so their white glyph and title reach 4.5:1 in either mode
+/// (plain `.orange` is about 2.2:1).
+@MainActor
+enum SwipeTint {
+    static let destructive = Color.red
+    static let report = highContrast(.systemOrange)
+    static let block = highContrast(.systemGray)
+
+    private static func highContrast(_ color: UIColor) -> Color {
+        let traits = UITraitCollection { traits in
+            traits.userInterfaceStyle = .light
+            traits.accessibilityContrast = .high
+        }
+        return Color(uiColor: color.resolvedColor(with: traits))
     }
 }
 
@@ -380,23 +418,52 @@ extension Binding where Value == SocialConfirmation? {
 }
 
 /// "Report this quote?" with `ReportReason.allCases`. `SocialStore.report` files it and toasts
-/// "Thanks, we'll review it".
+/// "Thanks, we'll review it", then "Also block @x?" offers to block the sender.
+///
+/// The block is offered only once the report is on file: a block deletes the share, so blocking
+/// first (or at the same time) would leave the report with nothing to point at. The same order as
+/// `SocialStore.reportAndBlock`.
 private struct ReportShareConfirmation: ViewModifier {
     @Binding var isPresented: Bool
     let share: SharedQuote
 
     @Environment(SocialStore.self) private var social
+    @State private var isOfferingBlock = false
 
     func body(content: Content) -> some View {
-        content.confirmationDialog("Report this quote?", isPresented: $isPresented, titleVisibility: .visible) {
-            ForEach(ReportReason.allCases) { reason in
-                Button(reason.title) {
-                    Task { await social.report(share, reason: reason) }
+        content
+            .confirmationDialog("Report this quote?", isPresented: $isPresented, titleVisibility: .visible) {
+                ForEach(ReportReason.allCases) { reason in
+                    Button(reason.title) { file(reason) }
                 }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("We review reports every day. The sender isn\u{2019}t told who reported it.")
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("We review reports every day. The sender isn\u{2019}t told who reported it.")
+            .confirmationDialog("Also block \(handle)?", isPresented: $isOfferingBlock, titleVisibility: .visible) {
+                Button("Block \(handle)", role: .destructive) {
+                    let social = self.social
+                    let share = self.share
+                    Task { await social.blockSender(of: share) }
+                }
+                Button("Not Now", role: .cancel) {}
+            } message: {
+                Text(BlockCopy.consequences(name: share.sender?.displayName ?? "They"))
+            }
+    }
+
+    private var handle: String {
+        share.sender?.handle ?? "the sender"
+    }
+
+    private func file(_ reason: ReportReason) {
+        let social = self.social
+        let share = self.share
+        Task {
+            guard await social.report(share, reason: reason) else { return }
+            // Still in the inbox (a block from elsewhere already removed it otherwise).
+            guard social.inbox.contains(where: { $0.id == share.id }) else { return }
+            isOfferingBlock = true
         }
     }
 }
@@ -419,7 +486,8 @@ enum ReportUserContext: Sendable {
 }
 
 /// "Report @maya?" with `ReportReason.allCases`, for a person rather than a quote (an offensive
-/// name, unwanted requests). `SocialStore.reportUser` files it and toasts "Thanks, we'll review it".
+/// name, unwanted requests). `SocialStore.reportUser` files it and toasts "Thanks, we'll review it",
+/// then (unless they are already blocked) "Also block @maya?" offers to block them.
 ///
 /// The server keeps the reported username; the details add where the report came from and the
 /// display name the reporter saw, which the person can change or delete later.
@@ -430,29 +498,69 @@ private struct ReportUserConfirmation: ViewModifier {
     let context: ReportUserContext
 
     @Environment(SocialStore.self) private var social
+    /// The person just reported, while "Also block?" asks.
+    @State private var blockCandidate: Profile?
 
     func body(content: Content) -> some View {
-        content.confirmationDialog(
-            "Report \(profile?.handle ?? "this person")?",
-            isPresented: $isPresented,
-            titleVisibility: .visible,
-            presenting: profile
-        ) { profile in
-            ForEach(ReportReason.allCases) { reason in
-                Button(reason.title) {
-                    let social = self.social
-                    let details = Self.details(for: profile, context: context)
-                    Task { await social.reportUser(profile.id, reason: reason, details: details) }
+        content
+            .confirmationDialog(
+                "Report \(profile?.handle ?? "this person")?",
+                isPresented: $isPresented,
+                titleVisibility: .visible,
+                presenting: profile
+            ) { profile in
+                ForEach(ReportReason.allCases) { reason in
+                    Button(reason.title) { file(reason, about: profile) }
                 }
+                Button("Cancel", role: .cancel) {}
+            } message: { profile in
+                Text("We review reports every day. \(profile.displayName) isn\u{2019}t told who reported them.")
             }
-            Button("Cancel", role: .cancel) {}
-        } message: { profile in
-            Text("We review reports every day. \(profile.displayName) isn\u{2019}t told who reported them.")
+            .confirmationDialog(
+                "Also block \(blockCandidate?.handle ?? "them")?",
+                isPresented: isOfferingBlock,
+                titleVisibility: .visible,
+                presenting: blockCandidate
+            ) { profile in
+                Button("Block \(profile.handle)", role: .destructive) {
+                    let social = self.social
+                    Task { await social.block(profile) }
+                }
+                Button("Not Now", role: .cancel) {}
+            } message: { profile in
+                Text(BlockCopy.consequences(name: profile.displayName))
+            }
+    }
+
+    private var isOfferingBlock: Binding<Bool> {
+        Binding(
+            get: { blockCandidate != nil },
+            set: { if !$0 { blockCandidate = nil } }
+        )
+    }
+
+    private func file(_ reason: ReportReason, about profile: Profile) {
+        let social = self.social
+        let details = Self.details(for: profile, context: context)
+        let offersBlock = context != .blockedUser
+        Task {
+            guard await social.reportUser(profile.id, reason: reason, details: details), offersBlock else { return }
+            guard !social.blockedProfiles.contains(where: { $0.id == profile.id }) else { return }
+            blockCandidate = profile
         }
     }
 
     private static func details(for profile: Profile, context: ReportUserContext) -> String {
         "Reported from \(context.summary). Display name when reported: \u{201C}\(profile.displayName)\u{201D}."
+    }
+}
+
+/// What blocking does, said the same way everywhere. Every claim holds on the server: the username
+/// lookup and friend requests ignore a blocked pair, shares need a friendship, and the block deletes
+/// the friendship and the shares in both directions.
+enum BlockCopy {
+    static func consequences(name: String) -> String {
+        "\(name) won\u{2019}t be able to find you by username or send you requests or quotes. Your friendship and the quotes you\u{2019}ve shared with each other are removed. They aren\u{2019}t told. You can unblock them in Account."
     }
 }
 
@@ -491,7 +599,7 @@ extension View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("\(name) won\u{2019}t be able to send you requests or quotes, and your friendship and shared quotes will be removed. You can unblock them in Account.")
+            Text(BlockCopy.consequences(name: name))
         }
     }
 }

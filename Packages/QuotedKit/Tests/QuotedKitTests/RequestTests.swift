@@ -117,7 +117,7 @@ struct RequestTests {
     @Test func createValidatesAndAsksForTheRow() async throws {
         let id = UUID()
         let server = StubServer { request in
-            request.path == "/rest/v1/quotes" ? .json(201, Self.quoteJSON(id, body: "Hello", origin: "pasted")) : .notFound(request)
+            request.path == "/rest/v1/quotes" ? .json(201, "[\(Self.quoteJSON(id, body: "Hello", origin: "pasted"))]") : .notFound(request)
         }
         let backend = try await server.makeSignedInBackend()
 
@@ -126,17 +126,65 @@ struct RequestTests {
         }
         #expect(server.requests.isEmpty)
 
-        let quote = try await backend.quotes.create(QuoteDraft(body: " Hello ", author: "  "), origin: .pasted)
+        let quote = try await backend.quotes.create(QuoteDraft(body: " Hello ", author: "  "), id: id, origin: .pasted)
         #expect(quote.id == id)
         let request = try #require(server.requests(table: "quotes").first)
         #expect(request.method == "POST")
         #expect(request.header("Prefer")?.contains("return=representation") == true)
-        #expect(request.header("Accept") == "application/vnd.pgrst.object+json")
         let body = try #require(request.json as? [String: Any])
+        #expect(body["id"] as? String == id.uuidString)
         #expect(body["body"] as? String == "Hello")
         #expect(body["author"] is NSNull)
         #expect(body["origin"] as? String == "pasted")
         #expect(body["owner_id"] == nil)
+    }
+
+    @Test func createRetryAfterALostAnswerReturnsTheFirstInsert() async throws {
+        // The first Save reached the server but its answer was lost; the retry with the same id hits
+        // the primary key, and the repository reads that quote back instead of adding a copy.
+        let id = UUID()
+        let server = StubServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/rest/v1/quotes"):
+                .json(409, #"{"code":"23505","details":"Key (id)=(\#(id.uuidString.lowercased())) already exists.","hint":null,"message":"duplicate key value violates unique constraint \"quotes_pkey\""}"#)
+            case ("GET", "/rest/v1/quotes"):
+                .json(200, "[\(Self.quoteJSON(id, body: "Hello", origin: "manual"))]")
+            default: .notFound(request)
+            }
+        }
+        let backend = try await server.makeSignedInBackend()
+        let quote = try await backend.quotes.create(QuoteDraft(body: "Hello"), id: id)
+        #expect(quote.id == id)
+        let read = try #require(server.requests.first { $0.method == "GET" })
+        #expect(read.query["id"] == "in.(\(id.uuidString))")
+    }
+
+    @Test func createConflictOnAnotherKeyIsStillAnError() async throws {
+        // A unique violation whose row is not ours (or not there) is a real conflict.
+        let server = StubServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/rest/v1/quotes"):
+                .json(409, #"{"code":"23505","details":null,"hint":null,"message":"duplicate key value violates unique constraint \"quotes_owner_rotation_position_key\""}"#)
+            case ("GET", "/rest/v1/quotes"): .json(200, "[]")
+            default: .notFound(request)
+            }
+        }
+        let backend = try await server.makeSignedInBackend()
+        await #expect(throws: QuotedError.validation("That already exists.")) {
+            try await backend.quotes.create(QuoteDraft(body: "Hello"))
+        }
+    }
+
+    @Test func quoteCapAndDailyLimitsReadAsLimits() async throws {
+        let server = StubServer { request in
+            request.path == "/rest/v1/quotes"
+                ? .json(400, #"{"code":"QR002","details":null,"hint":null,"message":"quote limit reached"}"#)
+                : .notFound(request)
+        }
+        let backend = try await server.makeSignedInBackend()
+        await #expect(throws: QuotedError.validation("You've reached the limit of \(Limits.quotesPerAccount.formatted()) quotes.")) {
+            try await backend.quotes.create(QuoteDraft(body: "Hello"))
+        }
     }
 
     @Test func updateMapsAMissingRowToNotFound() async throws {
@@ -248,7 +296,7 @@ struct RequestTests {
         let shareID = UUID()
         let server = StubServer { request in
             switch (request.method, request.path) {
-            case ("POST", "/rest/v1/quotes"): .json(201, Self.quoteJSON(UUID(), body: "Gift", origin: "shared"))
+            case ("POST", "/rest/v1/quotes"): .json(201, "[\(Self.quoteJSON(UUID(), body: "Gift", origin: "shared"))]")
             case ("PATCH", "/rest/v1/shares"): .json(500, #"{"code":"XX000","message":"boom"}"#)
             default: .notFound(request)
             }
@@ -269,10 +317,13 @@ struct RequestTests {
     @Test func friendRequestLooksUpTheUsernameFirst() async throws {
         let server = StubServer { request in
             switch (request.method, request.path) {
+            case ("POST", "/rest/v1/rpc/find_profile"):
+                (request.json as? [String: Any])?["p_username"] as? String == "bob"
+                    ? .json(200, #"[{"id":"\#(Self.friend)","username":"bob","display_name":null}]"#)
+                    : .json(200, "[]")
             case ("GET", "/rest/v1/profiles"):
-                request.query["username"] == "eq.bob"
-                    ? .json(200, #"{"id":"\#(Self.friend)","username":"bob","display_name":null}"#)
-                    : .json(406, #"{"code":"PGRST116","details":"The result contains 0 rows","message":"none"}"#)
+                // myProfile(), asked only when the lookup is empty (your own name is never found).
+                .json(200, #"{"id":"\#(Self.me)","username":"myname","display_name":null}"#)
             case ("POST", "/rest/v1/friendships"):
                 .json(403, #"{"code":"42501","details":null,"hint":null,"message":"new row violates row-level security policy for table \"friendships\""}"#)
             default: .notFound(request)
@@ -280,7 +331,11 @@ struct RequestTests {
         }
         let backend = try await server.makeSignedInBackend()
         await #expect(throws: QuotedError.notFound) { try await backend.social.sendFriendRequest(toUsername: "nobody") }
-        await #expect(throws: QuotedError.validation("You can't send a friend request to this person.")) {
+        await #expect(throws: QuotedError.validation("That's your own username.")) {
+            try await backend.social.sendFriendRequest(toUsername: "MyName")
+        }
+        // A block (RLS) reads exactly like an unknown username.
+        await #expect(throws: QuotedError.notFound) {
             try await backend.social.sendFriendRequest(toUsername: "@Bob")
         }
         let insert = try #require(server.requests(table: "friendships").first)
@@ -371,6 +426,49 @@ struct RequestTests {
         #expect((first[0]["body_format"] as? [[String: Any]])?.first?["italic"] as? Bool == true)
         let retry = try #require(requests[1].json as? [[String: Any]])
         #expect(retry[0]["quote_id"] is NSNull)
+    }
+
+    @Test func markSeenSendsLargeListsInBatches() async throws {
+        let server = StubServer { request in
+            request.path == "/rest/v1/shares" ? .noContent : .notFound(request)
+        }
+        let backend = try await server.makeSignedInBackend()
+        let ids = (0..<(SocialRepository.deleteBatchSize + 50)).map { _ in UUID() }
+        try await backend.social.markSeen(ids)
+        let patches = server.requests(table: "shares")
+        #expect(patches.count == 2)
+        #expect(patches.allSatisfy { $0.method == "PATCH" && $0.query["seen_at"]?.lowercased() == "is.null" })
+    }
+
+    @Test func usernameAvailabilityAsksTheServerFunction() async throws {
+        let server = StubServer { request in
+            request.path == "/rest/v1/rpc/is_username_available" ? .json(200, "false") : .notFound(request)
+        }
+        let backend = try await server.makeSignedInBackend()
+        #expect(try await backend.social.isUsernameAvailable("@Support") == false)
+        let call = try #require(server.requests.first)
+        #expect(call.method == "POST")
+        #expect((call.json as? [String: Any])?["p_username"] as? String == "support")
+    }
+
+    @Test func shareRetryAfterALostAnswerReturnsTheSentShares() async throws {
+        let shareID = UUID()
+        let server = StubServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/rest/v1/shares"):
+                .json(409, #"{"code":"23505","details":null,"hint":null,"message":"duplicate key value violates unique constraint \"shares_pkey\""}"#)
+            case ("GET", "/rest/v1/shares"):
+                .json(200, "[\(Self.shareJSON(shareID, sent: true))]")
+            default: .notFound(request)
+            }
+        }
+        let backend = try await server.makeSignedInBackend()
+        let sent = try await backend.social.share(Quote(body: "B"), to: [Self.friend], ids: [Self.friend: shareID])
+        #expect(sent.map(\.id) == [shareID])
+        let insert = try #require(server.requests.first { $0.method == "POST" })
+        #expect((insert.json as? [[String: Any]])?.first?["id"] as? String == shareID.uuidString)
+        let read = try #require(server.requests.first { $0.method == "GET" })
+        #expect(read.query["sender_id"] == "eq.\(Self.me.uuidString)")
     }
 
     @Test func markSeenOnlyStampsUnseenReceivedShares() async throws {
@@ -611,6 +709,41 @@ struct RequestTests {
         await #expect(throws: QuotedError.validation("Check your email address.")) {
             _ = try await backend.auth.signUp(email: "not-an-email", password: "secret123")
         }
+    }
+
+    @Test func signInAnonymouslyCreatesAnAccountWithoutEmail() async throws {
+        let server = StubServer { request in
+            request.path == "/auth/v1/signup" ? .json(200, StubServer.sessionJSON(anonymous: true)) : .notFound(request)
+        }
+        let backend = server.makeBackend()
+        var iterator = backend.auth.sessionChanges.makeAsyncIterator()
+        #expect(await iterator.next() == .some(nil))
+        let id = try await backend.auth.signInAnonymously()
+        #expect(id == Self.me)
+        #expect(await iterator.next() == .some(Self.me))
+        #expect(backend.auth.currentUserID == Self.me)
+        #expect(backend.auth.isAnonymous)
+        #expect(backend.auth.currentEmail == nil)
+        let request = try #require(server.requests.first)
+        #expect(request.method == "POST")
+        let body = try #require(request.body)
+        let fields = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(fields["email"] == nil)
+        #expect(fields["password"] == nil)
+    }
+
+    @Test func signInAnonymouslyExplainsADisabledProvider() async throws {
+        let server = StubServer { request in
+            request.path == "/auth/v1/signup"
+                ? .authError(422, code: "anonymous_provider_disabled", message: "Anonymous sign-ins are disabled")
+                : .notFound(request)
+        }
+        let backend = server.makeBackend()
+        await #expect(throws: QuotedError.validation("Quoted can't create your account right now: anonymous sign-ins are turned off on the server.")) {
+            try await backend.auth.signInAnonymously()
+        }
+        #expect(backend.auth.currentUserID == nil)
+        #expect(!backend.auth.isAnonymous)
     }
 
     @Test func sessionChangesFollowSignInAndOut() async throws {

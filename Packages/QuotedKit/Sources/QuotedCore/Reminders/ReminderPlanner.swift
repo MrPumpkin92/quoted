@@ -123,10 +123,11 @@ public enum ReminderPlanner {
 }
 
 extension ReminderPlanner {
-    /// The state behind ``RotationState/updated(with:at:seed:settings:calendar:)``: the Rotation
-    /// `quoteIDs` continuing `old`'s cycle.
+    /// The state behind ``RotationState/updated(with:at:seed:settings:previousSettings:calendar:)``:
+    /// the Rotation `quoteIDs` under `settings`, continuing `old`'s cycle, which ran under `oldSettings`.
     static func continuation(
         of old: RotationState,
+        under oldSettings: ReminderSettings,
         with quoteIDs: [UUID],
         at now: Date,
         seed: UInt64,
@@ -138,26 +139,28 @@ extension ReminderPlanner {
         var state = RotationState(quoteIDs: quoteIDs, anchor: anchor, seed: seed)
         guard !quoteIDs.isEmpty else { return state }
 
-        let schedule = Schedule(settings: settings, calendar: calendar)
         let newMapper = QuoteMapper(rotation: state, order: settings.order)
         let nextPosition = old.quoteIDs.isEmpty
             ? 0
-            : nextCyclePosition(after: old, in: newMapper, at: now, schedule: schedule, order: settings.order)
-        // Every slot from the anchor up to `now` is behind us, so the next slot's ordinal is their count.
-        let passed = schedule.count(from: anchor, to: now, includingEnd: true)
+            : nextCyclePosition(after: old, under: oldSettings, in: newMapper, at: now, calendar: calendar)
+        // Every slot of the new schedule from the anchor up to `now` is behind us, so the next slot's
+        // ordinal is their count.
+        let passed = Schedule(settings: settings, calendar: calendar).count(from: anchor, to: now, includingEnd: true)
         state.startIndex = QuoteMapper.modulo(nextPosition - passed, quoteIDs.count)
         return state
     }
 
-    /// The position in `newMapper`'s cycle that the next slot should play when `old` is replaced.
+    /// The position in `newMapper`'s cycle that the next slot should play when `old`, which ran under
+    /// `oldSettings`, is replaced.
     private static func nextCyclePosition(
         after old: RotationState,
+        under oldSettings: ReminderSettings,
         in newMapper: QuoteMapper,
         at now: Date,
-        schedule: Schedule,
-        order: ReminderOrder
+        calendar: Calendar
     ) -> Int {
-        let oldMapper = QuoteMapper(rotation: old, order: order)
+        let oldMapper = QuoteMapper(rotation: old, order: oldSettings.order)
+        let schedule = Schedule(settings: oldSettings, calendar: calendar)
         let passed = now < old.anchor ? 0 : schedule.count(from: old.anchor, to: now, includingEnd: true)
         // The quote on screen: the most recent slot's, or the upcoming one before any slot has passed.
         let currentPosition = oldMapper.position(forOrdinal: max(0, passed - 1))

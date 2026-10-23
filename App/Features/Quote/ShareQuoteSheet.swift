@@ -1,15 +1,22 @@
 import QuotedCore
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// The share sheet (docs/ui-spec.md §11), in two parts:
+/// The share sheet (docs/ui-spec.md §11): a preview of the image card, then two ways to share.
 ///
 /// - **Send to a friend:** tap friends to select them, add an optional note (up to 280 characters) and
 ///   Send. Send shows progress while `SocialStore.send` waits for the server; on success the sheet
 ///   closes and the store shows "Sent to Maya" with Undo (Undo deletes the sent shares). On failure the
-///   store toasts and the sheet stays open with the selection and the note. With no friends yet, a link
-///   to the Friends tab.
-/// - **Other ways:** the system share sheet with the `QuoteCard` image (rendered at 3x, light), or the
-///   plain text `“body” — Author, Source`.
+///   store toasts and the sheet stays open with the selection and the note. A friend who is no longer
+///   a friend after a refresh drops out of the selection. If friends can't load, the section says so
+///   with Try again; "Other ways" works either way.
+/// - **Other ways:** the system share sheet with the `QuoteCard` image (light, 3x), or the plain text
+///   `“body” — Author, Source`. With no friends yet, "Share image" is the one filled action and a quiet
+///   link goes to Friends.
+///
+/// The preview draws the same view the image is rendered from, scaled to fit, so opening the sheet
+/// never builds a bitmap. The 3x image is rendered only when a share target asks for it
+/// (`QuoteCardImage`).
 struct ShareQuoteSheet: View {
     let quote: Quote
 
@@ -20,12 +27,15 @@ struct ShareQuoteSheet: View {
     /// Selected friends, in tap order (the toast names them in this order).
     @State private var selected: [UUID] = []
     @State private var note = ""
-    @State private var cardImage: Image?
     @State private var isSending = false
+    @State private var isRetrying = false
+    @State private var detent: PresentationDetent = .large
+    /// A small top crop of the card for the system share sheet's header, rendered after the sheet
+    /// has opened.
+    @State private var thumbnail: Image?
     @FocusState private var isNoteFocused: Bool
 
     @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 40
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(quote: Quote) {
         self.quote = quote
@@ -35,9 +45,16 @@ struct ShareQuoteSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.group) {
-                    preview
-                    sendSection
-                    otherWaysSection
+                    ShareCardPreview(quote: quote)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Image card preview")
+                        .accessibilityValue(shareLine)
+                    if friendsState == .noFriends {
+                        noFriendsContent
+                    } else {
+                        sendSection
+                        otherWaysSection(includesImage: true)
+                    }
                 }
                 .padding(.horizontal, Theme.Spacing.gutter)
                 .padding(.vertical, Theme.Spacing.m)
@@ -52,24 +69,41 @@ struct ShareQuoteSheet: View {
                 }
             }
         }
+        .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
         .task {
-            renderCardImage()
             await social.refreshIfStale()
+        }
+        .task {
+            await renderThumbnail()
+        }
+        .onChange(of: friendIDs) { _, ids in
+            // Someone unfriended you (or was blocked) while the sheet was open: an invisible
+            // selection would make Send fail with "You can only share with friends".
+            selected.removeAll { !ids.contains($0) }
+        }
+        .onChange(of: isNoteFocused) { _, focused in
+            if focused { detent = .large }
         }
     }
 
-    // MARK: Preview
+    // MARK: Friends state
 
-    private var preview: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            QuoteText(quote, style: .compact, lineLimit: 3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            AttributionLine(quote)
-        }
-        .card()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Sharing: \(shareLine)")
+    private enum FriendsState: Equatable {
+        case list
+        case noFriends
+        case loading
+        case failed
+    }
+
+    private var friendsState: FriendsState {
+        if !social.friends.isEmpty { return .list }
+        if social.hasLoaded { return .noFriends }
+        return social.lastError == nil ? .loading : .failed
+    }
+
+    private var friendIDs: [UUID] {
+        social.friendProfiles.map(\.id)
     }
 
     // MARK: Send to a friend
@@ -77,24 +111,70 @@ struct ShareQuoteSheet: View {
     private var sendSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
             sectionHeader("Send to a friend")
-            if social.friends.isEmpty {
-                if social.hasLoaded {
-                    noFriends
-                } else {
-                    DelayedProgressView(label: "Loading friends")
-                        .frame(maxWidth: .infinity, minHeight: 88)
-                }
-            } else {
+            switch friendsState {
+            case .list:
                 friendList
                     .disabled(isSending)
                 noteField
                     .disabled(isSending)
-                PrimaryButton(sendTitle, systemImage: "paperplane.fill", isLoading: isSending) {
-                    send()
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    PrimaryButton(sendTitle, systemImage: "paperplane.fill", isLoading: isSending) {
+                        send()
+                    }
+                    .disabled(selected.isEmpty || isNoteTooLong)
+                    Text("They\u{2019}ll see it next time they open Quoted.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Theme.Spacing.xxs)
                 }
-                .disabled(selected.isEmpty || isNoteTooLong)
+            case .loading, .noFriends:
+                DelayedProgressView(label: "Loading friends")
+                    .frame(maxWidth: .infinity, minHeight: 88)
+            case .failed:
+                loadFailed
             }
         }
+    }
+
+    private var loadFailed: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Label {
+                Text("Couldn\u{2019}t load your friends")
+                    .font(.headline)
+            } icon: {
+                Image(systemName: "wifi.exclamationmark")
+                    .foregroundStyle(.secondary)
+            }
+            if let error = social.lastError {
+                Text(error.friendlyMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("You can still share it another way below.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                retry()
+            } label: {
+                // The 44-pt target is in the label: a frame outside a Button adds no hit area.
+                ZStack {
+                    Text("Try again").opacity(isRetrying ? 0 : 1)
+                    if isRetrying {
+                        ProgressView()
+                    }
+                }
+                .capsuleButtonLabel()
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .disabled(isRetrying)
+            .accessibilityLabel(isRetrying ? "Loading friends" : "Try again")
+            .padding(.top, Theme.Spacing.xxs)
+        }
+        .card()
     }
 
     private var friendList: some View {
@@ -123,11 +203,14 @@ struct ShareQuoteSheet: View {
                     Text(friend.handle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // `.secondary`, not `.tertiary`, for the empty circle: it is the control's only mark.
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, Theme.Spacing.cardPadding)
@@ -159,53 +242,68 @@ struct ShareQuoteSheet: View {
         .card(padding: Theme.Spacing.s + Theme.Spacing.xxs)
     }
 
-    private var noFriends: some View {
-        let tileLayout = IconTile.layout(for: dynamicTypeSize, alignment: .top)
-        return CardContainer {
-            tileLayout {
-                IconTile(systemName: "person.2.fill")
-                VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                    Text("Add friends to send quotes in Quoted")
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button {
-                        router.dismissSheet()
-                        router.select(.friends)
-                    } label: {
-                        // The 44-pt target is in the label: a frame outside a Button adds no hit area.
-                        Text("Go to Friends")
-                            .fontWeight(.semibold)
-                            .capsuleButtonLabel()
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                }
+    // MARK: No friends yet
+
+    /// With no friends, sharing the image is the action: one filled "Share image", the text as a row
+    /// under it, and a quiet way to Friends (which closes the sheet).
+    private var noFriendsContent: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.group) {
+            imageShareLink {
+                Label("Share image", systemImage: "square.and.arrow.up")
             }
+            .buttonStyle(.primary)
+            otherWaysSection(includesImage: false)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("To send quotes inside Quoted, add friends by username.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    router.dismissSheet()
+                    router.select(.friends)
+                } label: {
+                    // The 44-pt target is in the label: a frame outside a Button adds no hit area.
+                    Text("Go to Friends")
+                        .font(.footnote.weight(.semibold))
+                        .frame(minHeight: Theme.Metrics.minTouchTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityHint("Closes this sheet and opens Friends")
+            }
+            .padding(.horizontal, Theme.Spacing.xxs)
         }
     }
 
     // MARK: Other ways
 
-    private var otherWaysSection: some View {
+    private func otherWaysSection(includesImage: Bool) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-            sectionHeader("Other ways")
+            sectionHeader(includesImage ? "Other ways" : "Or share the text")
             CardContainer(padding: 0) {
-                if let cardImage {
-                    ShareLink(item: cardImage, preview: SharePreview("Quote card", image: cardImage)) {
+                if includesImage {
+                    imageShareLink {
                         otherWayRow("Share as image", systemImage: "photo")
                     }
                     .buttonStyle(.plain)
-                } else {
-                    otherWayRow("Share as image", systemImage: "photo")
-                        .opacity(0.4)
-                        .accessibilityLabel("Share as image, preparing")
+                    HairlineDivider(leadingInset: Theme.Spacing.cardPadding + 28 + Theme.Spacing.s)
                 }
-                HairlineDivider(leadingInset: Theme.Spacing.cardPadding + 28 + Theme.Spacing.s)
                 ShareLink(item: shareLine) {
                     otherWayRow("Share as text", systemImage: "text.quote")
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    /// A ShareLink for the 3x card image, which renders only when a share target asks for it.
+    @ViewBuilder
+    private func imageShareLink<RowLabel: View>(@ViewBuilder label: () -> RowLabel) -> some View {
+        let item = QuoteCardImage(quote: quote)
+        if let thumbnail {
+            ShareLink(item: item, preview: SharePreview("Quote card", image: thumbnail), label: label)
+        } else {
+            ShareLink(item: item, preview: SharePreview("Quote card"), label: label)
         }
     }
 
@@ -254,15 +352,16 @@ struct ShareQuoteSheet: View {
     private var isNoteTooLong: Bool { noteLength > Limits.noteMaxLength }
 
     private var sendTitle: LocalizedStringKey {
-        switch selected.count {
+        // Only friends still in the list count (the selection is pruned when the list changes).
+        let names = selected.compactMap { id in social.friendProfiles.first { $0.id == id }?.displayName }
+        switch names.count {
         case 0:
             return "Send"
         case 1:
-            let name = social.friendProfiles.first { $0.id == selected[0] }?.displayName ?? "1 friend"
-            let first = name.split(separator: " ").first.map(String.init) ?? name
+            let first = names[0].split(separator: " ").first.map(String.init) ?? names[0]
             return "Send to \(first)"
         default:
-            return "Send to \(selected.count) friends"
+            return "Send to \(names.count) friends"
         }
     }
 
@@ -280,16 +379,109 @@ struct ShareQuoteSheet: View {
         guard !isSending else { return }
         isNoteFocused = false
         isSending = true
+        let friends = Set(friendIDs)
+        let recipients = selected.filter { friends.contains($0) }
         Task {
-            let sent = await social.send(quote, to: selected, note: note)
+            let sent = await social.send(quote, to: recipients, note: note)
             isSending = false
             if sent { dismiss() }
         }
     }
 
-    private func renderCardImage() {
-        guard cardImage == nil, let image = QuoteCard.shareImage(for: quote) else { return }
-        cardImage = Image(uiImage: image)
+    private func retry() {
+        guard !isRetrying else { return }
+        isRetrying = true
+        Task {
+            await social.refresh(userInitiated: true)
+            isRetrying = false
+        }
+    }
+
+    /// Renders the share-sheet thumbnail once the sheet is up (a square top crop at 2x, so a long
+    /// quote costs no more than a short one).
+    private func renderThumbnail() async {
+        guard thumbnail == nil else { return }
+        try? await Task.sleep(for: .milliseconds(300))
+        guard !Task.isCancelled else { return }
+        let side = QuoteCardImage.width
+        let renderer = ImageRenderer(content: QuoteCardImage.Content(quote: quote)
+            .frame(width: side, height: side, alignment: .top)
+            .clipped())
+        renderer.scale = 2
+        if let image = renderer.uiImage {
+            thumbnail = Image(uiImage: image)
+        }
+    }
+}
+
+// MARK: - Card image
+
+/// The quote card as a PNG for the system share sheet. The image is the `QuoteCard` with the wordmark,
+/// light, at 3x (`QuoteCard.shareImage(for:)`); it is rendered only when the share target asks for
+/// the data, so opening the share sheet (or a quote that is never shared as an image) costs nothing.
+struct QuoteCardImage: Transferable {
+    let quote: Quote
+
+    /// The width `QuoteCard.shareImage(for:)` renders at.
+    static let width: CGFloat = 390
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .png) { card in
+            try await card.pngData()
+        }
+        .suggestedFileName("Quote.png")
+    }
+
+    @MainActor
+    private func pngData() throws -> Data {
+        guard let data = QuoteCard.shareImage(for: quote, width: Self.width)?.pngData() else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        return data
+    }
+
+    /// The view the image is made of, for on-screen previews: the same composition as
+    /// `QuoteCard.shareImage(for:)` (keep the two in step).
+    struct Content: View {
+        let quote: Quote
+
+        var body: some View {
+            QuoteCard(quote, inReminders: false, showsWordmark: true)
+                .frame(width: QuoteCardImage.width - 2 * Theme.Spacing.gutter)
+                .padding(Theme.Spacing.gutter)
+                .background(Color.ground)
+                .environment(\.colorScheme, .light)
+                .environment(\.dynamicTypeSize, .large)
+        }
+    }
+}
+
+/// The image card as it will be sent, drawn live and scaled down to fit the sheet (at most
+/// `maxHeight` tall), with a hairline and rounded corners so its light background reads as an
+/// image in dark mode too.
+private struct ShareCardPreview: View {
+    let quote: Quote
+
+    @State private var cardHeight: CGFloat = 0
+    @State private var availableWidth: CGFloat = 0
+    @ScaledMetric(relativeTo: .body) private var maxHeight: CGFloat = 240
+
+    var body: some View {
+        let width = QuoteCardImage.width
+        let fitWidth = availableWidth > 0 ? availableWidth / width : 1
+        let fitHeight = cardHeight > 0 ? min(maxHeight, 420) / cardHeight : 1
+        let scale = min(1, fitWidth, fitHeight)
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.tile, style: .continuous)
+        QuoteCardImage.Content(quote: quote)
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: width * scale, height: cardHeight * scale, alignment: .topLeading)
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.hairline, lineWidth: Theme.Metrics.hairline))
+            .opacity(cardHeight > 0 ? 1 : 0)
+            .frame(maxWidth: .infinity)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
     }
 }
 

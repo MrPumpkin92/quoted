@@ -4,9 +4,22 @@
 // on the server) and that "Search the web" opens the Safari app. The seeded-account flow below adds
 // the inbox (save, delete + Undo), a friend request, and deep links that must not discard a draft.
 //
-// Run `supabase start` first. Local auth auto-confirms email, so a throwaway account goes straight
-// from Create account to Username. The app is launched with `-UITestReset`, which clears any session,
-// App Group data and preferences a previous run left behind.
+// The app has no sign-in screen. Every test launches it with `-UITestReset`, which clears any
+// session, App Group data and preferences a previous run left behind, so the happy path starts on
+// Welcome; Get started creates a new anonymous account and opens "Choose a username". Run
+// `supabase start` first, with
+// `enable_anonymous_sign_ins = true` in supabase/config.toml (scripts/test.sh checks it).
+//
+// The seeded-account tests sign in to an email account through the app's DEBUG sign-in hook: they put
+// QUOTED_DEBUG_SIGNIN_EMAIL and QUOTED_DEBUG_SIGNIN_PASSWORD in the launch environment, and with no
+// stored session the app signs in with them instead of creating an anonymous account (DEBUG builds
+// against 127.0.0.1 or localhost only).
+//
+// The happy path reads its quotes back from the server with the local secret key, which bypasses
+// RLS. It uses TEST_RUNNER_QUOTED_LOCAL_SUPABASE_URL (default http://127.0.0.1:54321, the URL
+// Config/Local.xcconfig builds in; it must be the stack the app talks to) and
+// TEST_RUNNER_QUOTED_LOCAL_SECRET_KEY (no default: scripts/test.sh passes it), and refuses any
+// host but 127.0.0.1 or localhost.
 //
 // Notification priming only shows while the permission is undecided, so uninstall the app first
 // (`xcrun simctl uninstall <udid> com.hwei.quoted`) for the full flow; with the permission already
@@ -15,17 +28,16 @@
 // Every screen gets a screenshot attachment (kept on success). Export them with:
 //   xcrun xcresulttool export attachments --path <bundle>.xcresult --output-path build/screens
 //
-// The throwaway accounts are named `uitest-<time>@quoted.local`; delete them afterwards with
-// scripts/clean-local-test-users.sh (local stack only).
+// Each happy-path run leaves an anonymous account with the username `ui<time>`; delete them afterwards
+// with scripts/clean-local-test-users.sh (local stack only).
 
 import Synchronization
 import XCTest
 
 final class QuotedUITests: XCTestCase {
-    /// The local stack the Debug-Local build talks to.
-    private static let supabaseURL = "http://127.0.0.1:54321"
-    /// The local stack's demo publishable key (the same one Config/Local.xcconfig ships).
-    private static let publishableKey = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
+    /// The local stack the Debug-Local build talks to (Config/Local.xcconfig), unless
+    /// TEST_RUNNER_QUOTED_LOCAL_SUPABASE_URL names another one.
+    private static let defaultSupabaseURL = "http://127.0.0.1:54321"
 
     private static let emersonBody = "Trust thyself: every heart vibrates to that iron string."
     private static let emersonAuthor = "Ralph Waldo Emerson"
@@ -53,46 +65,50 @@ final class QuotedUITests: XCTestCase {
 
     @MainActor
     private func runHappyPath() throws {
+        // Checked first, so a bad URL or key fails before the long UI flow.
+        let server: LocalServer
+        do {
+            server = try LocalServer.fromEnvironment()
+        } catch {
+            XCTFail("\(error)")
+            throw StepFailed()
+        }
         let stamp = String(Int(Date().timeIntervalSince1970) % 100_000_000)
-        let email = "uitest-\(stamp)@quoted.local"
-        let password = "Ui-\(UUID().uuidString.prefix(12))"
         let username = "ui\(stamp)"
 
         let app = XCUIApplication()
         app.launchArguments += ["-UITestReset", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
 
-        // 1. Welcome → Create account.
-        let switchToCreate = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New here?")).firstMatch
-        try waitFor(switchToCreate, timeout: 20)
-        snapshot("01-welcome")
-        switchToCreate.tap()
-        try waitFor(app.buttons["Already have an account? Sign in"])
-
-        let emailField = field(app.textFields, label: "Email", placeholder: "name@example.com")
-        try waitFor(emailField)
-        emailField.tap()
-        emailField.typeText(email)
-        let passwordField = field(app.secureTextFields, label: "Password", placeholder: "8+ characters")
-        passwordField.tap()
-        if dismissStrongPasswordSuggestion(in: app) {
-            passwordField.tap()
-        }
-        passwordField.typeText(password)
-        snapshot("02-create-account")
-        app.buttons["Create account"].tap()
-        dismissSavePasswordPrompt(in: app)
+        // 1. No sign-in: Welcome, with one Get started button and the Terms consent line. Get started
+        // creates an anonymous account (allow for the sign-in call) and opens Choose a username.
+        let getStarted = app.buttons["Get started"]
+        try waitFor(getStarted, timeout: 20)
+        XCTAssertTrue(element(in: app, labelContaining: "By continuing you agree").exists, "Welcome should show the consent line")
+        snapshot("00-welcome")
+        getStarted.tap()
+        try waitFor(app.staticTexts["Choose a username"], timeout: 20)
+        let usernameField = field(app.textFields, label: "Username", placeholder: "yourname")
+        try waitFor(usernameField)
+        snapshot("01-new-account-username")
+        XCTAssertFalse(
+            field(app.textFields, label: "Email", placeholder: "name@example.com").exists,
+            "A new anonymous account should show no Email field"
+        )
+        let accountButtons = app.buttons.matching(NSPredicate(
+            format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS[c] %@",
+            "Create account", "Sign in", "Sign out"
+        ))
+        XCTAssertEqual(accountButtons.count, 0, "A new anonymous account should show no Create account, Sign in or Sign out")
 
         // 2. Username.
-        let usernameField = field(app.textFields, label: "Username", placeholder: "yourname")
-        try waitFor(usernameField, timeout: 20)
         usernameField.tap()
         usernameField.typeText(username)
         try waitFor(app.images["Available"], timeout: 15)
         let displayName = field(app.textFields, label: "Display name", placeholder: "Optional")
         displayName.tap()
         displayName.typeText("Alex Tester")
-        snapshot("03-username")
+        snapshot("02-username-filled")
         app.buttons["Continue"].tap()
 
         // 3. Starter pack: pick the first three quotes.
@@ -148,11 +164,12 @@ final class QuotedUITests: XCTestCase {
         snapshot("08-add-quote")
         app.navigationBars["New quote"].buttons["Save"].tap()
 
-        // 7. It appears in the library.
+        // 7. It appears in the library. Wait for the sheet to close first: its editor also contains
+        // "Trust thyself", and a slow save keeps the sheet up with a spinner.
+        XCTAssertTrue(app.navigationBars["New quote"].waitForNonExistence(timeout: 30), "The Add sheet should close after saving")
         let newRow = element(in: app, labelContaining: "Trust thyself")
         try waitFor(newRow, timeout: 20)
         try waitFor(app.staticTexts["4 quotes"])
-        XCTAssertFalse(app.navigationBars["New quote"].exists, "The Add sheet should close after saving")
         snapshot("09-library-with-new-quote")
 
         // 8. Its detail screen, then back.
@@ -241,13 +258,19 @@ final class QuotedUITests: XCTestCase {
         try waitFor(app.navigationBars["Account"])
         try waitFor(element(in: app, labelContaining: "@\(username)"))
         snapshot("16-account")
+        // The bottom of Account: Delete account and the anonymous-account footer, and no Sign out.
+        app.swipeUp()
+        try waitFor(element(in: app, labelContaining: "Your account belongs to this iPhone"))
+        try waitFor(app.buttons["Delete account"])
+        XCTAssertFalse(app.buttons["Sign out"].exists, "An anonymous account should have no Sign out")
+        snapshot("16b-account-bottom")
 
         // The server kept the bold run: "Trust thyself" is UTF-16 0..<13. Both Undos reached the
         // server too: four quotes, with Hope back at reminder position 1 and Beware (deleted, then
         // restored) at 2.
         let saved: [SavedQuote]
         do {
-            saved = try fetchQuotesWaiting(email: email, password: password)
+            saved = try fetchQuotesWaiting(username: username, server: server)
         } catch {
             XCTFail("Couldn't read the quotes back from the local stack: \(error)")
             return
@@ -285,8 +308,10 @@ final class QuotedUITests: XCTestCase {
     ///     TEST_RUNNER_QUOTED_QA_QUOTE_ID=<a quote in reminders> xcodebuild test ... \
     ///       -only-testing:QuotedUITests/QuotedUITests/testFriendsInboxAndDeepLinks
     ///
+    /// The app signs in to the account through its DEBUG sign-in hook (`launchSignedIn`).
     /// Expects one unseen share (seeded with `--accept`) and one incoming request (`--no-share`).
-    /// With `TEST_RUNNER_QUOTED_QA_DELETE=1` it ends by deleting the account from Account.
+    /// With `TEST_RUNNER_QUOTED_QA_DELETE=1` it ends by deleting the account from Account, after which
+    /// the app returns to Welcome.
     @MainActor
     func testFriendsInboxAndDeepLinks() throws {
         let environment = ProcessInfo.processInfo.environment
@@ -303,48 +328,23 @@ final class QuotedUITests: XCTestCase {
     }
 
     /// Signs the simulator into an existing LOCAL account and stops, so the app is ready for manual QA
-    /// (the session stays in the simulator's keychain). Skipped unless the runner gets the account;
-    /// `scripts/sign-in-local-demo.sh` passes the demo account from build/demo-account.txt.
+    /// (the session stays in the simulator's keychain, and later launches use it). Skipped unless the
+    /// runner gets the account; `scripts/sign-in-local-demo.sh` passes the demo account from
+    /// build/demo-account.txt. The app signs in through its DEBUG sign-in hook (`launchSignedIn`).
     @MainActor
     func testSignInForManualQA() throws {
         let environment = ProcessInfo.processInfo.environment
         guard let email = environment["QUOTED_SIGNIN_EMAIL"], let password = environment["QUOTED_SIGNIN_PASSWORD"] else {
             throw XCTSkip("Set TEST_RUNNER_QUOTED_SIGNIN_EMAIL and TEST_RUNNER_QUOTED_SIGNIN_PASSWORD to sign in for manual QA.")
         }
-        let app = XCUIApplication()
-        app.launchArguments += ["-UITestReset", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launch()
-        let emailField = field(app.textFields, label: "Email", placeholder: "name@example.com")
-        try waitFor(emailField, timeout: 20)
-        emailField.tap()
-        emailField.typeText(email)
-        let passwordField = field(app.secureTextFields, label: "Password", placeholder: "Your password")
-        passwordField.tap()
-        passwordField.typeText(password)
-        app.buttons["Sign in"].tap()
-        dismissSavePasswordPrompt(in: app)
-        try waitFor(app.navigationBars["Library"], timeout: 20)
+        _ = try launchSignedIn(email: email, password: password)
+        snapshot("manual-qa-signed-in")
     }
 
     @MainActor
     private func runFriendsInboxAndDeepLinks(email: String, password: String, quoteID: String?) throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["-UITestReset", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launch()
-
-        // Sign in.
-        let emailField = field(app.textFields, label: "Email", placeholder: "name@example.com")
-        try waitFor(emailField, timeout: 20)
-        emailField.tap()
-        emailField.typeText(email)
-        let passwordField = field(app.secureTextFields, label: "Password", placeholder: "Your password")
-        passwordField.tap()
-        passwordField.typeText(password)
-        app.buttons["Sign in"].tap()
-        dismissSavePasswordPrompt(in: app)
-
         // Library: the unseen share shows as "1 shared with you".
-        try waitFor(app.navigationBars["Library"], timeout: 20)
+        let app = try launchSignedIn(email: email, password: password)
         let sharedRow = element(in: app, labelContaining: "shared with you")
         try waitFor(sharedRow, timeout: 15)
         snapshot("qa-01-library-shared-row")
@@ -385,7 +385,7 @@ final class QuotedUITests: XCTestCase {
         snapshot("qa-05-friends-accepted")
 
         // Deep links are opened through the system (like a notification or widget tap);
-        // `app.open(_:)` would relaunch with `-UITestReset` and sign out.
+        // `app.open(_:)` would relaunch with `-UITestReset` and start over with a new session.
         // A link never discards a draft: with text typed in Add it waits until the sheet closes.
         app.tabBars.buttons["Library"].tap()
         try waitFor(app.navigationBars["Library"])
@@ -440,8 +440,24 @@ final class QuotedUITests: XCTestCase {
         try waitFor(confirm)
         snapshot("qa-09-delete-confirm")
         confirm.tap()
-        try waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "New here?")).firstMatch, timeout: 20)
+        // Back to Welcome; Get started would create a new, empty account.
+        try waitFor(app.buttons["Get started"], timeout: 30)
         snapshot("qa-10-deleted-welcome")
+    }
+
+    /// Launches the app with no stored session (`-UITestReset`) and the local email account in the
+    /// launch environment. The app has no sign-in screen; its DEBUG sign-in hook signs in with these
+    /// instead of creating an anonymous account. Waits for Library (allowing for the sign-in call). A
+    /// failed sign-in stays on the launch screen with the error and Try again.
+    @MainActor
+    private func launchSignedIn(email: String, password: String) throws -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-UITestReset", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment["QUOTED_DEBUG_SIGNIN_EMAIL"] = email
+        app.launchEnvironment["QUOTED_DEBUG_SIGNIN_PASSWORD"] = password
+        app.launch()
+        try waitFor(app.navigationBars["Library"], timeout: 30)
+        return app
     }
 
     /// iOS may ask "Open in “Quoted”?" before handing a URL to the app.
@@ -526,58 +542,60 @@ final class QuotedUITests: XCTestCase {
         }
     }
 
-    /// iOS offers "Use Strong Password?" on a new-password field; close it and type our own.
-    /// Returns whether it was showing.
-    @MainActor
-    @discardableResult
-    private func dismissStrongPasswordSuggestion(in app: XCUIApplication) -> Bool {
-        guard app.staticTexts["Use Strong Password?"].waitForExistence(timeout: 3) else { return false }
-        snapshot("02a-strong-password-offer")
-        for label in ["Close", "Not Now", "Choose My Own Password", "Cancel"] {
-            let button = app.buttons[label]
-            if button.exists {
-                button.tap()
-                return true
-            }
-        }
-        // The sheet's close button may have no label: it is the first button of the sheet.
-        app.sheets.buttons.firstMatch.tap()
-        return true
-    }
-
-    /// iOS asks "Save Password?" after a sign-up or sign-in; answer Not Now (in the app or
-    /// SpringBoard). The prompt arrives a moment after the next screen and can ignore a tap made
-    /// while it animates in, so keep tapping until it is gone.
-    @MainActor
-    private func dismissSavePasswordPrompt(in app: XCUIApplication) {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let deadline = Date().addingTimeInterval(12)
-        var tapped = false
-        while Date() < deadline {
-            if let notNow = [app.buttons["Not Now"], springboard.buttons["Not Now"]].first(where: \.exists) {
-                if !tapped { snapshot("02b-save-password-offer") }
-                if notNow.isHittable { notNow.tap() }
-                tapped = true
-                Thread.sleep(forTimeInterval: 1)
-            } else if tapped {
-                return
-            } else {
-                Thread.sleep(forTimeInterval: 0.5)
-            }
-        }
-    }
-
     // MARK: Server check (local stack only)
+
+    /// The local stack the tests read directly, with the secret key (it bypasses RLS):
+    /// TEST_RUNNER_QUOTED_LOCAL_SUPABASE_URL (or the default URL) and TEST_RUNNER_QUOTED_LOCAL_SECRET_KEY.
+    /// Refuses any host but 127.0.0.1 or localhost, so the secret key never goes anywhere else.
+    private struct LocalServer: Sendable {
+        let baseURL: String
+        let secretKey: String
+
+        static func fromEnvironment() throws -> LocalServer {
+            let environment = ProcessInfo.processInfo.environment
+            var url = environment["QUOTED_LOCAL_SUPABASE_URL"].flatMap { $0.isEmpty ? nil : $0 } ?? QuotedUITests.defaultSupabaseURL
+            while url.hasSuffix("/") { url.removeLast() }
+            guard let components = URLComponents(string: url),
+                  components.scheme == "http" || components.scheme == "https",
+                  let host = components.host?.lowercased(), host == "127.0.0.1" || host == "localhost",
+                  components.path.isEmpty, components.query == nil
+            else {
+                throw ServerCheckFailed(reason: "Refusing TEST_RUNNER_QUOTED_LOCAL_SUPABASE_URL \u{201C}\(url)\u{201D}: the tests only talk to a local stack (http://127.0.0.1:<port> or http://localhost:<port>).")
+            }
+            guard let key = environment["QUOTED_LOCAL_SECRET_KEY"], key.hasPrefix("sb_secret_") else {
+                throw ServerCheckFailed(reason: "Set TEST_RUNNER_QUOTED_LOCAL_SECRET_KEY to the local stack's sb_secret_ key (scripts/test.sh does).")
+            }
+            return LocalServer(baseURL: url, secretKey: key)
+        }
+
+        /// GET /rest/v1/<table> with `query`, decoded as rows.
+        func rows<Row: Decodable & Sendable>(_ table: String, query: [URLQueryItem]) async throws -> [Row] {
+            guard var components = URLComponents(string: "\(baseURL)/rest/v1/\(table)") else {
+                throw ServerCheckFailed(reason: "Bad \(table) URL")
+            }
+            components.queryItems = query
+            guard let url = components.url else { throw ServerCheckFailed(reason: "Bad \(table) query") }
+            var request = URLRequest(url: url)
+            request.setValue(secretKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(secretKey)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let status = (response as? HTTPURLResponse)?.statusCode, status == 200 else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                throw ServerCheckFailed(reason: "GET \(table) answered \(code): \(String(decoding: data, as: UTF8.self))")
+            }
+            return try JSONDecoder().decode([Row].self, from: data)
+        }
+    }
 
     /// Runs `fetchQuotes` and waits for it (the test itself stays synchronous).
     @MainActor
-    private func fetchQuotesWaiting(email: String, password: String) throws -> [SavedQuote] {
+    private func fetchQuotesWaiting(username: String, server: LocalServer) throws -> [SavedQuote] {
         let done = expectation(description: "Read the quotes back from the local stack")
         let box = Mutex<Result<[SavedQuote], any Error>?>(nil)
         Task.detached {
             let result: Result<[SavedQuote], any Error>
             do {
-                result = .success(try await Self.fetchQuotes(email: email, password: password))
+                result = .success(try await Self.fetchQuotes(username: username, server: server))
             } catch {
                 result = .failure(error)
             }
@@ -617,35 +635,23 @@ final class QuotedUITests: XCTestCase {
         }
     }
 
-    /// Signs in as the throwaway user on the local stack and reads back every quote in their library.
-    private static func fetchQuotes(email: String, password: String) async throws -> [SavedQuote] {
-        struct Token: Decodable {
-            let accessToken: String
-            enum CodingKeys: String, CodingKey { case accessToken = "access_token" }
+    /// Reads back every quote in the library of the account with `username`. The account is anonymous
+    /// and has no password, so this finds it by its profile and reads with the secret key.
+    private static func fetchQuotes(username: String, server: LocalServer) async throws -> [SavedQuote] {
+        struct Profile: Decodable, Sendable {
+            let id: String
         }
 
-        guard let tokenURL = URL(string: "\(Self.supabaseURL)/auth/v1/token?grant_type=password") else {
-            throw ServerCheckFailed(reason: "Bad token URL")
+        let profiles: [Profile] = try await server.rows("profiles", query: [
+            URLQueryItem(name: "username", value: "eq.\(username)"),
+            URLQueryItem(name: "select", value: "id"),
+        ])
+        guard let profile = profiles.first else {
+            throw ServerCheckFailed(reason: "No profile @\(username) on \(server.baseURL)")
         }
-        var signIn = URLRequest(url: tokenURL)
-        signIn.httpMethod = "POST"
-        signIn.setValue(Self.publishableKey, forHTTPHeaderField: "apikey")
-        signIn.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        signIn.httpBody = try JSONSerialization.data(withJSONObject: ["email": email, "password": password])
-        let (tokenData, _) = try await URLSession.shared.data(for: signIn)
-        let token = try JSONDecoder().decode(Token.self, from: tokenData)
-
-        guard var components = URLComponents(string: "\(Self.supabaseURL)/rest/v1/quotes") else {
-            throw ServerCheckFailed(reason: "Bad quotes URL")
-        }
-        components.queryItems = [
+        return try await server.rows("quotes", query: [
+            URLQueryItem(name: "owner_id", value: "eq.\(profile.id)"),
             URLQueryItem(name: "select", value: "body,body_format,author,origin,rotation_position"),
-        ]
-        guard let quotesURL = components.url else { throw ServerCheckFailed(reason: "Bad quotes query") }
-        var read = URLRequest(url: quotesURL)
-        read.setValue(Self.publishableKey, forHTTPHeaderField: "apikey")
-        read.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
-        let (rows, _) = try await URLSession.shared.data(for: read)
-        return try JSONDecoder().decode([SavedQuote].self, from: rows)
+        ])
     }
 }

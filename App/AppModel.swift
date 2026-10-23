@@ -35,6 +35,8 @@ final class AppModel {
     @ObservationIgnored private(set) var notificationDelegate: NotificationDelegate?
     @ObservationIgnored private let sideEffects: Bool
     @ObservationIgnored private var started = false
+    /// When this launch last told the server the account is in use (`touchActivityIfDue()`).
+    @ObservationIgnored private var lastActivityTouch: Date?
 
     /// - Parameters:
     ///   - backend: The Supabase backend (`Backend.fromBundle()`).
@@ -46,7 +48,10 @@ final class AppModel {
         let toasts = ToastCenter(announces: sideEffects)
         let router = Router()
         let widgets = WidgetBridge(store: appGroup)
-        let preferences = AppPreferences(defaults: sideEffects ? UserDefaults(suiteName: AppGroup.identifier) : UserDefaults(suiteName: "quoted.preview"))
+        let preferences = AppPreferences(
+            defaults: sideEffects ? UserDefaults(suiteName: AppGroup.identifier) : UserDefaults(suiteName: "quoted.preview"),
+            installDefaults: sideEffects ? .standard : (UserDefaults(suiteName: "quoted.preview") ?? .standard)
+        )
         let reminders = ReminderStore(appGroup: appGroup, scheduler: NotificationScheduler(), widgets: widgets, sideEffects: sideEffects)
         let library = LibraryStore(backend: backend, appGroup: appGroup, toasts: toasts, reminders: reminders)
         let social = SocialStore(backend: backend, toasts: toasts)
@@ -131,12 +136,18 @@ final class AppModel {
     /// The app came to the foreground: refresh (if stale), re-read permission and replan.
     func sceneDidBecomeActive() async {
         guard sideEffects, session.phase == .ready else { return }
+        Task { await touchActivityIfDue() }
         await reminders.refreshPermission()
         reminders.replan()
         let library = self.library
         let social = self.social
         Task { await library.refreshIfStale() }
-        Task { await social.refreshIfStale() }
+        Task {
+            await social.refreshIfStale()
+            // Seen here: a later background alert must not announce them again.
+            InboxAlerts().markSeenInApp(shares: social.unseenShares, requests: social.incomingRequests)
+            await InboxAlerts.setBadge(social.badgeCount)
+        }
     }
 
     /// The app went to the background: commit pending deferred toasts and schedule the next refresh.
@@ -159,10 +170,32 @@ final class AppModel {
         BackgroundRefresh.schedule()
         guard let userID = backend.auth.currentUserID else { return }
         library.prepare(for: userID)
-        await library.refresh()
+        // Top up reminders from the cache first: iOS can end the task (cancelling the network
+        // requests below) at any moment, and the queue must not run dry because a fetch was slow.
         await reminders.refreshPermission()
         await reminders.replan().value
+        await touchActivityIfDue()
+        if await library.refresh() {
+            await reminders.replan().value
+        }
+        // New shares and friend requests: one best-effort alert, and the icon badge (no push).
+        if await social.refresh() {
+            await InboxAlerts().alertNew(
+                shares: social.unseenShares, requests: social.incomingRequests, permission: reminders.permission
+            )
+            await InboxAlerts.setBadge(social.badgeCount)
+        }
         Logger.app.info("Background refresh finished")
+    }
+
+    /// Tells the server the account is in use, at most every 6 hours per launch (the server keeps one
+    /// write per 12 hours). Anonymous accounts unused for a year are deleted
+    /// (`private.purge_inactive_anonymous`).
+    func touchActivityIfDue() async {
+        guard sideEffects else { return }
+        if let lastActivityTouch, Date.now.timeIntervalSince(lastActivityTouch) < 6 * 60 * 60 { return }
+        lastActivityTouch = .now
+        await backend.social.touchActivity()
     }
 }
 

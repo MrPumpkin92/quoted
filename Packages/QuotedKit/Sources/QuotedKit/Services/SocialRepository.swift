@@ -31,12 +31,20 @@ public struct SocialRepository: Sendable {
             displayName: try Self.validDisplayName(displayName)
         )
         return try await mappingErrors(postgrest: Self.profileError) {
-            try await client.from(Table.profiles)
-                .insert(insert, returning: .representation)
-                .select(Columns.profile)
-                .single()
-                .execute()
-                .value
+            do {
+                return try await client.from(Table.profiles)
+                    .insert(insert, returning: .representation)
+                    .select(Columns.profile)
+                    .single()
+                    .execute()
+                    .value
+            } catch let error as PostgrestError
+                where error.code == "23505" && (error.constraintName == "profiles_pkey" || error.mentions("profiles_pkey")) {
+                // You already have a profile: most likely an earlier Continue whose answer was lost.
+                // That profile is the result, so onboarding goes on instead of sticking here.
+                guard let existing = try await myProfile() else { throw error }
+                return existing
+            }
         }
     }
 
@@ -55,39 +63,51 @@ public struct SocialRepository: Sendable {
         }
     }
 
-    /// Whether nobody has `username` yet. Throws ``QuotedError/validation(_:)`` if it is not a valid
-    /// username.
+    /// Whether nobody has `username` yet (reserved names count as taken). Throws
+    /// ``QuotedError/validation(_:)`` if it is not a valid username.
+    ///
+    /// Asks `public.is_username_available`: profiles are readable only between people connected by
+    /// a friendship, share or block, so a plain select could not see a stranger's username.
     public func isUsernameAvailable(_ username: String) async throws -> Bool {
         _ = try client.requireUserID()
         let name = try Self.validUsername(username)
         return try await mappingErrors {
-            let rows: [IDRow] = try await client.from(Table.profiles)
-                .select("id")
-                .eq("username", value: name)
-                .limit(1)
+            try await client.rpc(RPC.isUsernameAvailable, params: UsernameParam(username: name))
                 .execute()
                 .value
-            return rows.isEmpty
         }
     }
 
-    /// The profile with exactly this username (after normalizing "@Name" to "name"), or nil.
+    /// The profile with exactly this username (after normalizing "@Name" to "name"), or nil. Nil
+    /// too for your own username and for anyone you have blocked or who has blocked you
+    /// (`public.find_profile`), so a block can't be detected from a lookup.
     public func findProfile(username: String) async throws -> Profile? {
         try await findProfile(username: username, retrying: true)
     }
 
-    /// `retrying: false` skips the SDK's GET retries, for a lookup that runs before a write.
+    /// `retrying: false` skips the SDK's retries, for a lookup that runs before a write.
     func findProfile(username: String, retrying: Bool) async throws -> Profile? {
         _ = try client.requireUserID()
         guard let name = try? Username.validate(username) else { return nil }
         return try await mappingErrors {
-            try await client.from(Table.profiles)
+            let rows: [Profile] = try await client.rpc(RPC.findProfile, params: UsernameParam(username: name))
                 .select(Columns.profile)
-                .eq("username", value: name)
-                .maybeSingle()
                 .retry(enabled: retrying)
                 .execute()
                 .value
+            return rows.first
+        }
+    }
+
+    /// Records that this account is in use (`public.touch_activity`, which the server throttles to
+    /// one write per 12 hours). Anonymous accounts unused for a year are deleted, so the app calls
+    /// this when it comes to the foreground and from background refresh. Never throws.
+    public func touchActivity() async {
+        guard client.signedInUserID != nil else { return }
+        do {
+            try await client.rpc(RPC.touchActivity).execute()
+        } catch {
+            // Best effort: the next foreground or background refresh tries again.
         }
     }
 
@@ -102,6 +122,9 @@ public struct SocialRepository: Sendable {
                 try await client.from(Table.friendships)
                     .select(Columns.friendship, count: .exact)
                     .or("requester_id.eq.\(me.uuidString),addressee_id.eq.\(me.uuidString)")
+                    // Only the statuses this build decodes: a status added later on the server
+                    // must not break the whole Friends and inbox refresh on installed builds.
+                    .in("status", values: FriendshipStatus.allCases.map(\.rawValue))
                     .order("created_at", ascending: false)
                     .order("id")
                     .range(from: from, to: to)
@@ -119,8 +142,14 @@ public struct SocialRepository: Sendable {
     public func sendFriendRequest(toUsername username: String) async throws -> Friendship {
         let me = try client.requireUserID()
         let name = try Self.validUsername(username)
-        // No GET retries before the write: offline, fail at once instead of after 7 s of backoff.
-        guard let profile = try await findProfile(username: name, retrying: false) else { throw QuotedError.notFound }
+        // No retries before the write: offline, fail at once instead of after seconds of backoff.
+        guard let profile = try await findProfile(username: name, retrying: false) else {
+            // The lookup never returns yourself; tell that case apart only when it comes back empty.
+            if let mine = try? await myProfile(), mine.username == name {
+                throw QuotedError.validation("That's your own username.")
+            }
+            throw QuotedError.notFound
+        }
         guard profile.id != me else { throw QuotedError.validation("That's your own username.") }
         let row: Friendship = try await mappingErrors(postgrest: Self.friendRequestError) {
             try await client.from(Table.friendships)
@@ -234,8 +263,17 @@ public struct SocialRepository: Sendable {
     ///
     /// Throws ``QuotedError/validation(_:)`` when no recipient is left, the note is too long, or a
     /// recipient is not an accepted friend.
+    ///
+    /// `ids` maps recipients to the new shares' IDs (missing ones are generated). Pass the same map to
+    /// retry a send whose answer was lost: the shares that reached the server are returned instead
+    /// of sent twice, and ``deleteShares(ids:)`` can undo them even though the first answer never came.
     @discardableResult
-    public func share(_ quote: Quote, to recipientIDs: [UUID], note: String? = nil) async throws -> [SharedQuote] {
+    public func share(
+        _ quote: Quote,
+        to recipientIDs: [UUID],
+        note: String? = nil,
+        ids: [UUID: UUID] = [:]
+    ) async throws -> [SharedQuote] {
         let me = try client.requireUserID()
         let recipients = Self.recipients(recipientIDs, excluding: me)
         guard !recipients.isEmpty else { throw QuotedError.validation("Choose at least one friend.") }
@@ -246,32 +284,48 @@ public struct SocialRepository: Sendable {
         } catch {
             throw QuotedError.validation(error.errorDescription ?? "This quote can't be shared.")
         }
+        let shareIDs = recipients.map { ids[$0] ?? UUID() }
         func rows(quoteID: UUID?) -> [ShareInsert] {
-            recipients.map {
+            zip(recipients, shareIDs).map { recipient, id in
                 ShareInsert(
-                    recipientID: $0, quoteID: quoteID, body: content.body, format: content.format,
+                    id: id, recipientID: recipient, quoteID: quoteID, body: content.body, format: content.format,
                     author: content.author, source: content.source, note: cleanNote
                 )
             }
         }
         return try await mappingErrors(postgrest: Self.shareError) {
             do {
-                return try await insertShares(rows(quoteID: quote.id))
+                return try await insertShares(rows(quoteID: quote.id), ids: shareIDs)
             } catch let error as PostgrestError
                 where error.code == "42501" || (error.code == "23503" && error.mentions("shares_quote_id_fkey")) {
                 // The policy also requires quote_id to be one of your quotes. If the original was
                 // deleted elsewhere, send the snapshot without the link; a non-friend fails again.
-                return try await insertShares(rows(quoteID: nil))
+                return try await insertShares(rows(quoteID: nil), ids: shareIDs)
             }
         }
     }
 
-    private func insertShares(_ rows: [ShareInsert]) async throws -> [SharedQuote] {
-        try await client.from(Table.shares)
-            .insert(rows, returning: .representation)
-            .select(Columns.sentShare)
-            .execute()
-            .value
+    /// Inserts shares with client-chosen `ids`. On a unique violation, an earlier attempt with the
+    /// same IDs may have landed with its answer lost: if every one is a share you sent, they are the
+    /// result; otherwise the error is thrown as it came.
+    private func insertShares(_ rows: [ShareInsert], ids: [UUID]) async throws -> [SharedQuote] {
+        do {
+            return try await client.from(Table.shares)
+                .insert(rows, returning: .representation)
+                .select(Columns.sentShare)
+                .execute()
+                .value
+        } catch let error as PostgrestError where error.code == "23505" {
+            let me = try client.requireUserID()
+            let existing: [SharedQuote] = try await client.from(Table.shares)
+                .select(Columns.sentShare)
+                .in("id", values: ids)
+                .eq("sender_id", value: me)
+                .execute()
+                .value
+            guard existing.count == Set(ids).count else { throw error }
+            return existing
+        }
     }
 
     /// Quotes shared with you, newest first, with the sender's profile. Read in pages (see ``Paging``).
@@ -329,18 +383,23 @@ public struct SocialRepository: Sendable {
     /// IDs per `deleteShares` request: about 4 KB of `id=in.(…)`, well under URL limits (~8 KB).
     static let deleteBatchSize = 100
 
-    /// Stamps `seen_at` on received shares that are not seen yet. The first time seen is kept.
+    /// Stamps `seen_at` on received shares that are not seen yet. The first time seen is kept. Large
+    /// lists go out in batches of ``deleteBatchSize`` IDs, like ``deleteShares(ids:)``.
     public func markSeen(_ ids: [UUID]) async throws {
         let me = try client.requireUserID()
         let ids = Array(Set(ids))
         guard !ids.isEmpty else { return }
+        let seenAt = Date()
         try await mappingErrors {
-            try await client.from(Table.shares)
-                .update(ShareSeenUpdate(seenAt: Date()), returning: .minimal)
-                .in("id", values: ids)
-                .eq("recipient_id", value: me)
-                .is("seen_at", value: nil)
-                .execute()
+            for start in stride(from: 0, to: ids.count, by: Self.deleteBatchSize) {
+                let batch = Array(ids[start..<min(start + Self.deleteBatchSize, ids.count)])
+                try await client.from(Table.shares)
+                    .update(ShareSeenUpdate(seenAt: seenAt), returning: .minimal)
+                    .in("id", values: batch)
+                    .eq("recipient_id", value: me)
+                    .is("seen_at", value: nil)
+                    .execute()
+            }
         }
     }
 
@@ -398,9 +457,13 @@ public struct SocialRepository: Sendable {
 
     private func insertReport(_ report: ReportInsert) async throws {
         // Reporters can read their own reports, but nothing needs the row back.
-        try await client.from(Table.reports)
-            .insert(report, returning: .minimal)
-            .execute()
+        do {
+            try await client.from(Table.reports)
+                .insert(report, returning: .minimal)
+                .execute()
+        } catch let error as PostgrestError where error.code == "23505" {
+            // The same report (reporter, user, share) is already filed: a retry, or a second tap.
+        }
     }
 
     // MARK: Helpers
@@ -471,8 +534,9 @@ public struct SocialRepository: Sendable {
         switch error.code {
         case "23505": .validation("You're already friends, or a request is already waiting.")
         case "23514": .validation("You can't add yourself.")
-        // RLS: there is a block between you (in either direction). Kept vague on purpose.
-        case "42501": .validation("You can't send a friend request to this person.")
+        // RLS: a block between you (either direction). Answered like an unknown username, so a
+        // block can't be told apart from a name nobody has (the lookup hides blocked pairs too).
+        case "42501": .notFound
         case "23503": .notFound
         default: nil
         }

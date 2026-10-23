@@ -16,8 +16,14 @@ struct RootView: View {
                 LaunchView()
                     .transition(.opacity)
             case .signedOut:
-                AuthFlowView()
-                    .transition(.opacity)
+                if AccountMode.current == .emailPassword {
+                    AuthFlowView()
+                        .transition(.opacity)
+                } else {
+                    // Anonymous accounts: Get started creates one.
+                    WelcomeView()
+                        .transition(.opacity)
+                }
             case .needsUsername:
                 UsernameView()
                     .transition(.opacity)
@@ -30,7 +36,7 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: session.phase)
-        .toastHost(bottomPadding: session.phase == .ready ? Theme.Metrics.tabBarClearance : Theme.Spacing.m)
+        .toastHost(clearance: session.phase == .ready ? .tabBar : .bottomButton)
         .sheet(isPresented: isRecoveringPassword) {
             NewPasswordView()
                 .toastHost()
@@ -62,7 +68,8 @@ struct RootView: View {
 }
 
 /// Launch: `Ground` with the wordmark. A spinner appears only after a second; a failed launch
-/// (offline on the first sign-in) shows the message and Try again.
+/// (offline on the first sign-in, or when the anonymous account can't be created) shows the message
+/// and Try again.
 struct LaunchView: View {
     @Environment(SessionStore.self) private var session
     @State private var isRetrying = false

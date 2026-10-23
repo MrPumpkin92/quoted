@@ -140,7 +140,7 @@ struct PayloadTests {
 
     @Test func quoteInsertWritesExplicitNulls() throws {
         let validated = try QuoteDraft(body: "  Hello  ", format: [TextRun(start: 2, length: 5, bold: true)]).validated()
-        let json = try object(QuoteInsert(validated, origin: .pasted, rotationPosition: nil))
+        let json = try object(QuoteInsert(validated, id: UUID(), origin: .pasted, rotationPosition: nil))
         #expect(json["body"] as? String == "Hello")
         #expect(isNull(json["author"]))
         #expect(isNull(json["source"]))
@@ -152,7 +152,7 @@ struct PayloadTests {
         #expect(runs.first?["length"] as? Int == 5)
         #expect(runs.first?["bold"] as? Bool == true)
         #expect(runs.first?["italic"] == nil)
-        #expect(Set(json.keys) == ["body", "body_format", "author", "source", "origin", "rotation_position"])
+        #expect(Set(json.keys) == ["id", "body", "body_format", "author", "source", "origin", "rotation_position"])
     }
 
     @Test func contentUpdateCanClearAuthorAndNeverTouchesRotation() throws {
@@ -190,8 +190,8 @@ struct PayloadTests {
     }
 
     @Test func shareProfileReportAndEventPayloads() throws {
-        let share = try object(ShareInsert(recipientID: UUID(), quoteID: nil, body: "b", format: [], author: nil, source: "s", note: nil))
-        #expect(Set(share.keys) == ["recipient_id", "quote_id", "body", "body_format", "author", "source", "note"])
+        let share = try object(ShareInsert(id: UUID(), recipientID: UUID(), quoteID: nil, body: "b", format: [], author: nil, source: "s", note: nil))
+        #expect(Set(share.keys) == ["id", "recipient_id", "quote_id", "body", "body_format", "author", "source", "note"])
         #expect(isNull(share["quote_id"]) && isNull(share["note"]))
         #expect(share["sender_id"] == nil)
 

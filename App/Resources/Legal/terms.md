@@ -1,14 +1,14 @@
 # Terms of Use
 
-Last updated: October 19, 2026.
+Last updated: October 21, 2026.
 
-These terms are an agreement between you and the developer of Quoted, the seller shown on its App Store page ("we", "us"). By creating an account or using Quoted, you agree to them and to the Community Guidelines. If you don't agree, please don't use the app.
+These terms are an agreement between you and the developer of Quoted, the seller shown on its App Store page ("we", "us"). By using Quoted, you agree to them and to the Community Guidelines. If you don't agree, please don't use the app.
 
 ## Your account
 
-- You need an email address and a password to use Quoted. Keep your password private. You're responsible for what happens under your account.
+- Quoted creates an account for you on this iPhone when you tap Get started. It has no email address or password, so if you delete the app or lose your iPhone, the account can't be opened again. You're responsible for what happens under your account.
 - You must be at least 13 years old, or the minimum age to use online services where you live, whichever is higher.
-- Your username and display name are visible to other Quoted users so friends can find you.
+- Your username and display name are visible to the people you're connected with and to anyone who types your exact username, so friends can find you.
 
 ## Your content
 
@@ -31,14 +31,14 @@ The Community Guidelines explain this in more detail. We remove content that bre
 ## Reporting and blocking
 
 - Report a shared quote from its menu (the "…" button), or swipe it in Shared with you.
-- Report or block a person by pressing and holding their friend request or their name in your friends list.
+- Report or block a person from the “…” button next to their friend request or their name in your friends list, or by pressing and holding it.
 - Manage the people you blocked in Account > Blocked users.
 
 We review reports every day and aim to act on each one within 24 hours.
 
 ## Ending your account
 
-You can delete your account at any time in Account > Delete account. This permanently removes your profile, quotes, friends and shares from our servers. We may suspend or close accounts that break these terms.
+You can delete your account at any time in Account > Delete account. This permanently removes your profile, quotes, friends and shares from our servers, and Quoted then starts over with a new, empty account. We delete accounts that never chose a username after 7 days and accounts that haven't been opened for 12 months. We may suspend or close accounts that break these terms.
 
 ## The service
 

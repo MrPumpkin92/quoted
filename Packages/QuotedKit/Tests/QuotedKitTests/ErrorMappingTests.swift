@@ -27,6 +27,15 @@ struct ErrorMappingTests {
         #expect(QuotedError(PostgrestError(code: code, message: "m")) == expected)
     }
 
+    @Test func serverWriteLimitsReadAsLimits() {
+        #expect(QuotedError(PostgrestError(code: "QR001", message: "slow down"))
+            == .validation("You've reached today's limit for this. Try again tomorrow."))
+        #expect(QuotedError(PostgrestError(code: "QR002", message: "limit"))
+            == .validation("You've reached the limit for your account."))
+        #expect(QuotedError.map(PostgrestError(code: "QR002", message: "limit"), postgrest: QuotesRepository.quoteLimitError)
+            == .validation("You've reached the limit of \(Limits.quotesPerAccount.formatted()) quotes."))
+    }
+
     @Test func rlsViolationIsAServerErrorByDefault() {
         let error = PostgrestError(code: "42501", message: #"new row violates row-level security policy for table "shares""#)
         guard case .server(let detail) = QuotedError(error) else {
@@ -56,8 +65,8 @@ struct ErrorMappingTests {
         let override = SocialRepository.friendRequestError
         #expect(QuotedError.map(PostgrestError(code: "23505", message: ""), postgrest: override)
             == .validation("You're already friends, or a request is already waiting."))
-        #expect(QuotedError.map(PostgrestError(code: "42501", message: ""), postgrest: override)
-            == .validation("You can't send a friend request to this person."))
+        // A block reads like an unknown username, so it can't be detected.
+        #expect(QuotedError.map(PostgrestError(code: "42501", message: ""), postgrest: override) == .notFound)
         #expect(QuotedError.map(PostgrestError(code: "23514", message: ""), postgrest: override)
             == .validation("You can't add yourself."))
     }

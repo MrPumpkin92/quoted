@@ -33,16 +33,24 @@ struct MainTabView: View {
                     SearchView()
                         .routeDestinations()
                 }
-                .searchable(text: $router.searchText, isPresented: $router.isSearchPresented, prompt: Text("Quotes, authors, sources"))
-                .onSubmit(of: .search) {
-                    // The keyboard's Search key remembers the term (Recent on the empty search screen).
-                    recentSearches.add(router.searchText)
-                }
+                .searchField(router: router, recentSearches: recentSearches, isOn: !Self.searchFieldOnTabView)
             }
         }
+        .searchField(router: router, recentSearches: recentSearches, isOn: Self.searchFieldOnTabView)
         .sheet(item: $router.sheet, onDismiss: openPendingLink) { sheet in
             SheetHost(sheet: sheet)
         }
+        // The app icon badge follows the Friends tab badge (shown only if badges are allowed).
+        .onChange(of: social.badgeCount, initial: true) { _, count in
+            Task { await InboxAlerts.setBadge(count) }
+        }
+    }
+
+    /// Where the search field's `.searchable` goes. iOS 27 shows a search-role tab's field only when it
+    /// is on the `TabView` (inside the tab there is no field at all). iOS 26 puts a `TabView`-level
+    /// field in every tab's navigation bar, so there it stays on the search tab's stack.
+    private static var searchFieldOnTabView: Bool {
+        if #available(iOS 27, *) { true } else { false }
     }
 
     /// A reminder or widget tapped while a sheet with unsaved input was up opens now.
@@ -56,6 +64,28 @@ struct MainTabView: View {
             get: { router.selectedTab },
             set: { router.select($0) }
         )
+    }
+}
+
+// MARK: Search field
+
+private extension View {
+    /// The search tab's field, bound to the router, when `isOn`: the same `.searchable` either on the
+    /// `TabView` or on the search tab's stack (`MainTabView.searchFieldOnTabView`). The Search key
+    /// remembers the term (Recent on the empty search screen).
+    @ViewBuilder
+    func searchField(router: Router, recentSearches: RecentSearches, isOn: Bool) -> some View {
+        if isOn {
+            @Bindable var router = router
+            self
+                .searchable(text: $router.searchText, isPresented: $router.isSearchPresented, prompt: Text("Quotes, authors, sources"))
+                .tabViewSearchActivation(.searchTabSelection)
+                .onSubmit(of: .search) {
+                    recentSearches.add(router.searchText)
+                }
+        } else {
+            self
+        }
     }
 }
 

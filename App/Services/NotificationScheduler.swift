@@ -42,13 +42,21 @@ struct NotificationQuote: Hashable, Sendable {
 /// Local reminder notifications through `UNUserNotificationCenter`.
 ///
 /// Only requests whose identifier starts with `reminder-` belong to Quoted's reminders; `reschedule`
-/// replaces exactly those. The body is `“body” — Author` in plain text (notifications cannot render
-/// runs), with no title, so iOS shows "Quoted". `threadIdentifier` is `reminders` and `userInfo`
-/// carries `quoteID` (a UUID string) for the tap.
+/// replaces exactly those. The subtitle is the author and the body is `“body”` in plain text with its
+/// line breaks (notifications cannot render runs), with no title, so iOS shows "Quoted".
+/// `threadIdentifier` is `reminders` and `userInfo` carries `quoteID` (a UUID string) for the tap.
 struct NotificationScheduler: Sendable {
     static let identifierPrefix = "reminder-"
     static let threadIdentifier = "reminders"
     static let quoteIDKey = "quoteID"
+    /// `userInfo` key of the nudge, whose value is `rotation` (opens Reminders).
+    static let linkKey = "link"
+    /// The nudge after the last planned reminder (it shares the prefix, so it is replaced and
+    /// cancelled with the reminders).
+    static let nudgeIdentifier = "\(identifierPrefix)nudge"
+    static let nudgeText = "Open Quoted to keep your reminders coming."
+    /// How long after the last planned reminder the nudge comes.
+    static let nudgeDelay: TimeInterval = 24 * 60 * 60
 
     /// The current permission.
     func permission() async -> NotificationPermission {
@@ -59,7 +67,7 @@ struct NotificationScheduler: Sendable {
     /// Shows the system prompt (only the first time) and returns the resulting permission.
     func requestAuthorization() async -> NotificationPermission {
         do {
-            _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+            _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
         } catch {
             Logger.reminders.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -67,28 +75,49 @@ struct NotificationScheduler: Sendable {
     }
 
     /// Replaces every pending reminder with `plans`. Plans whose quote is missing are skipped.
-    /// Returns the number of requests scheduled.
+    /// Returns the number of quote reminders scheduled.
+    ///
+    /// New requests are added first (an identifier is per slot, so a request for the same slot
+    /// replaces the pending one), then only the pending reminders not in the new set are removed:
+    /// if iOS suspends the app part-way, the old schedule is still there rather than none.
+    ///
+    /// The queue holds a limited number of reminders and refills only when the app runs, so one
+    /// more notification (``nudgeText``) comes ``nudgeDelay`` after the last planned reminder and
+    /// opens Reminders.
     @discardableResult
     func reschedule(_ plans: [PlannedReminder], quotes: [UUID: NotificationQuote], calendar: Calendar = .current) async -> Int {
         let center = UNUserNotificationCenter.current()
-        await removePendingReminders(in: center)
+        var kept = Set<String>()
         var scheduled = 0
         for plan in plans {
             guard let quote = quotes[plan.quoteID] else { continue }
-            let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: plan.date)
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             let request = UNNotificationRequest(
                 identifier: Self.identifier(for: plan),
                 content: Self.content(for: quote),
-                trigger: trigger
+                trigger: Self.trigger(at: plan.date, calendar: calendar)
             )
             do {
                 try await center.add(request)
+                kept.insert(request.identifier)
                 scheduled += 1
             } catch {
                 Logger.reminders.error("Scheduling a reminder failed: \(error.localizedDescription, privacy: .public)")
             }
         }
+        if scheduled > 0, let last = plans.last {
+            let nudge = UNNotificationRequest(
+                identifier: Self.nudgeIdentifier,
+                content: Self.nudgeContent(),
+                trigger: Self.trigger(at: last.date.addingTimeInterval(Self.nudgeDelay), calendar: calendar)
+            )
+            do {
+                try await center.add(nudge)
+                kept.insert(nudge.identifier)
+            } catch {
+                Logger.reminders.error("Scheduling the reminders nudge failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        await removePendingReminders(in: center, keeping: kept)
         return scheduled
     }
 
@@ -116,17 +145,35 @@ struct NotificationScheduler: Sendable {
         "\(identifierPrefix)\(Int(plan.date.timeIntervalSince1970))"
     }
 
-    /// `“body” — Author`, or `“body”` without an author.
+    /// `“body”` with the quote's line breaks kept (each line tidied), so a poem keeps its shape.
     static func bodyText(for quote: NotificationQuote) -> String {
-        let body = "\u{201C}\(RichText.collapseWhitespace(quote.body))\u{201D}"
-        guard let author = quote.author?.trimmingCharacters(in: .whitespacesAndNewlines), !author.isEmpty else {
-            return body
-        }
-        return "\(body) \u{2014} \(author)"
+        "\u{201C}\(RichText.collapseWhitespaceKeepingLines(quote.body))\u{201D}"
+    }
+
+    /// The author, or nil without one. It is the subtitle, so a long quote can't push it out of view.
+    static func subtitleText(for quote: NotificationQuote) -> String? {
+        let author = RichText.collapseWhitespace(quote.author ?? "")
+        return author.isEmpty ? nil : author
+    }
+
+    static func trigger(at date: Date, calendar: Calendar) -> UNCalendarNotificationTrigger {
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        return UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+    }
+
+    /// "Open Quoted to keep your reminders coming." with no quote text; a tap opens Reminders.
+    static func nudgeContent() -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.body = nudgeText
+        content.sound = .default
+        content.threadIdentifier = threadIdentifier
+        content.userInfo = [linkKey: "rotation"]
+        return content
     }
 
     static func content(for quote: NotificationQuote) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
+        content.subtitle = subtitleText(for: quote) ?? ""
         content.body = bodyText(for: quote)
         content.sound = .default
         content.threadIdentifier = threadIdentifier
@@ -134,18 +181,20 @@ struct NotificationScheduler: Sendable {
         return content
     }
 
-    /// The deep link a tapped reminder opens (`quoted://quote/<id>`), or nil.
+    /// The deep link a tapped reminder opens (`quoted://quote/<id>`, or Reminders for the nudge), or
+    /// nil.
     static func deepLink(fromUserInfo userInfo: [AnyHashable: Any]) -> DeepLink? {
+        if userInfo[linkKey] as? String == "rotation" { return .rotation }
         guard let raw = userInfo[quoteIDKey] as? String, let id = UUID(uuidString: raw) else { return nil }
         return .quote(id)
     }
 
     // MARK: Private
 
-    private func removePendingReminders(in center: UNUserNotificationCenter) async {
+    private func removePendingReminders(in center: UNUserNotificationCenter, keeping kept: Set<String> = []) async {
         let ids = await center.pendingNotificationRequests()
             .map(\.identifier)
-            .filter { $0.hasPrefix(Self.identifierPrefix) }
+            .filter { $0.hasPrefix(Self.identifierPrefix) && !kept.contains($0) }
         center.removePendingNotificationRequests(withIdentifiers: ids)
     }
 }

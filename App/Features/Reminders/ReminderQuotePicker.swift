@@ -42,7 +42,19 @@ struct ReminderQuotePicker: View {
 
     @ViewBuilder
     private func content(candidates: [Quote], visible: [Quote]) -> some View {
-        if !library.hasLoaded {
+        if !library.hasLoaded, let error = library.lastError {
+            // The first load failed (offline with no cache): say so, with Try again, instead of a
+            // spinner that never stops.
+            ScrollView {
+                EmptyStateView(
+                    systemImage: "wifi.exclamationmark",
+                    title: "Couldn\u{2019}t load your quotes",
+                    message: "\(error.friendlyMessage)",
+                    actionTitle: "Try again",
+                    action: { Task { await library.refresh(userInitiated: true) } }
+                )
+            }
+        } else if !library.hasLoaded {
             DelayedProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if candidates.isEmpty {
@@ -144,7 +156,8 @@ private struct PickerRow: View {
                 QuoteRow(quote, inReminders: false, highlighting: highlighting)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: checkSize))
-                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+                    // `.secondary`, not `.tertiary`, for the empty circle (3:1 for the control's only mark).
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
                     .frame(minWidth: Theme.Metrics.minTouchTarget, minHeight: Theme.Metrics.minTouchTarget, alignment: .topTrailing)
                     .accessibilityHidden(true)
             }

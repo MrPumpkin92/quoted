@@ -13,15 +13,27 @@ import QuotedCore
 @MainActor
 final class AppPreferences {
     @ObservationIgnored private let defaults: UserDefaults
+    /// `UserDefaults.standard` in the app: iOS deletes it with the app, while the App Group suite can
+    /// outlive it.
+    @ObservationIgnored private let installDefaults: UserDefaults
 
     /// Whether the one-time "Put a quote on your Home Screen" tip was dismissed. Setting it persists.
     var widgetTipDismissed: Bool {
         didSet { defaults.set(widgetTipDismissed, forKey: Keys.widgetTipDismissed) }
     }
 
-    init(defaults: UserDefaults? = UserDefaults(suiteName: AppGroup.identifier)) {
+    /// Whether this install's last session was an anonymous account the user did not leave (Sign out
+    /// and Delete account clear it). When that session is found gone, `SessionStore` says why the new
+    /// account is empty. Kept per install, so a reinstall never shows that notice.
+    var hadAnonymousSession: Bool {
+        get { installDefaults.bool(forKey: Keys.hadAnonymousSession) }
+        set { installDefaults.set(newValue, forKey: Keys.hadAnonymousSession) }
+    }
+
+    init(defaults: UserDefaults? = UserDefaults(suiteName: AppGroup.identifier), installDefaults: UserDefaults = .standard) {
         let store = defaults ?? .standard
         self.defaults = store
+        self.installDefaults = installDefaults
         widgetTipDismissed = store.bool(forKey: Keys.widgetTipDismissed)
     }
 
@@ -67,6 +79,7 @@ final class AppPreferences {
 
     private enum Keys {
         static let widgetTipDismissed = "quoted.widgetTipDismissed"
+        static let hadAnonymousSession = "quoted.hadAnonymousSession"
         static func onboarding(_ id: UUID) -> String { "quoted.onboardingComplete.\(id.uuidString.lowercased())" }
         static func profile(_ id: UUID) -> String { "quoted.profile.\(id.uuidString.lowercased())" }
     }

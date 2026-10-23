@@ -84,8 +84,14 @@ public final class Backend: Sendable {
     /// no credential store, and every request loaded from the network. Auth responses carry tokens
     /// and PostgREST responses carry the user's library, inbox and friends, so none of it may land
     /// in `Library/Caches` (`URLSession.shared` would write it to `Cache.db`).
+    ///
+    /// Requests time out after ``requestTimeout`` without data and ``resourceTimeout`` in all, instead
+    /// of URLSession's 60 s and 7 days: launch, Save and background refresh fail with a message and
+    /// Try again rather than a spinner that lasts minutes (the SDK retries GETs up to three times).
     public static func makeURLSessionConfiguration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = requestTimeout
+        configuration.timeoutIntervalForResource = resourceTimeout
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpCookieStorage = nil
@@ -93,6 +99,11 @@ public final class Backend: Sendable {
         configuration.urlCredentialStorage = nil
         return configuration
     }
+
+    /// Seconds a request may wait for data before it fails.
+    public static let requestTimeout: TimeInterval = 15
+    /// Seconds a request may take in all.
+    public static let resourceTimeout: TimeInterval = 45
 
     /// A URL session with ``makeURLSessionConfiguration()``.
     static func makeURLSession() -> URLSession {

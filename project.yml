@@ -1,5 +1,11 @@
-# XcodeGen spec for Quoted. After editing, run `xcodegen generate` (or
+# XcodeGen spec for Quoted. After editing, run `xcodegen generate --no-env` (or
 # scripts/build.sh) and commit the regenerated Quoted.xcodeproj.
+#
+# --no-env matters: without it XcodeGen replaces every ${NAME} below with that
+# environment variable's value when one is set. With CONFIGURATION=Debug-Local in
+# the environment (scripts/run-sim.sh sets it for build.sh), the "Check release
+# settings" phase would be written as `[ "Debug-Local" = "Release" ] || exit 0`
+# and pass every Release build. The scripts always pass --no-env.
 #
 # Build settings live in Config/*.xcconfig. `settingPresets: none` keeps
 # XcodeGen from writing defaults into the project file that would override them,
@@ -30,8 +36,20 @@ packages:
   QuotedKit:
     path: Packages/QuotedKit
 
+# The committed xcconfigs, listed one by one: adding the whole Config folder would also pull in the
+# gitignored Config/Signing.xcconfig, so every regeneration would put a file a fresh clone lacks into
+# the committed project. Shared.xcconfig includes it from disk with `#include?`, so it needs no
+# reference here. Add a new xcconfig to this list.
 fileGroups:
-  - Config
+  - Config/Debug.xcconfig
+  - Config/DebugLocal.xcconfig
+  - Config/Release.xcconfig
+  - Config/Shared.xcconfig
+  - Config/SharedDebug.xcconfig
+  - Config/SharedRelease.xcconfig
+  - Config/Hosted.xcconfig
+  - Config/Local.xcconfig
+  - Config/Signing.xcconfig.example
   - project.yml
 
 targets:
@@ -54,6 +72,7 @@ targets:
       # Release builds go to App Store Connect, so they must carry a support address (Account >
       # Contact support, and the contact line in the Privacy Policy and Terms) and final legal text.
       # Debug builds skip the check. Runs on every build (no outputs), so dependency analysis is off.
+      # Generate with --no-env so ${CONFIGURATION} and the other settings stay as written (top of file).
       - name: Check release settings
         basedOnDependencyAnalysis: false
         showEnvVars: false

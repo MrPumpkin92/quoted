@@ -9,6 +9,10 @@
 #   VERBOSE=1 scripts/build.sh               # full xcodebuild log
 #
 # Products land in build/DerivedData/Build/Products/<CONFIGURATION>-iphonesimulator/.
+#
+# Packages resolve only to the versions in Quoted.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+# Package.resolved (committed), the same ones Packages/QuotedKit/Package.resolved gives `swift test`.
+# After changing a dependency in Packages/QuotedKit/Package.swift, update both files (README, Tooling).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,7 +33,9 @@ QUIET=(-quiet)
 [[ "${VERBOSE:-0}" == "1" ]] && QUIET=()
 
 cd "$ROOT"
-xcodegen generate --spec project.yml
+# --no-env: CONFIGURATION is often in the environment (run-sim.sh sets it), and XcodeGen would
+# otherwise write its value into the Release check's ${CONFIGURATION} (project.yml).
+xcodegen generate --no-env --spec project.yml
 
 echo "==> Building scheme '$SCHEME' ($CONFIGURATION) for '$DESTINATION'"
 xcodebuild \
@@ -38,6 +44,7 @@ xcodebuild \
   -configuration "$CONFIGURATION" \
   -destination "$DESTINATION" \
   -derivedDataPath "$DERIVED_DATA" \
+  -onlyUsePackageVersionsFromResolvedFile \
   ${QUIET[@]+"${QUIET[@]}"} \
   build
 

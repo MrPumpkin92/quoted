@@ -130,12 +130,7 @@ private struct AuthFormView: View {
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            QuoteText(body: WelcomeQuote.body, runs: WelcomeQuote.runs, style: .hero, quoteMarks: .hanging)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            AttributionLine(author: WelcomeQuote.author, source: WelcomeQuote.source)
-        }
-        .accessibilityElement(children: .combine)
+        WelcomeHero()
     }
 
     private var form: some View {
@@ -212,17 +207,7 @@ private struct AuthFormView: View {
                 .buttonStyle(.plain)
                 .disabled(isSubmitting || isSendingReset)
             case .createAccount:
-                Text("By continuing you agree to the [Terms](quoted-legal://terms) and [Community Guidelines](quoted-legal://guidelines). See our [Privacy Policy](quoted-legal://privacy).")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget)
-                    .environment(\.openURL, OpenURLAction { url in
-                        guard let page = Self.legalPage(for: url) else { return .discarded }
-                        onShowLegal(page)
-                        return .handled
-                    })
+                LegalConsentText(onShow: onShowLegal)
             }
             switchModeButton
         }
@@ -312,16 +297,6 @@ private struct AuthFormView: View {
         }
     }
 
-    /// Maps the in-text legal links to their pages.
-    static func legalPage(for url: URL) -> LegalPage? {
-        guard url.scheme == "quoted-legal" else { return nil }
-        switch url.host() {
-        case "terms": return .terms
-        case "guidelines": return .communityGuidelines
-        case "privacy": return .privacy
-        default: return nil
-        }
-    }
 }
 
 // MARK: - Check your inbox
@@ -433,72 +408,6 @@ private struct CheckEmailView: View {
             }
         }
     }
-}
-
-// MARK: - Shared pieces
-
-/// A label-above-value field inside a `CardContainer` (the Welcome card and the Username card).
-/// Tapping anywhere in the row focuses the field. The visible label is hidden from VoiceOver because
-/// the field's own title already names it.
-struct AuthFieldRow<Field: View>: View {
-    private let label: LocalizedStringKey
-    private let onTap: () -> Void
-    private let field: Field
-
-    init(label: LocalizedStringKey, onTap: @escaping () -> Void, @ViewBuilder field: () -> Field) {
-        self.label = label
-        self.onTap = onTap
-        self.field = field()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-            Text(label)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            field
-                .font(.body)
-        }
-        .padding(.horizontal, Theme.Spacing.cardPadding)
-        .padding(.vertical, Theme.Spacing.s)
-        .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
-    }
-}
-
-/// A bundled legal page in a sheet (the Create account links). There is no tab stack while signed
-/// out, so the page gets its own `NavigationStack` and a Close button.
-private struct LegalSheet: View {
-    let page: LegalPage
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            TextPageView(page: page)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(role: .close) { dismiss() }
-                    }
-                }
-        }
-        .toastHost()
-    }
-}
-
-/// The Welcome hero: Mary Shelley, with "fearless" in italic.
-private enum WelcomeQuote {
-    static let body = "Beware; for I am fearless, and therefore powerful."
-    static let author = "Mary Shelley"
-    static let source = "Frankenstein"
-    static let runs: [TextRun] = {
-        let word = "fearless"
-        guard let range = body.range(of: word) else { return [] }
-        let start = body.utf16.distance(from: body.utf16.startIndex, to: range.lowerBound)
-        return [TextRun(start: start, length: word.utf16.count, flags: .italic)]
-    }()
 }
 
 // MARK: - Previews

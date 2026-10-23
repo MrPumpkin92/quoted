@@ -10,6 +10,8 @@ public enum Limits {
     public static let noteMaxLength = 280
     public static let reportDetailsMaxLength = 500
     public static let formatRunsMax = RichText.maxRuns
+    /// Quotes one account can keep; the server enforces it (`QR002`).
+    public static let quotesPerAccount = 5000
 
     /// The length Postgres `char_length` reports for `text`.
     public static func length(of text: String) -> Int { text.unicodeScalars.count }

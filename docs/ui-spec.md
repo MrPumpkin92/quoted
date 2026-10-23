@@ -19,7 +19,7 @@ Source of truth for the SwiftUI build. Visual reference: `design/renders/Main.pn
 
 **Type.** Quotes use the system serif (New York): `.fontDesign(.serif)`. It replaces the mockup's Newsreader, with no bundled font, full Dynamic Type, and bold and italic for free. UI text uses the default SF.
 - `QuoteStyle.row`: `.title3`, serif, regular, line limit 4.
-- `QuoteStyle.hero`: `.largeTitle`, serif, regular. Used on the detail screen and Welcome.
+- `QuoteStyle.hero`: `.largeTitle`, serif, regular. Used on the detail screen and Welcome (dormant, §1).
 - `QuoteStyle.editor`: about 26pt, serif, relative to `.title2`.
 - `Attribution`: author in `.caption` semibold, uppercase, tracking 1.2, `.secondary`. The source follows in `.caption` serif italic, `.secondary`.
 
@@ -39,9 +39,11 @@ Source of truth for the SwiftUI build. Visual reference: `design/renders/Main.pn
 ## App structure
 ```
 RootView (SessionStore.phase)
-├─ launching          → Ground with the wordmark (no spinner unless > 1 s)
-├─ signedOut          → AuthFlow: Welcome/SignIn ⇄ CreateAccount → CheckEmail
-├─ needsUsername      → UsernameView
+├─ launching          → Ground with the wordmark (no spinner unless > 1 s), also while the anonymous
+│                       account is created; a failure shows the error with Try again
+├─ signedOut          → anonymous accounts: the same launch screen, until the new account exists
+│                       (AccountMode.emailPassword only: AuthFlow: Welcome/SignIn ⇄ CreateAccount → CheckEmail)
+├─ needsUsername      → UsernameView (the first screen on a fresh install)
 ├─ needsStarter       → StarterPackView → NotificationPrimingView
 └─ ready              → MainTabView (iOS 26 TabView)
      ├─ Tab "Library" (books.vertical)   NavigationStack → LibraryView
@@ -53,11 +55,12 @@ Pushes: QuoteDetailView, RemindersView, SharedInboxView, AccountView, BlockedUse
 Deep links (`quoted://`):
 - `quote/<id>` (from a notification tap or a widget) selects the Library tab and pushes `QuoteDetailView`. The pager covers the reminder quotes.
 - `rotation` pushes `RemindersView`.
-- `auth-callback` completes email confirmation.
+- `auth-callback` completes email confirmation (email accounts only).
 
 ## Screens
 
-### 1. Welcome / Sign in (`Main.png`)
+### 1. Welcome / Sign in (`Main.png`, dormant)
+- **Dormant.** Shown only with `AccountMode.emailPassword` (docs/decisions/2026-10-20-anonymous-accounts.md). While accounts are anonymous there is no sign-in screen: the app creates an account for this iPhone and opens on Username (§2). The design below stays for when email sign-in returns.
 - Wordmark "Quoted" in serif semibold, followed by an accent-colored period.
 - Subtitle: **"Keep the words that move you, and see them again every day."**
 - Hero quote: Shelley, with the "fearless" italic run, a hanging open-quote and an attribution line.
@@ -69,10 +72,13 @@ Deep links (`quoted://`):
   - If the server requires confirmation, show **CheckEmail**: "Check your inbox. We sent a link to *x*. Open it on this iPhone." Offer "Open Mail" and "Resend".
 
 ### 2. Username
+- The first screen on a fresh install, and again after Delete account or a lost session: the app has just created an anonymous account for this iPhone.
 - Title "Choose a username".
 - An `@` prefixed field with live validation (`Username.validate`). Check availability with a debounce: a checkmark when it's free, "Taken" when it isn't.
 - A Display name field.
 - Primary button **Continue**.
+- Above Continue, the consent line "By continuing you agree to the Terms and Community Guidelines. See our Privacy Policy." Each name is a link that opens the page in a sheet (`LegalConsentText`, shared with Create account). Shown only with anonymous accounts, where no Create account screen comes first.
+- Sign out at the top left only when `session.canSignOut`: `AccountMode.emailPassword` and an account that is not anonymous. In this build no account gets it, including a leftover or DEBUG email session. To leave the DEBUG demo account locally, launch with `-UITestReset` or reinstall.
 
 ### 3. Starter pack (`Margin-Starter.png`)
 - Title "Pick a few to start", with the subtitle "They'll show up in your widget and reminders."
@@ -83,7 +89,7 @@ Deep links (`quoted://`):
 
 ### 4. Notification priming (council fix, critical)
 - Title "Your quotes, a few times a day".
-- A sample notification card, plain text, showing one of the user's quotes.
+- A sample notification card, plain text, showing one of the user's quotes laid out like the real one: "Quoted", the author as the subtitle, then the quote.
 - Copy: "Quoted will show you 3 of your quotes a day, between 8 AM and 9 PM. You can change this anytime."
 - **Allow notifications** opens the system prompt. "Not now" is a text button.
 - Both paths lead to Main. If the user denied, the status card shows the off state (Library section).
@@ -118,7 +124,7 @@ Deep links (`quoted://`):
   - **Card 2:** label-left `LabeledContent` rows for Author and Source (optional).
   - **Card 3:** an "Include in reminders" toggle, on by default, with the caption "Shows up in widgets and reminders".
 - **Keyboard toolbar:** B, I and U toggle buttons with the selected state in `AccentSoft`. They reflect the selection's current flags and toggle runs through `RichText.toggle`. Then a `Spacer`, then a `PasteButton`. Return in the editor inserts a newline. The Author field submits to Source, and Source submits to Save.
-- **Paste heuristics:** text like `“…” — Name` or `"…" - Name, Work` is split into body, author and source. Smart quotes around the body are stripped.
+- **Paste heuristics:** text like `“…” — Name` or `"…" - Name, Work` is split into body, author and source. Smart quotes around the body are stripped. `QuotedCore.PastedQuote`, linear in the pasted length, so pasting a long page doesn't stall the sheet.
 - Validation errors appear inline. If saving fails, keep the sheet open and show a toast.
 
 ### 8. Reminders (`Margin-Rotation.png` + fixes)
@@ -165,15 +171,15 @@ Deep links (`quoted://`):
 - With no friends yet, the first part reads "Add friends to send quotes in Quoted" and links to the Friends tab.
 
 ### 12. Account (graft + App Store fixes)
-- Header: avatar, display name, @username, and the sign-in email in `.secondary`.
+- Header: avatar, display name, @username, and, for an email account only, the sign-in email in `.secondary`.
 - **Notifications:** the status (On/Off), opening Settings or Reminders.
 - **Blocked users:** a list with Unblock.
 - **Community guidelines**, **Terms of use** and **Privacy policy** open in-app `TextPageView` with bundled markdown in `App/Resources/Legal/` (no draft banner; legal review is a founder step in `docs/app-store-submission.md`). `{{SUPPORT_EMAIL}}` in the pages becomes a `mailto:` link; without an address the sentence is left out.
-- **Contact support:** a `mailto:` link to the `SupportEmail` Info.plist value (`SUPPORT_EMAIL` in `Config/Release.xcconfig`; Release builds fail without it). Hide the row when it is empty (Debug).
+- **Contact support:** a `mailto:` link to the `SupportEmail` Info.plist value (`SUPPORT_EMAIL` in `Config/Shared.xcconfig`; Release builds fail without it). Hide the row when it is empty.
 - **Blocked users:** each row's context menu (and VoiceOver actions) also has Report.
-- **Sign out.**
-- **Delete account:** destructive. A confirmation alert explains that it is permanent and removes quotes, friends and shares. Then call `AccountService.deleteAccount()`, clear the App Group, cancel notifications, reload widgets, and return to Welcome.
-- Footer: "Quoted 1.0.0 (1)".
+- **Sign out:** only when `session.canSignOut`: `AccountMode.emailPassword` and an account that is not anonymous. In this build no account gets it, including a leftover or DEBUG email session (nothing could sign back in to an anonymous account). To leave the DEBUG demo account locally, launch with `-UITestReset` or reinstall.
+- **Delete account:** destructive. A confirmation alert explains that it is permanent and removes quotes, friends and shares. Then call `AccountService.deleteAccount()`, clear the App Group, cancel notifications and reload widgets. With anonymous accounts the app then creates a new, empty account and returns to Choose a username (§2); with email accounts it returns to Welcome.
+- Footer: for an anonymous account, "Your account belongs to this iPhone and has no email or password. If you delete the app, it can't be recovered." Then "Deleting your account permanently removes your quotes, friends and shares from our servers." and "Quoted 1.0.0 (1)".
 
 ### 13. Widgets (`Margin-Widgets.png` + fixes)
 - Families: `.systemSmall`, `.systemMedium` and `.accessoryRectangular`.
@@ -186,7 +192,7 @@ Deep links (`quoted://`):
 - Gallery: display name "Quote", description "A quote from your reminders, matching your latest reminder."
 
 ### 14. Notifications
-- The body reads `“body” — Author`, plain text: notifications can't render runs. There is no title, so iOS shows "Quoted". `threadIdentifier` is `reminders`. `userInfo` carries `quoteID`, and a tap opens the detail.
+- The subtitle is the author, and the body reads `“body”` in plain text with the quote's line breaks (each line tidied, runs of blank lines kept to one): notifications can't render runs. There is no title, so iOS shows "Quoted". `threadIdentifier` is `reminders`. `userInfo` carries `quoteID`, and a tap opens the detail.
 - Plan with `ReminderPlanner` (at most 60). Replan on launch, on foreground, on any change, and in a `BGAppRefreshTask` (`com.hwei.quoted.refresh`, about every 12 h) that also refreshes the widget snapshot.
 
 ## States checklist (every screen)
@@ -194,4 +200,4 @@ Deep links (`quoted://`):
 - **Empty:** guided, with exactly one filled action.
 - **Error:** inline or toast with retry. Never a raw error string.
 - **Offline:** reads work from the cache; writes show "You're offline. Try again when connected."
-- **Signed out:** the widget shows its empty state, and notifications are cancelled.
+- **Signed out** (email accounts; with anonymous accounts only the moment before a new account exists): the widget shows its empty state, and notifications are cancelled.

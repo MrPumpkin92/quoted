@@ -3,11 +3,15 @@ import SwiftUI
 
 /// The Reminders screen (docs/ui-spec.md §8), pushed from the Library status card and `quoted://rotation`.
 ///
-/// A settings card (the Reminders toggle with its schedule line, how often, the time window and the
-/// days), a banner when notifications are off for Quoted, then the reminder quotes in order: a
-/// segmented In order / Shuffle control, drag handles (the list is always in edit mode) and an
-/// "Add quotes" picker. A list in edit mode can't be swiped, so each row's red remove control reveals
-/// the same "Remove" swipe action (with Undo, which puts the quote back in its place); VoiceOver gets
+/// A settings card ("Send reminders" with its schedule line, how often, the time window and the days),
+/// a banner when notifications are off for Quoted, then the reminder quotes in order: a segmented In
+/// order / Shuffle control, the rows and an "Add quotes" picker. The toggle reads on only while
+/// reminders actually go out (`ReminderStore.isDelivering`): without notification permission it
+/// shows off and says why, and turning it on asks for permission (or opens Settings when denied).
+///
+/// A row is removed from reminders (not deleted) with the trailing "Remove" swipe in accent or the
+/// context menu's "Remove from reminders", each with Undo, which puts the quote back in its place.
+/// Edit (In order only) shows drag handles to reorder; there are no delete controls. VoiceOver gets
 /// Remove, Move up and Move down actions. In Shuffle the rows have no numbers, can't be reordered
 /// (no handles, no Move actions) and the footer says "Shown in random order".
 /// Every change goes straight to `ReminderStore.settings` or `LibraryStore`, which save and replan
@@ -24,6 +28,9 @@ struct RemindersView: View {
     @State private var draft: ScheduleDraft?
     /// Whether this screen has read the notification permission (so "Allow" never flashes before).
     @State private var permissionChecked = false
+    /// Edit shows the drag handles (reorder only; nothing here deletes a quote).
+    @State private var editMode: EditMode = .inactive
+    @State private var isRetrying = false
 
     /// How long the stepper and the time pickers wait before saving.
     static let debounce: Duration = .milliseconds(500)
@@ -40,16 +47,23 @@ struct RemindersView: View {
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                 }
+                .listSectionMargins(.horizontal, Theme.Spacing.gutter)
             }
 
             Section {
-                remindersToggle
-                frequencyRow
-                windowRow
+                // A 16-pt inset on every iPhone (the system's is 16 on 375-pt screens and 20 on wider
+                // ones), so the Days label below can line up with these labels everywhere.
+                Group {
+                    remindersToggle
+                    frequencyRow
+                    windowRow
+                }
+                .listRowInsets(.horizontal, Theme.Spacing.cardPadding)
                 daysRow
             }
             .listRowBackground(Color.surface)
             .listRowSeparatorTint(Color.hairline)
+            .listSectionMargins(.horizontal, Theme.Spacing.gutter)
 
             quotesSection(quotes)
 
@@ -58,11 +72,22 @@ struct RemindersView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .listSectionMargins(.horizontal, Theme.Spacing.gutter)
-        .environment(\.editMode, .constant(.active))
         .groundBackground()
         .navigationTitle("Reminders")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            if canReorder(quotes) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    EditButton()
+                        .accessibilityHint("Shows handles to reorder your reminders")
+                }
+            }
+        }
+        .onChange(of: canReorder(quotes)) { _, canReorder in
+            if !canReorder { editMode = .inactive }
+        }
+        // Outside `.toolbar`, so the Edit button and the list share this edit mode.
+        .environment(\.editMode, $editMode)
         .task {
             await reminders.refreshPermission()
             permissionChecked = true
@@ -84,13 +109,19 @@ struct RemindersView: View {
     private var remindersToggle: some View {
         Toggle(isOn: enabledBinding) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Reminders")
-                Text(reminders.scheduleSummary)
+                Text("Send reminders")
+                Text(toggleSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
         .frame(minHeight: Theme.Metrics.minTouchTarget)
+    }
+
+    /// The line under the toggle: the schedule while reminders go out ("Every day · Next at 8:00 PM"),
+    /// otherwise why they don't ("Off", or waiting for / denied notification permission).
+    private var toggleSubtitle: String {
+        reminders.isDelivering ? reminders.scheduleSummary : reminders.statusLine
     }
 
     private var frequencyRow: some View {
@@ -171,9 +202,9 @@ struct RemindersView: View {
                     .multilineTextAlignment(.trailing)
             }
             .accessibilityElement(children: .combine)
-            // The row insets are narrower than the card's 16 pt so seven 44 pt chips fit; keep the
-            // label lined up with "How often" and "Between" above it.
-            .padding(.horizontal, Theme.Spacing.m - Theme.Spacing.s)
+            // This row's insets are narrower than the other rows' 16 pt so seven 44 pt chips fit on
+            // an iPhone SE; the padding lines the label up with "How often" and "Between".
+            .padding(.horizontal, Theme.Spacing.cardPadding - Theme.Spacing.s)
             DayChips(settings: reminders.settings, onToggle: toggle(weekday:))
         }
         .padding(.vertical, Theme.Spacing.xxs)
@@ -204,7 +235,13 @@ struct RemindersView: View {
 
     @ViewBuilder
     private func quotesSection(_ quotes: [Quote]) -> some View {
-        if !library.hasLoaded {
+        if !library.hasLoaded, let error = library.lastError {
+            Section {
+                loadFailed(error)
+                    .listRowBackground(Color.surface)
+            }
+            .listSectionMargins(.horizontal, Theme.Spacing.gutter)
+        } else if !library.hasLoaded {
             Section {
                 DelayedProgressView()
                     .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget * 2)
@@ -231,18 +268,23 @@ struct RemindersView: View {
                     )
                     .listRowBackground(Color.surface)
                     .listRowSeparatorTint(Color.hairline)
+                    // Accent, not red: this takes the quote out of reminders; red means delete.
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button("Remove", systemImage: "bell.slash", role: .destructive) {
+                        Button("Remove", systemImage: "bell.slash") {
+                            remove(quote)
+                        }
+                        .tint(Color.accentColor)
+                    }
+                    .contextMenu {
+                        Button("Remove from reminders", systemImage: "bell.slash") {
                             remove(quote)
                         }
                     }
+                    .deleteDisabled(true)
                 }
                 .onMove(perform: isInOrder ? { source, destination in
                     library.moveReminders(fromOffsets: source, toOffset: destination)
                 } : nil)
-                .onDelete { offsets in
-                    offsets.map { quotes[$0] }.forEach(remove)
-                }
             } header: {
                 quotesHeader(count: quotes.count)
             } footer: {
@@ -250,6 +292,56 @@ struct RemindersView: View {
                     Text("Shown in random order. Choose In order to arrange them.")
                 }
             }
+            .listSectionMargins(.horizontal, Theme.Spacing.gutter)
+        }
+    }
+
+    private func canReorder(_ quotes: [Quote]) -> Bool {
+        library.hasLoaded && reminders.settings.order == .inOrder && quotes.count > 1
+    }
+
+    /// The first load failed (offline with no cache): say so, with Try again, instead of a spinner
+    /// that never stops.
+    private func loadFailed(_ error: any Error) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Label {
+                Text("Couldn\u{2019}t load your quotes")
+                    .font(.headline)
+            } icon: {
+                Image(systemName: "wifi.exclamationmark")
+                    .foregroundStyle(.secondary)
+            }
+            Text(error.friendlyMessage)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                retry()
+            } label: {
+                // The 44-pt target is in the label: a frame outside a Button adds no hit area.
+                ZStack {
+                    Text("Try again").opacity(isRetrying ? 0 : 1)
+                    if isRetrying {
+                        ProgressView()
+                    }
+                }
+                .capsuleButtonLabel()
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .disabled(isRetrying)
+            .accessibilityLabel(isRetrying ? "Loading" : "Try again")
+            .padding(.top, Theme.Spacing.xxs)
+        }
+        .padding(.vertical, Theme.Spacing.xs)
+    }
+
+    private func retry() {
+        guard !isRetrying else { return }
+        isRetrying = true
+        Task {
+            await library.refresh(userInitiated: true)
+            isRetrying = false
         }
     }
 
@@ -304,6 +396,7 @@ struct RemindersView: View {
                 Text("Every quote in your library is in your reminders.")
             }
         }
+        .listSectionMargins(.horizontal, Theme.Spacing.gutter)
     }
 
     @ViewBuilder
@@ -329,13 +422,24 @@ struct RemindersView: View {
 
     // MARK: Bindings
 
+    /// On only while reminders go out. Turning it on also asks for notification permission when it
+    /// was never asked, or opens Settings when it was denied (only Settings can change that).
     private var enabledBinding: Binding<Bool> {
         Binding(
-            get: { reminders.settings.enabled },
+            get: { reminders.isDelivering },
             set: { isOn in
-                reminders.settings.enabled = isOn
-                if isOn, reminders.permission == .notDetermined {
+                guard isOn else {
+                    reminders.settings.enabled = false
+                    return
+                }
+                reminders.settings.enabled = true
+                switch reminders.permission {
+                case .notDetermined:
                     Task { await reminders.requestAuthorization() }
+                case .denied:
+                    Task { await ReminderStore.openNotificationSettings() }
+                case .authorized:
+                    break
                 }
             }
         )

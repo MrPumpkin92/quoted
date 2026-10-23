@@ -73,6 +73,10 @@ final class SocialStore {
     @ObservationIgnored private var refreshSerial = 0
     /// Bumped by `reset()`, so results that arrive after a sign-out are dropped.
     @ObservationIgnored private var generation = 0
+    /// Share IDs of a send that failed, by quote, recipients and note, so Send again reuses them:
+    /// if the first attempt landed and only its answer was lost, the retry finds those shares
+    /// instead of sending a second copy (`SocialRepository.share(_:to:note:ids:)`).
+    @ObservationIgnored private var retryShareIDs: [ShareKey: [UUID: UUID]] = [:]
 
     init(backend: Backend, toasts: ToastCenter) {
         self.backend = backend
@@ -111,6 +115,38 @@ final class SocialStore {
     var unseenSenders: [Profile] {
         var seen: Set<UUID> = []
         return unseenShares.compactMap(\.sender).filter { seen.insert($0.id).inserted }
+    }
+
+    /// "From Maya", "From Maya and Jordan" or "From Maya, Jordan and 2 others" for every share in the
+    /// inbox (seen or not), or nil when it is empty. Friends' "N shared with you" row.
+    var inboxSummary: String? {
+        Self.fromSummary(inboxSenderNames)
+    }
+
+    /// The senders of every share in the inbox, newest first, without repeats (for `AvatarStack`).
+    var inboxSenders: [Profile] {
+        var seen: Set<UUID> = []
+        return inbox.compactMap(\.sender).filter { seen.insert($0.id).inserted }
+    }
+
+    private var inboxSenderNames: [String] {
+        var names: [String] = []
+        for share in inbox {
+            let name = Self.firstName(share.sender?.displayName ?? "a friend")
+            if !names.contains(name) { names.append(name) }
+        }
+        return names
+    }
+
+    private static func fromSummary(_ names: [String]) -> String? {
+        switch names.count {
+        case 0: return nil
+        case 1: return "From \(names[0])"
+        case 2: return "From \(names[0]) and \(names[1])"
+        default:
+            let others = names.count - 2
+            return "From \(names[0]), \(names[1]) and \(others) \(others == 1 ? "other" : "others")"
+        }
     }
 
     /// Your connection (friend or request) with a user, if any.
@@ -369,7 +405,7 @@ final class SocialStore {
         let attempt = ShareAttempt()
         let sending = startSending(outgoing, attempt: attempt)
         toasts.show(outgoing.message) { [weak self] in
-            await self?.unsend(sending, attempt: attempt)
+            await self?.unsend(sending, outgoing: outgoing, attempt: attempt)
         }
         Haptics.success()
         return true
@@ -385,7 +421,7 @@ final class SocialStore {
         let sending = startSending(outgoing, attempt: attempt)
         guard await sending.value != nil else { return false }
         toasts.show(outgoing.message) { [weak self] in
-            await self?.unsend(sending, attempt: attempt)
+            await self?.unsend(sending, outgoing: outgoing, attempt: attempt)
         }
         Haptics.success()
         return true
@@ -490,6 +526,7 @@ final class SocialStore {
         refreshTask = nil
         refreshSerial += 1
         generation += 1
+        retryShareIDs = [:]
     }
 
     /// Seeds state for SwiftUI previews.
@@ -577,6 +614,16 @@ final class SocialStore {
         let note: String?
         /// "Sent to Maya".
         let message: String
+        /// The new shares' IDs by recipient, chosen before the insert.
+        let shareIDs: [UUID: UUID]
+        let key: ShareKey
+    }
+
+    /// One send's identity for ``retryShareIDs``.
+    private struct ShareKey: Hashable, Sendable {
+        let quoteID: UUID
+        let recipients: Set<UUID>
+        let note: String?
     }
 
     /// Validates recipients and the note, toasting the problem and returning nil when invalid.
@@ -598,7 +645,12 @@ final class SocialStore {
         let names = recipients.map { id in
             friends.first { $0.profile.id == id }.map { Self.firstName($0.profile.displayName) } ?? "a friend"
         }
-        return OutgoingShare(quote: quote, recipients: recipients, note: cleanNote, message: Self.sentMessage(names))
+        let key = ShareKey(quoteID: quote.id, recipients: Set(recipients), note: cleanNote)
+        let shareIDs = retryShareIDs[key] ?? Dictionary(uniqueKeysWithValues: recipients.map { ($0, UUID()) })
+        return OutgoingShare(
+            quote: quote, recipients: recipients, note: cleanNote, message: Self.sentMessage(names),
+            shareIDs: shareIDs, key: key
+        )
     }
 
     /// Starts the insert now, under background time. The task returns the sent share IDs, or nil after
@@ -609,10 +661,15 @@ final class SocialStore {
         return Task { () -> [UUID]? in
             defer { assertion.end() }
             do {
-                let sent = try await backend.social.share(outgoing.quote, to: outgoing.recipients, note: outgoing.note)
+                let sent = try await backend.social.share(
+                    outgoing.quote, to: outgoing.recipients, note: outgoing.note, ids: outgoing.shareIDs
+                )
+                self.retryShareIDs[outgoing.key] = nil
                 return sent.map(\.id)
             } catch {
                 Logger.social.error("Share failed: \(String(describing: QuotedError(error)), privacy: .public)")
+                // The insert may have landed with its answer lost: Send again reuses these IDs.
+                self.retryShareIDs[outgoing.key] = outgoing.shareIDs
                 if !attempt.isUndone {
                     self.toasts.show(error: error, failure: "Couldn\u{2019}t send")
                 }
@@ -621,13 +678,16 @@ final class SocialStore {
         }
     }
 
-    /// Undo for a send: waits for the insert, then deletes the shares it created.
-    private func unsend(_ sending: Task<[UUID]?, Never>, attempt: ShareAttempt) async {
+    /// Undo for a send: waits for the insert, then deletes the shares it created. When the insert's
+    /// answer was lost, the shares may still exist; their IDs were chosen up front, so those go.
+    private func unsend(_ sending: Task<[UUID]?, Never>, outgoing: OutgoingShare, attempt: ShareAttempt) async {
         attempt.isUndone = true
         let generation = self.generation
         let assertion = BackgroundTaskAssertion("Undo send")
         defer { assertion.end() }
-        guard let ids = await sending.value, !ids.isEmpty, self.generation == generation else { return }
+        let ids = await sending.value ?? Array(outgoing.shareIDs.values)
+        guard !ids.isEmpty, self.generation == generation else { return }
+        retryShareIDs[outgoing.key] = nil
         do {
             try await backend.social.deleteShares(ids: ids)
         } catch {
