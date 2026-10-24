@@ -7,11 +7,21 @@ import UIKit
 protocol QuoteContent: RichTextContent {
     var author: String? { get }
     var source: String? { get }
+    /// Whether the wording and attribution were checked against a public-domain source (the verified
+    /// seal). The server decides it for quotes and shares (`verified_starter_id`).
+    var isVerified: Bool { get }
+}
+
+extension QuoteContent {
+    var isVerified: Bool { false }
 }
 
 extension Quote: QuoteContent {}
 extension SharedQuote: QuoteContent {}
-extension StarterQuote: QuoteContent {}
+extension StarterQuote: QuoteContent {
+    /// Every starter quote was checked word for word against its source.
+    var isVerified: Bool { true }
+}
 extension SnapshotQuote: QuoteContent {}
 
 /// How a quote body is set. Quotes always use the system serif (New York) and scale with Dynamic Type.
@@ -106,6 +116,14 @@ enum AttributionStyle {
         Text(title)
             .font(.system(.caption, design: .serif).italic())
             .foregroundStyle(.secondary)
+    }
+
+    /// The verified seal: `checkmark.seal.fill` in the accent, at the attribution's size, so it can end
+    /// the line as text and wrap with it.
+    static var verifiedSeal: Text {
+        Text(Image(systemName: "checkmark.seal.fill"))
+            .font(.caption)
+            .foregroundStyle(Color.accentColor)
     }
 }
 

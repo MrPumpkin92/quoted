@@ -9,12 +9,12 @@ enum Samples {
     static let emerson = quote(
         "Trust thyself: every heart vibrates to that iron string.",
         styled: ("Trust thyself", .bold),
-        author: "Ralph Waldo Emerson", source: "Self-Reliance", position: 0, minutesAgo: 10
+        author: "Ralph Waldo Emerson", source: "Self-Reliance", position: 0, minutesAgo: 10, verified: 3
     )
     static let shelley = quote(
         "Beware; for I am fearless, and therefore powerful.",
         styled: ("fearless", .italic),
-        author: "Mary Shelley", source: "Frankenstein", position: 1, minutesAgo: 20
+        author: "Mary Shelley", source: "Frankenstein", position: 1, minutesAgo: 20, verified: 1
     )
     static let seneca = quote(
         "While we are postponing, life speeds by.",
@@ -80,8 +80,15 @@ enum Samples {
     static let starters: [StarterQuote] = [shelley, thoreau, emerson, dickinson, seneca, shakespeare]
         .enumerated()
         .map { index, quote in
-            StarterQuote(id: index + 1, body: quote.body, format: quote.format, author: quote.author, source: quote.source, sortOrder: index + 1)
+            StarterQuote(
+                id: index + 1, body: quote.body, format: quote.format, author: quote.author, source: quote.source,
+                sortOrder: index + 1, sourceLocation: sourceLocations[index + 1],
+                sourceURL: URL(string: "https://www.gutenberg.org/ebooks/42324")
+            )
         }
+
+    /// Where two sample starters are in their works (ids as in `starters`).
+    private static let sourceLocations = [1: "1831 edition, Chapter 20", 3: "Essays: First Series (1841), 3rd paragraph"]
 
     // MARK: Helpers
 
@@ -92,7 +99,8 @@ enum Samples {
         author: String?,
         source: String? = nil,
         position: Int? = nil,
-        minutesAgo: Double
+        minutesAgo: Double,
+        verified: Int? = nil
     ) -> Quote {
         var runs: [TextRun] = []
         if let styled, let range = body.range(of: styled.0) {
@@ -107,7 +115,8 @@ enum Samples {
             source: source,
             origin: .manual,
             rotationPosition: position,
-            createdAt: Date(timeIntervalSinceNow: -minutesAgo * 60)
+            createdAt: Date(timeIntervalSinceNow: -minutesAgo * 60),
+            verifiedStarterID: verified
         )
     }
 

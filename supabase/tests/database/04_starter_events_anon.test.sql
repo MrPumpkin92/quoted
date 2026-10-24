@@ -56,8 +56,8 @@ select tests.create_user('a');
 select tests.create_user('b');
 insert into public.profiles (id, username) values (tests.uid('a'), 'alice'), (tests.uid('b'), 'bob');
 -- An id/sort_order far from the real starter pack so the test never collides with it.
-insert into public.starter_quotes (id, body, author, source, sort_order)
-values (32767, 'Test starter quote', 'Test Author', null, 32767);
+insert into public.starter_quotes (id, body, author, source, sort_order, source_location, source_url)
+values (32767, 'Test starter quote', 'Test Author', null, 32767, 'Chapter 1', 'https://example.org/text');
 -- events are anonymous, so this test's rows are the ones above the current max id.
 create table tests.baseline as select coalesce(max(id), 0) as max_event_id from public.events;
 insert into public.events (name) values ('web_search_tap');

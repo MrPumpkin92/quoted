@@ -76,12 +76,14 @@ select results_eq(
        ('friendships', 'friendships_requester_id_fkey', 'profiles', 'c'),
        ('profiles', 'profiles_id_fkey', 'auth.users', 'c'),
        ('quotes', 'quotes_owner_id_fkey', 'auth.users', 'c'),
+       ('quotes', 'quotes_verified_starter_id_fkey', 'starter_quotes', 'n'),
        ('reports', 'reports_reported_user_id_fkey', 'profiles', 'n'),
        ('reports', 'reports_reporter_id_fkey', 'profiles', 'n'),
        ('reports', 'reports_share_id_fkey', 'shares', 'n'),
        ('shares', 'shares_quote_id_fkey', 'quotes', 'n'),
        ('shares', 'shares_recipient_id_fkey', 'profiles', 'c'),
-       ('shares', 'shares_sender_id_fkey', 'profiles', 'c') $$,
+       ('shares', 'shares_sender_id_fkey', 'profiles', 'c'),
+       ('shares', 'shares_verified_starter_id_fkey', 'starter_quotes', 'n') $$,
   'foreign keys have stable names, targets and delete actions (events has none; reports outlive both accounts)'
 );
 
@@ -166,7 +168,9 @@ select results_eq(
        ('body_format', 'jsonb', 'NO', '''[]''::jsonb'),
        ('author', 'text', 'NO', null),
        ('source', 'text', 'YES', null),
-       ('sort_order', 'smallint', 'NO', null) $$,
+       ('sort_order', 'smallint', 'NO', null),
+       ('source_location', 'text', 'NO', null),
+       ('source_url', 'text', 'NO', null) $$,
   'starter_quotes has the agreed columns'
 );
 

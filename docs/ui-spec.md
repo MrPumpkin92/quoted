@@ -81,7 +81,7 @@ Deep links (`quoted://`):
 - Sign out at the top left only when `session.canSignOut`: `AccountMode.emailPassword` and an account that is not anonymous. In this build no account gets it, including a leftover or DEBUG email session. To leave the DEBUG demo account locally, launch with `-UITestReset` or reinstall.
 
 ### 3. Starter pack (`Margin-Starter.png`)
-- Title "Pick a few to start", with the subtitle "They'll show up in your widget and reminders."
+- Title "Pick a few to start", with the subtitle "They'll show up in your widget and reminders." and, under it, the verified seal with "Every quote is checked word for word against its source." The rows don't repeat the seal.
 - A list of all 60 `starter_quotes`, each row a serif excerpt plus an attribution. Tapping the whole row toggles it; a check circle in the accent shows the selected state.
 - The bottom button reads **Continue with N quotes** and is disabled at 0.
 - "Skip" in the nav bar.
@@ -113,6 +113,7 @@ Deep links (`quoted://`):
 - The `QuoteCard` page fills the width: `Surface` and hairline, 32pt padding, the hero serif quote and the attribution.
 - A horizontal pager (`TabView` `.page` style) across the list it was opened from: the Library order, or the reminder order when opened from a deep link. For VoiceOver the "2 of 8" counter is adjustable ("Quote, 2 of 8": swipe up or down to change quotes) and each card has Next quote / Previous quote actions.
 - Below the card:
+  - For a verified quote, a bordered accent capsule **Verified quote** (`checkmark.seal.fill`) above Share. It opens a sheet: the seal and "Verified quote", one sentence on the check, a card with the work (serif italic), the author and where in the work, a **Read it on Project Gutenberg / Wikisource** row (in-app browser), and "Change the wording, author or source and the seal comes off."
   - A primary **Share** button.
   - An "In reminders" `Toggle` with the caption "Shows up in widgets and reminders".
 - Toolbar: Edit, plus a `…` menu with Delete (behind a confirmation).

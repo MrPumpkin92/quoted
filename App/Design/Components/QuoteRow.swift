@@ -12,6 +12,7 @@ struct QuoteRow: View {
     private let author: String?
     private let source: String?
     private let inReminders: Bool
+    private let verified: Bool
     private let style: QuoteStyle
     private let highlighting: [String]
 
@@ -19,11 +20,13 @@ struct QuoteRow: View {
     ///   - content: A `Quote`, `SharedQuote`, `StarterQuote` or `SnapshotQuote`.
     ///   - inReminders: Shows the bell glyph. Nil means "ask the quote": a `Quote` in the Rotation
     ///     shows it, anything else does not.
+    ///   - verified: Shows the verified seal. Nil asks the quote (`QuoteContent.isVerified`).
     ///   - style: `.row` (4 lines, default) or `.excerpt` (1 line, Reminders list).
     ///   - highlighting: Search terms to tint with `Color.accentSoft`.
     init(
         _ content: some QuoteContent,
         inReminders: Bool? = nil,
+        verified: Bool? = nil,
         style: QuoteStyle = .row,
         highlighting: [String] = []
     ) {
@@ -32,6 +35,7 @@ struct QuoteRow: View {
         author = content.author
         source = content.source
         self.inReminders = inReminders ?? ((content as? Quote)?.isInRotation ?? false)
+        self.verified = verified ?? content.isVerified
         self.style = style
         self.highlighting = highlighting
     }
@@ -40,7 +44,7 @@ struct QuoteRow: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             QuoteText(body: text, runs: runs, style: style, highlighting: highlighting)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            AttributionLine(author: author, source: source, inReminders: inReminders)
+            AttributionLine(author: author, source: source, inReminders: inReminders, verified: verified)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

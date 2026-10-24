@@ -134,12 +134,23 @@ private struct StarterPickerView: View {
 
     var body: some View {
         List {
-            Text("They'll show up in your widget and reminders.")
-                .font(.body)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("They'll show up in your widget and reminders.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                // The seal on library rows means the same; here every row has it, so it's said once.
+                Label {
+                    Text("Every quote is checked word for word against its source.")
+                } icon: {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(Color.accentColor)
+                }
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .listRowSeparator(.hidden, edges: .top)
-                .groundListRow()
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .listRowSeparator(.hidden, edges: .top)
+            .groundListRow()
             content
         }
         .listStyle(.plain)
@@ -272,7 +283,7 @@ private struct StarterRow: View {
     var body: some View {
         Button(action: onToggle) {
             HStack(alignment: .center, spacing: Theme.Spacing.m) {
-                QuoteRow(quote, inReminders: false)
+                QuoteRow(quote, inReminders: false, verified: false)
                 checkmark
             }
             .contentShape(Rectangle())

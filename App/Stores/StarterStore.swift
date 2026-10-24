@@ -36,6 +36,13 @@ final class StarterStore {
         }
     }
 
+    /// The starter quote a verified quote matches (its source location and link), loading the pack
+    /// first if needed. Nil when it can't load (offline) or the quote left the pack.
+    func verifiedSource(id: Int) async -> StarterQuote? {
+        if quotes.isEmpty { await load() }
+        return quotes.first { $0.id == id }
+    }
+
     /// Forgets the loaded pack (sign-out).
     func reset() {
         quotes = []

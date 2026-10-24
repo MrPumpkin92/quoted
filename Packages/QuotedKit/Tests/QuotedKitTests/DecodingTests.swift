@@ -122,6 +122,41 @@ struct DecodingTests {
         #expect(blocks[1].blocked == nil)
     }
 
+    @Test func verificationFields() throws {
+        let quote = try decode(Quote.self, """
+        {"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a01","body":"Trust thyself.","body_format":[],"author":"Ralph Waldo Emerson",
+         "source":"Self-Reliance","origin":"starter","rotation_position":null,"created_at":"2026-10-19T03:26:38+00:00",
+         "updated_at":"2026-10-19T03:26:38+00:00","verified_starter_id":1}
+        """)
+        #expect(quote.verifiedStarterID == 1)
+        #expect(quote.isVerified)
+        // Rows and caches from before the column existed read as not verified.
+        let older = try decode(Quote.self, #"{"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a02","body":"Hi","created_at":"2026-10-19T03:26:38+00:00"}"#)
+        #expect(older.isVerified == false)
+        // The local cache keeps it.
+        let cached = try decode(Quote.self, String(decoding: try QuotedJSON.makeEncoder().encode(quote), as: UTF8.self))
+        #expect(cached.verifiedStarterID == 1)
+
+        let share = try decode(SharedQuote.self, """
+        {"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a03","sender_id":"\(Self.alice)","recipient_id":"\(Self.bob)","quote_id":null,
+         "body":"Trust thyself.","body_format":[],"author":"Ralph Waldo Emerson","source":"Self-Reliance","note":null,
+         "created_at":"2026-10-19T03:26:38+00:00","seen_at":null,"saved_at":null,"verified_starter_id":1}
+        """)
+        #expect(share.isVerified)
+
+        let starters = try decode([StarterQuote].self, """
+        [{"id":1,"body":"Trust thyself.","body_format":[],"author":"Ralph Waldo Emerson","source":"Self-Reliance","sort_order":1,
+          "source_location":"Essays: First Series (1841), 3rd paragraph","source_url":"https://www.gutenberg.org/ebooks/2944"},
+         {"id":2,"body":"Hope","body_format":[],"author":"Emily Dickinson","source":null,"sort_order":2,
+          "source_location":"Stanza 1","source_url":"not a url"}]
+        """)
+        #expect(starters[0].sourceLocation == "Essays: First Series (1841), 3rd paragraph")
+        #expect(starters[0].sourceURL?.host() == "www.gutenberg.org")
+        // A malformed link drops only the link.
+        #expect(starters[1].sourceLocation == "Stanza 1")
+        #expect(starters[1].sourceURL?.scheme == nil)
+    }
+
     @Test func partialRows() throws {
         let rows = try decode([RotationPositionRow].self, #"[{"rotation_position":7},{"rotation_position":null}]"#)
         #expect(rows.map(\.rotationPosition) == [7, nil])

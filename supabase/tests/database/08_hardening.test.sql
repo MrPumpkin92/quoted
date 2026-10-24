@@ -156,8 +156,8 @@ select throws_ok(
 select tests.clear_authentication();
 
 select throws_ok(
-  $$ insert into public.starter_quotes (id, body, body_format, author, sort_order)
-     values (32767, 'x', '[{"start":0,"length":1,"junk":1}]', 'y', 32767) $$,
+  $$ insert into public.starter_quotes (id, body, body_format, author, sort_order, source_location, source_url)
+     values (32767, 'x', '[{"start":0,"length":1,"junk":1}]', 'y', 32767, 'Chapter 1', 'https://example.org/text') $$,
   '23514', null,
   'starter_quotes validate body_format the same way'
 );

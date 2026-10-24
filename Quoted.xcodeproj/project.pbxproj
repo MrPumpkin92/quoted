@@ -20,6 +20,7 @@
 		282FE1433BD9AE08B0ED931C /* AuthFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DEA1A604CB4FAEC402156DD /* AuthFlowView.swift */; };
 		2C2A4ADA468CCC3FB70BCA95 /* BlockedUsersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D5937C39F08F75228521D0D /* BlockedUsersView.swift */; };
 		34631D2911E119D624A32D0E /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D6130146675677780D87D34D /* SwiftUI.framework */; };
+		34B761684460735F948B344F /* VerifiedQuoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40334BA985EAC8C988AD5D3 /* VerifiedQuoteSheet.swift */; };
 		3600A78F7EB419CE430C5CFA /* QuoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BFDE25B1DE61A81A39E7936 /* QuoteRow.swift */; };
 		361B1164413C70B03F9C0260 /* privacy.md in Resources */ = {isa = PBXBuildFile; fileRef = EAF29DA315A1F439C0A4841E /* privacy.md */; };
 		388B929E4C0BA66AFEF0C652 /* UsernameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ADE4181899D6AF69A7FD79F /* UsernameView.swift */; };
@@ -173,6 +174,7 @@
 		9F8A7C347AD3FDCDD97AC65D /* AttributionLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttributionLine.swift; sourceTree = "<group>"; };
 		A15926E21CFA4A5293A0C79F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A36B379043DBB13303CB924C /* ReminderStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderStore.swift; sourceTree = "<group>"; };
+		A40334BA985EAC8C988AD5D3 /* VerifiedQuoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifiedQuoteSheet.swift; sourceTree = "<group>"; };
 		A7717710C53778F9DEC3EE08 /* terms.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = terms.md; sourceTree = "<group>"; };
 		AD08AA55DA2521F0B4CB70C0 /* RecentSearches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentSearches.swift; sourceTree = "<group>"; };
 		AE10962298587AD169C3CA8A /* ShareQuoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareQuoteSheet.swift; sourceTree = "<group>"; };
@@ -384,6 +386,7 @@
 				E2D413167345685AC19F3510 /* AddEditQuoteView.swift */,
 				DC3159128D7845B39C097583 /* QuoteDetailView.swift */,
 				AE10962298587AD169C3CA8A /* ShareQuoteSheet.swift */,
+				A40334BA985EAC8C988AD5D3 /* VerifiedQuoteSheet.swift */,
 			);
 			path = Quote;
 			sourceTree = "<group>";
@@ -742,6 +745,7 @@
 				54133DC7794739A98D905EFB /* Toast.swift in Sources */,
 				EA3DD4F3DBE6B24043C236BE /* Typography.swift in Sources */,
 				388B929E4C0BA66AFEF0C652 /* UsernameView.swift in Sources */,
+				34B761684460735F948B344F /* VerifiedQuoteSheet.swift in Sources */,
 				96D9A5A6C9F13A9A2C287461 /* WelcomeView.swift in Sources */,
 				3CC04813FDF65A37110A3712 /* WidgetBridge.swift in Sources */,
 				B857E20A9BD2D62A8C98D5A8 /* WidgetGuideView.swift in Sources */,

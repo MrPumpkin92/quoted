@@ -36,7 +36,7 @@ enum RPC {
 enum Columns {
     static let profile = "id, username, display_name"
 
-    static let quote = "id, body, body_format, author, source, origin, rotation_position, created_at, updated_at"
+    static let quote = "id, body, body_format, author, source, origin, rotation_position, created_at, updated_at, verified_starter_id"
 
     static let friendship = """
         id, requester_id, addressee_id, status, created_at, responded_at, \
@@ -44,7 +44,7 @@ enum Columns {
         addressee:profiles!friendships_addressee_id_fkey(\(profile))
         """
 
-    static let shareFields = "id, sender_id, recipient_id, quote_id, body, body_format, author, source, note, created_at, seen_at, saved_at"
+    static let shareFields = "id, sender_id, recipient_id, quote_id, body, body_format, author, source, note, created_at, seen_at, saved_at, verified_starter_id"
 
     /// Received shares, with the sender's profile.
     static let inboxShare = "\(shareFields), sender:profiles!shares_sender_id_fkey(\(profile))"
@@ -54,7 +54,7 @@ enum Columns {
 
     static let blockedProfile = "blocked_id, blocked:profiles!blocks_blocked_id_fkey(\(profile))"
 
-    static let starterQuote = "id, body, body_format, author, source, sort_order"
+    static let starterQuote = "id, body, body_format, author, source, sort_order, source_location, source_url"
 }
 
 // MARK: quotes

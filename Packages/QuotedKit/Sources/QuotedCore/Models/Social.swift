@@ -189,6 +189,9 @@ public struct SharedQuote: Identifiable, Hashable, Sendable, RichTextContent {
     public var createdAt: Date
     public var seenAt: Date?
     public var savedAt: Date?
+    /// The starter quote this share's wording, author and source match exactly, or nil. Set by the
+    /// server only (trigger `shares_set_verified`).
+    public var verifiedStarterID: Int?
 
     public init(
         id: UUID,
@@ -204,7 +207,8 @@ public struct SharedQuote: Identifiable, Hashable, Sendable, RichTextContent {
         note: String? = nil,
         createdAt: Date,
         seenAt: Date? = nil,
-        savedAt: Date? = nil
+        savedAt: Date? = nil,
+        verifiedStarterID: Int? = nil
     ) {
         self.id = id
         self.senderID = senderID
@@ -220,8 +224,11 @@ public struct SharedQuote: Identifiable, Hashable, Sendable, RichTextContent {
         self.createdAt = createdAt
         self.seenAt = seenAt
         self.savedAt = savedAt
+        self.verifiedStarterID = verifiedStarterID
     }
 
+    /// Whether the wording and attribution were checked against a public-domain source.
+    public var isVerified: Bool { verifiedStarterID != nil }
     /// Whether the recipient has opened it.
     public var isSeen: Bool { seenAt != nil }
     /// Whether the recipient saved it to their library.
@@ -248,6 +255,7 @@ extension SharedQuote: Codable {
         case createdAt = "created_at"
         case seenAt = "seen_at"
         case savedAt = "saved_at"
+        case verifiedStarterID = "verified_starter_id"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -266,6 +274,7 @@ extension SharedQuote: Codable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         seenAt = try container.decodeIfPresent(Date.self, forKey: .seenAt)
         savedAt = try container.decodeIfPresent(Date.self, forKey: .savedAt)
+        verifiedStarterID = try container.decodeIfPresent(Int.self, forKey: .verifiedStarterID)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -284,10 +293,12 @@ extension SharedQuote: Codable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(seenAt, forKey: .seenAt)
         try container.encode(savedAt, forKey: .savedAt)
+        try container.encode(verifiedStarterID, forKey: .verifiedStarterID)
     }
 }
 
-/// One curated public-domain quote from `starter_quotes`.
+/// One curated public-domain quote from `starter_quotes`. Every one was checked word for word against
+/// the public-domain text at `sourceURL` (docs/starter-pack-sources.md).
 public struct StarterQuote: Identifiable, Hashable, Sendable, RichTextContent {
     public var id: Int
     public var body: String
@@ -295,14 +306,29 @@ public struct StarterQuote: Identifiable, Hashable, Sendable, RichTextContent {
     public var author: String?
     public var source: String?
     public var sortOrder: Int
+    /// Where the quote is in the work, for people ("1831 edition, Chapter 20").
+    public var sourceLocation: String?
+    /// The full text it was checked against (Project Gutenberg or Wikisource).
+    public var sourceURL: URL?
 
-    public init(id: Int, body: String, format: [TextRun] = [], author: String? = nil, source: String? = nil, sortOrder: Int = 0) {
+    public init(
+        id: Int,
+        body: String,
+        format: [TextRun] = [],
+        author: String? = nil,
+        source: String? = nil,
+        sortOrder: Int = 0,
+        sourceLocation: String? = nil,
+        sourceURL: URL? = nil
+    ) {
         self.id = id
         self.body = body
         self.format = RichText.normalize(format, in: body)
         self.author = author
         self.source = source
         self.sortOrder = sortOrder
+        self.sourceLocation = sourceLocation
+        self.sourceURL = sourceURL
     }
 
     /// "author, source", or nil when neither is set.
@@ -315,6 +341,8 @@ extension StarterQuote: Codable {
         case format = "body_format"
         case author, source
         case sortOrder = "sort_order"
+        case sourceLocation = "source_location"
+        case sourceURL = "source_url"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -325,6 +353,9 @@ extension StarterQuote: Codable {
         author = try container.decodeIfPresent(String.self, forKey: .author)
         source = try container.decodeIfPresent(String.self, forKey: .source)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? id
+        sourceLocation = try container.decodeIfPresent(String.self, forKey: .sourceLocation)
+        // A malformed link drops only the link, not the row.
+        sourceURL = (try? container.decodeIfPresent(String.self, forKey: .sourceURL)).flatMap { $0.flatMap(URL.init(string:)) }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -335,6 +366,8 @@ extension StarterQuote: Codable {
         try container.encode(author, forKey: .author)
         try container.encode(source, forKey: .source)
         try container.encode(sortOrder, forKey: .sortOrder)
+        try container.encodeIfPresent(sourceLocation, forKey: .sourceLocation)
+        try container.encodeIfPresent(sourceURL?.absoluteString, forKey: .sourceURL)
     }
 }
 

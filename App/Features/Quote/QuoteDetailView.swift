@@ -3,7 +3,8 @@ import SwiftUI
 
 /// The single-quote screen (docs/ui-spec.md §6): a horizontal pager of `QuoteCard` pages across the
 /// list it was opened from (Library order, reminder order or search results), with Share, the
-/// "In reminders" toggle, and Edit / Delete in the toolbar. At accessibility text sizes the counter,
+/// "In reminders" toggle, and Edit / Delete in the toolbar. A verified quote also gets a "Verified
+/// quote" button that opens `VerifiedQuoteSheet`. At accessibility text sizes the counter,
 /// Share and the toggle scroll with each page, below its card.
 ///
 /// If the quote disappears (deleted here, on another device, or a stale deep link), the pager moves to
@@ -27,6 +28,8 @@ struct QuoteDetailView: View {
     @State private var pendingDelete: Quote?
     @State private var deletedHere: Set<UUID> = []
     @State private var isLeaving = false
+    /// The quote whose verification sheet is showing.
+    @State private var verifying: Quote?
 
     init(quoteID: UUID, contextIDs: [UUID]) {
         self.quoteID = quoteID
@@ -61,6 +64,11 @@ struct QuoteDetailView: View {
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
                 Text("It leaves your library, your reminders and the widget.")
+            }
+            .sheet(item: $verifying) { quote in
+                if let starterID = quote.verifiedStarterID {
+                    VerifiedQuoteSheet(starterID: starterID, author: quote.author, work: quote.source)
+                }
             }
     }
 
@@ -138,6 +146,18 @@ struct QuoteDetailView: View {
                         @unknown default: break
                         }
                     }
+            }
+            if quote.isVerified {
+                Button {
+                    verifying = quote
+                } label: {
+                    Label("Verified quote", systemImage: "checkmark.seal.fill")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .tint(Color.accentColor)
+                .accessibilityHint("Shows where this quote was checked")
             }
             PrimaryButton("Share", systemImage: "square.and.arrow.up") {
                 router.present(.share(quote))

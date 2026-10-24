@@ -36,9 +36,14 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
     public var rotationPosition: Int?
     public var createdAt: Date
     public var updatedAt: Date
+    /// The starter quote whose wording, author and source this quote matches exactly, or nil. Set by
+    /// the server only (trigger `quotes_set_verified`); editing the text clears it.
+    public var verifiedStarterID: Int?
 
     /// Whether the quote is part of the Rotation.
     public var isInRotation: Bool { rotationPosition != nil }
+    /// Whether the wording and attribution were checked against a public-domain source.
+    public var isVerified: Bool { verifiedStarterID != nil }
 
     /// Creates a quote. `format` is normalized against `body`; `updatedAt` defaults to `createdAt`.
     public init(
@@ -50,7 +55,8 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
         origin: QuoteOrigin = .manual,
         rotationPosition: Int? = nil,
         createdAt: Date = Date(),
-        updatedAt: Date? = nil
+        updatedAt: Date? = nil,
+        verifiedStarterID: Int? = nil
     ) {
         self.id = id
         self.body = body
@@ -61,6 +67,7 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
         self.rotationPosition = rotationPosition
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
+        self.verifiedStarterID = verifiedStarterID
     }
 
     /// "author, source", or nil when neither is set.
@@ -81,6 +88,7 @@ extension Quote: Codable {
         case rotationPosition = "rotation_position"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case verifiedStarterID = "verified_starter_id"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -94,6 +102,7 @@ extension Quote: Codable {
         rotationPosition = try container.decodeIfPresent(Int.self, forKey: .rotationPosition)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
+        verifiedStarterID = try container.decodeIfPresent(Int.self, forKey: .verifiedStarterID)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -107,5 +116,6 @@ extension Quote: Codable {
         try container.encode(rotationPosition, forKey: .rotationPosition)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(verifiedStarterID, forKey: .verifiedStarterID)
     }
 }

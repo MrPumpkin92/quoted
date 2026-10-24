@@ -13,6 +13,7 @@ struct QuoteCard: View {
     private let author: String?
     private let source: String?
     private let inReminders: Bool
+    private let verified: Bool
     private let showsWordmark: Bool
 
     /// - Parameters:
@@ -25,6 +26,7 @@ struct QuoteCard: View {
         author = content.author
         source = content.source
         self.inReminders = inReminders ?? ((content as? Quote)?.isInRotation ?? false)
+        verified = content.isVerified
         self.showsWordmark = showsWordmark
     }
 
@@ -32,7 +34,7 @@ struct QuoteCard: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.l) {
             QuoteText(body: text, runs: runs, style: .hero, quoteMarks: .hanging)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            AttributionLine(author: author, source: source, inReminders: inReminders)
+            AttributionLine(author: author, source: source, inReminders: inReminders, verified: verified)
             if showsWordmark {
                 Wordmark(textStyle: .footnote)
                     .frame(maxWidth: .infinity, alignment: .trailing)
