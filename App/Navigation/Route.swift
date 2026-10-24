@@ -70,6 +70,14 @@ enum SheetRoute: Identifiable, Hashable, Sendable {
     }
 }
 
+/// The quote a reminder or widget tap opens full screen (`QuoteSpotlightView`), presented by the
+/// shell with `fullScreenCover(item:)`.
+struct QuoteSpotlight: Identifiable, Hashable, Sendable {
+    let quoteID: UUID
+
+    var id: UUID { quoteID }
+}
+
 /// The bundled legal pages (`App/Resources/Legal/*.md`), shown by `TextPageView(page:)`.
 enum LegalPage: String, Hashable, Sendable, CaseIterable, Identifiable {
     case terms

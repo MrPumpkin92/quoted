@@ -85,6 +85,8 @@ struct ShareQuoteSheet: View {
         .onChange(of: isNoteFocused) { _, focused in
             if focused { detent = .large }
         }
+        // A note may be typed: a reminder tap waits until Share closes.
+        .holdsDeepLinks()
     }
 
     // MARK: Friends state
@@ -259,7 +261,9 @@ struct ShareQuoteSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
-                    router.dismissSheet()
+                    // Presented by the shell or by the full-screen quote, which closes too.
+                    dismiss()
+                    router.spotlight = nil
                     router.select(.friends)
                 } label: {
                     // The 44-pt target is in the label: a frame outside a Button adds no hit area.

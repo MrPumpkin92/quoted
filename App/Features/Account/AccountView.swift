@@ -528,6 +528,8 @@ private struct DisplayNameSheet: View {
         .onAppear { isFocused = true }
         .onChange(of: name) { error = nil }
         .sensoryFeedback(.error, trigger: error) { _, new in new != nil }
+        // A name may be typed: a reminder tap waits until this closes.
+        .holdsDeepLinks()
     }
 
     private var helpText: String {

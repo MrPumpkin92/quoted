@@ -34,6 +34,9 @@ enum QuoteStyle: Hashable, Sendable {
     case excerpt
     /// The detail page, Welcome and the share card: `.largeTitle`. Never truncates.
     case hero
+    /// The full-screen quote a reminder or widget tap opens: about 40 pt, scaled relative to
+    /// `.largeTitle`. Never truncates.
+    case spotlight
     /// The editor: about 26 pt, scaled relative to `.title2`. Never truncates.
     case editor
     /// Compact cards (shared-with-you cards in Friends): `.body`, line limit 6.
@@ -43,7 +46,7 @@ enum QuoteStyle: Hashable, Sendable {
     var textStyle: Font.TextStyle {
         switch self {
         case .row, .excerpt: .title3
-        case .hero: .largeTitle
+        case .hero, .spotlight: .largeTitle
         case .editor: .title2
         case .compact: .body
         }
@@ -55,7 +58,7 @@ enum QuoteStyle: Hashable, Sendable {
         case .row: 4
         case .excerpt: 1
         case .compact: 6
-        case .hero, .editor: nil
+        case .hero, .spotlight, .editor: nil
         }
     }
 
@@ -65,17 +68,23 @@ enum QuoteStyle: Hashable, Sendable {
         case .row, .compact: 2
         case .excerpt: 0
         case .hero, .editor: 4
+        case .spotlight: 6
         }
     }
 
     /// The point size of `.editor` before Dynamic Type scaling.
     static let editorBaseSize: CGFloat = 26
+    /// The point size of `.spotlight` before Dynamic Type scaling.
+    static let spotlightBaseSize: CGFloat = 40
 
-    /// The SwiftUI font. `.editor` needs a scaled size; pass it from `@ScaledMetric(relativeTo: .title2)`.
-    func font(editorSize: CGFloat = QuoteStyle.editorBaseSize) -> Font {
+    /// The SwiftUI font. `.editor` and `.spotlight` need a scaled size; pass them from
+    /// `@ScaledMetric(relativeTo: .title2)` and `@ScaledMetric(relativeTo: .largeTitle)`.
+    func font(editorSize: CGFloat = QuoteStyle.editorBaseSize, spotlightSize: CGFloat = QuoteStyle.spotlightBaseSize) -> Font {
         switch self {
         case .editor:
             .system(size: editorSize, design: .serif)
+        case .spotlight:
+            .system(size: spotlightSize, design: .serif)
         default:
             .system(textStyle, design: .serif)
         }

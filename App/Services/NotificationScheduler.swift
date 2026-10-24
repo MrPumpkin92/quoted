@@ -203,6 +203,12 @@ struct NotificationScheduler: Sendable {
 ///
 /// Set as `UNUserNotificationCenter.current().delegate` at launch (QuotedApp). The center holds its
 /// delegate weakly, so `AppModel` keeps this object alive.
+///
+/// The completion-handler forms are implemented, not the `async` ones: Swift runs a nonisolated
+/// `async` delegate method on the cooperative pool and calls the system's completion handler from
+/// there, and UIKit's handler for a tap asserts it is on the main thread ("Call must be made on main
+/// thread", which crashed the app on every tap). Here the link is read where the system calls, and
+/// both the routing and the completion handler run on the main actor.
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
     private let open: @MainActor @Sendable (DeepLink) -> Void
 
@@ -213,18 +219,29 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Se
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // The SDK block isn't Sendable; it is called exactly once, on the main actor.
+        nonisolated(unsafe) let completion = completionHandler
+        Task { @MainActor in
+            completion([.banner, .list, .sound])
+        }
     }
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let link = NotificationScheduler.deepLink(fromUserInfo: response.notification.request.content.userInfo)
-        else { return }
-        await open(link)
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let link = response.actionIdentifier == UNNotificationDefaultActionIdentifier
+            ? NotificationScheduler.deepLink(fromUserInfo: response.notification.request.content.userInfo)
+            : nil
+        // The SDK block isn't Sendable; it is called exactly once, on the main actor.
+        nonisolated(unsafe) let completion = completionHandler
+        Task { @MainActor [open] in
+            if let link { open(link) }
+            completion()
+        }
     }
 }

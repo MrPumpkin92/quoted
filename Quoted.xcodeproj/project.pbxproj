@@ -40,6 +40,7 @@
 		779AA626DDB3509DA9FF4106 /* BackgroundRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6554296FA90D24E72CF576 /* BackgroundRefresh.swift */; };
 		7D7682504BCA273CCEBA7CC7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A15926E21CFA4A5293A0C79F /* Assets.xcassets */; };
 		7DF9A0B36797AA294112F3CE /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75DE9E1A58F1F8EC37B14249 /* MainTabView.swift */; };
+		7E9393F5D5F0E2FB62453C34 /* QuoteSpotlightView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7AD5C5C802748C6700C3009 /* QuoteSpotlightView.swift */; };
 		86A7259221C733F7BBA92342 /* ShareQuoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE10962298587AD169C3CA8A /* ShareQuoteSheet.swift */; };
 		87830A848F7720E2783761FA /* terms.md in Resources */ = {isa = PBXBuildFile; fileRef = A7717710C53778F9DEC3EE08 /* terms.md */; };
 		8FDB3E230D16B0D0AA72773C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 875617E190882BE960A03323 /* AppModel.swift */; };
@@ -192,6 +193,7 @@
 		CDB2D595723EA920ED530E86 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
 		D2D6DDD6E3FB4D3F1597D486 /* WidgetGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetGuideView.swift; sourceTree = "<group>"; };
 		D6130146675677780D87D34D /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		D7AD5C5C802748C6700C3009 /* QuoteSpotlightView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteSpotlightView.swift; sourceTree = "<group>"; };
 		D9E5B9F8DA3DE3116DF39C46 /* Signing.xcconfig.example */ = {isa = PBXFileReference; path = Signing.xcconfig.example; sourceTree = "<group>"; };
 		DA2EB59D559F54AFB3347CDC /* QuoteTimelineProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteTimelineProvider.swift; sourceTree = "<group>"; };
 		DC3159128D7845B39C097583 /* QuoteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteDetailView.swift; sourceTree = "<group>"; };
@@ -385,6 +387,7 @@
 			children = (
 				E2D413167345685AC19F3510 /* AddEditQuoteView.swift */,
 				DC3159128D7845B39C097583 /* QuoteDetailView.swift */,
+				D7AD5C5C802748C6700C3009 /* QuoteSpotlightView.swift */,
 				AE10962298587AD169C3CA8A /* ShareQuoteSheet.swift */,
 				A40334BA985EAC8C988AD5D3 /* VerifiedQuoteSheet.swift */,
 			);
@@ -721,6 +724,7 @@
 				3C60E5C5CA83E4697E635EC3 /* QuoteCard.swift in Sources */,
 				D5F6987CDD31A5AFCC968E5F /* QuoteDetailView.swift in Sources */,
 				3600A78F7EB419CE430C5CFA /* QuoteRow.swift in Sources */,
+				7E9393F5D5F0E2FB62453C34 /* QuoteSpotlightView.swift in Sources */,
 				5CC133B8B93D7742CED107F6 /* QuoteText.swift in Sources */,
 				9E90FC511FEC7582B4DD5161 /* QuotedApp.swift in Sources */,
 				C1613D6C6E6002DB5B9D522D /* RecentSearches.swift in Sources */,

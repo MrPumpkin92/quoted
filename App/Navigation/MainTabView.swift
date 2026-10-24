@@ -40,6 +40,10 @@ struct MainTabView: View {
         .sheet(item: $router.sheet, onDismiss: openPendingLink) { sheet in
             SheetHost(sheet: sheet)
         }
+        // A reminder or widget tap shows the quote full screen.
+        .fullScreenCover(item: $router.spotlight, onDismiss: openPendingLink) { spotlight in
+            QuoteSpotlightView(quoteID: spotlight.quoteID)
+        }
         // The app icon badge follows the Friends tab badge (shown only if badges are allowed).
         .onChange(of: social.badgeCount, initial: true) { _, count in
             Task { await InboxAlerts.setBadge(count) }
@@ -89,6 +93,37 @@ private extension View {
     }
 }
 
+// MARK: Holding links
+
+extension View {
+    /// Marks a sheet the shell doesn't present as possibly holding unsaved input: while it is on
+    /// screen, a reminder or widget tap waits (`Router.linkHolds`) and opens once it is gone. Apply it
+    /// to the sheet's content. Shell sheets use `SheetRoute.mayHoldUnsavedInput` instead (both are fine).
+    func holdsDeepLinks() -> some View {
+        modifier(HoldsDeepLinks())
+    }
+}
+
+private struct HoldsDeepLinks: ViewModifier {
+    @Environment(Router.self) private var router
+    @Environment(LibraryStore.self) private var library
+    @State private var isHolding = false
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                guard !isHolding else { return }
+                isHolding = true
+                router.holdLinks()
+            }
+            .onDisappear {
+                guard isHolding else { return }
+                isHolding = false
+                router.releaseLinkHold(reminderQuoteIDs: library.reminderQuotes.map(\.id))
+            }
+    }
+}
+
 // MARK: Destinations
 
 extension View {
@@ -108,7 +143,10 @@ struct RouteDestination: View {
     var body: some View {
         switch route {
         case .quote(let id, let contextIDs):
+            // A new identity per quote: when a link replaces the stack with another quote at the same
+            // depth, SwiftUI would otherwise keep the old pager selection (its @State starts in init).
             QuoteDetailView(quoteID: id, contextIDs: contextIDs)
+                .id(id)
         case .reminders:
             RemindersView()
         case .sharedInbox:

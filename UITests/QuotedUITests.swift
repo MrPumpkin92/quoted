@@ -411,12 +411,16 @@ final class QuotedUITests: XCTestCase {
         try waitFor(app.navigationBars["Reminders"], timeout: 15)
         snapshot("qa-05c-deeplink-after-discard")
 
-        // A quote, then Reminders.
+        // A quote opens full screen (QuoteSpotlightView); Open in Library shows its detail. Then Reminders.
         if let quoteID, let url = URL(string: "quoted://quote/\(quoteID)") {
             XCUIDevice.shared.system.open(url)
             confirmOpenInApp()
-            try waitFor(app.navigationBars["Quote"], timeout: 15)
+            let openInLibrary = app.buttons["Open in Library"]
+            try waitFor(openInLibrary, timeout: 15)
             snapshot("qa-06-deeplink-quote")
+            openInLibrary.tap()
+            try waitFor(app.navigationBars["Quote"], timeout: 15)
+            snapshot("qa-06b-deeplink-quote-detail")
         }
         if let url = URL(string: "quoted://rotation") {
             XCUIDevice.shared.system.open(url)

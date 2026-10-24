@@ -23,6 +23,7 @@ struct QuoteText: View {
     private let highlighting: [String]
 
     @ScaledMetric(relativeTo: .title2) private var editorSize: CGFloat = QuoteStyle.editorBaseSize
+    @ScaledMetric(relativeTo: .largeTitle) private var spotlightSize: CGFloat = QuoteStyle.spotlightBaseSize
 
     /// - Parameters:
     ///   - body: The plain quote text.
@@ -67,7 +68,7 @@ struct QuoteText: View {
 
     var body: some View {
         Text(attributed)
-            .font(style.font(editorSize: editorSize))
+            .font(style.font(editorSize: editorSize, spotlightSize: spotlightSize))
             .lineSpacing(style.lineSpacing)
             .lineLimit(lineLimit)
             .multilineTextAlignment(.leading)
@@ -76,7 +77,7 @@ struct QuoteText: View {
                 if quoteMarks == .hanging {
                     // A zero-width frame aligned trailing pushes the mark left of the text's edge.
                     Text("\u{201C}")
-                        .font(style.font(editorSize: editorSize))
+                        .font(style.font(editorSize: editorSize, spotlightSize: spotlightSize))
                         .fixedSize()
                         .frame(width: 0, alignment: .trailing)
                         .accessibilityHidden(true)

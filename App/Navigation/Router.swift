@@ -7,9 +7,9 @@ import QuotedCore
 ///
 /// Push with `router.push(.reminders)`, present with `router.present(.addQuote)`, dismiss your own
 /// sheet with `@Environment(\.dismiss)` (or `router.dismissSheet()`). Deep links go through
-/// `AppModel.open(_:)`, which calls `open(_:reminderQuoteIDs:)` once the user is signed in. A link
-/// never closes a sheet that may hold unsaved input: it waits in `pendingLink` and opens when the
-/// sheet is dismissed.
+/// `AppModel.open(_:)`, which calls `open(_:reminderQuoteIDs:)` once the user is signed in. A quote
+/// link opens the full-screen `spotlight`. A link never closes a sheet that may hold unsaved input:
+/// it waits in `pendingLink` and opens when the sheet is dismissed.
 @Observable
 @MainActor
 final class Router {
@@ -23,6 +23,12 @@ final class Router {
     var searchPath: [Route] = []
     /// The presented sheet, if any. Setting a different value swaps the sheet.
     var sheet: SheetRoute?
+    /// The quote shown full screen after a reminder or widget tap, if any. The shell presents it over
+    /// the tabs with `fullScreenCover(item:)`.
+    var spotlight: QuoteSpotlight?
+    /// How many sheets the shell doesn't present (the spotlight's Share, Account's display name) are
+    /// up and may hold unsaved input. While any is, links wait (`View.holdsDeepLinks()`).
+    private(set) var linkHolds = 0
     /// The search field's text. `MainTabView` binds it to `.searchable` on the TabView; `SearchView`
     /// reads it (and must not add its own `.searchable`).
     var searchText: String = ""
@@ -117,14 +123,15 @@ final class Router {
 
     // MARK: Deep links
 
-    /// Routes a deep link: `quote/<id>` selects Library and shows the quote paging across the
-    /// reminder quotes; `rotation` selects Library and shows Reminders. `auth-callback` is handled by
-    /// `SessionStore`, not here.
+    /// Routes a deep link: `quote/<id>` shows that quote full screen (`spotlight`) over whatever is on
+    /// screen; `rotation` closes the spotlight, selects Library and shows Reminders. `auth-callback`
+    /// is handled by `SessionStore`, not here.
     ///
     /// A sheet that may hold unsaved input (Add, Edit, Share, the reminder picker, the starter pack;
-    /// see `SheetRoute.mayHoldUnsavedInput`) is never closed by a link: the link waits in
-    /// `pendingLink`, and `MainTabView` applies it with `openPendingLink(reminderQuoteIDs:)` once the
-    /// sheet is dismissed (saved or cancelled). The widget guide closes at once.
+    /// see `SheetRoute.mayHoldUnsavedInput`), or any sheet marked `holdsDeepLinks()`, is never closed
+    /// by a link: the link waits in `pendingLink`, and opens once the sheet is dismissed (saved or
+    /// cancelled). Any other shell sheet (the widget guide, Safari) is closed first, and a quote link
+    /// opens when it has gone, because a full-screen cover can't be presented while a sheet still is.
     /// Returns whether the link was applied now.
     @discardableResult
     func open(_ link: DeepLink, reminderQuoteIDs: [UUID]) -> Bool {
@@ -134,17 +141,27 @@ final class Router {
                 pendingLink = link
                 return false
             }
+            if linkHolds > 0 {
+                pendingLink = link
+                return false
+            }
         case .authCallback:
             return false
         }
-        sheet = nil
-        pendingLink = nil
-        selectedTab = .library
         switch link {
         case .quote(let id):
-            let context = reminderQuoteIDs.contains(id) ? reminderQuoteIDs : [id]
-            libraryPath = [.quote(id: id, contextIDs: context)]
+            if sheet != nil {
+                pendingLink = link
+                sheet = nil
+                return false
+            }
+            pendingLink = nil
+            spotlight = QuoteSpotlight(quoteID: id)
         case .rotation:
+            sheet = nil
+            pendingLink = nil
+            spotlight = nil
+            selectedTab = .library
             libraryPath = [.reminders]
         case .authCallback:
             break
@@ -152,8 +169,30 @@ final class Router {
         return true
     }
 
+    /// The spotlight's "Open in Library": closes it and shows the quote in Library, paging across the
+    /// reminder quotes when it is one of them.
+    func openSpotlightInLibrary(_ id: UUID, reminderQuoteIDs: [UUID]) {
+        spotlight = nil
+        selectedTab = .library
+        let context = reminderQuoteIDs.contains(id) ? reminderQuoteIDs : [id]
+        libraryPath = [.quote(id: id, contextIDs: context)]
+    }
+
+    /// A sheet that may hold unsaved input appeared: links wait until `releaseLinkHold`.
+    func holdLinks() {
+        linkHolds += 1
+    }
+
+    /// That sheet went away: when no other holds links, a link that waited opens now.
+    func releaseLinkHold(reminderQuoteIDs: [UUID]) {
+        linkHolds = max(0, linkHolds - 1)
+        if linkHolds == 0 {
+            openPendingLink(reminderQuoteIDs: reminderQuoteIDs)
+        }
+    }
+
     /// Opens the waiting link, if any, unless a sheet that may hold input is still up (the shell
-    /// calls it when a sheet is dismissed).
+    /// calls it when a sheet or the spotlight is dismissed).
     func openPendingLink(reminderQuoteIDs: [UUID]) {
         guard let link = pendingLink else { return }
         open(link, reminderQuoteIDs: reminderQuoteIDs)
@@ -180,6 +219,8 @@ final class Router {
         friendsPath = []
         searchPath = []
         sheet = nil
+        spotlight = nil
+        linkHolds = 0
         searchText = ""
         isSearchPresented = false
         pendingLink = nil

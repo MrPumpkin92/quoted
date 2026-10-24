@@ -53,7 +53,7 @@ Sheets: AddEditQuoteView, ShareQuoteSheet, WidgetGuideView, ReminderQuotePicker
 Pushes: QuoteDetailView, RemindersView, SharedInboxView, AccountView, BlockedUsersView, TextPageView
 ```
 Deep links (`quoted://`):
-- `quote/<id>` (from a notification tap or a widget) selects the Library tab and pushes `QuoteDetailView`. The pager covers the reminder quotes.
+- `quote/<id>` (from a notification tap or a widget) shows that quote full screen (§6a), over whatever is on screen.
 - `rotation` pushes `RemindersView`.
 - `auth-callback` completes email confirmation (email accounts only).
 
@@ -117,6 +117,15 @@ Deep links (`quoted://`):
   - A primary **Share** button.
   - An "In reminders" `Toggle` with the caption "Shows up in widgets and reminders".
 - Toolbar: Edit, plus a `…` menu with Delete (behind a confirmation).
+
+### 6a. Full-screen quote (a reminder or widget tap; graft from Daily)
+- The council's call: Daily's big card is the screen a notification or widget opens. `QuoteSpotlightView` in a `fullScreenCover` over the tabs (no tab bar), Ground background.
+- The quote alone, centred: serif `.spotlight` (about 40 pt, scaled with Dynamic Type; quotes over 280 characters use `.hero`), hanging quotation marks, then the attribution line (bell when in reminders, verified seal). Long quotes and large text sizes scroll.
+- Pinned at the bottom: a primary **Share** (the share sheet opens over the cover) and a quiet **Open in Library**, which closes the cover and shows the quote's detail (§6), paging across the reminder quotes.
+- The system close button (`Button(role: .close)`) top left; VoiceOver escape closes it too.
+- At accessibility text sizes the quote uses `.hero` and the buttons scroll with it instead of staying pinned.
+- Before the library has loaded (a cold launch from a tap), or while a refresh may still bring the quote in: a delayed spinner. If the library can't load: the error with Try again and Close. A quote that is no longer in the library: "This quote is gone" with Close.
+- A newer tap replaces the quote shown. A tap while Share or the display-name sheet is open (they may hold typed text) waits until it closes. Toasts sit above Share.
 
 ### 7. Add / Edit quote (`Margin-Add.png`)
 - A sheet with a grabber, Cancel, the title "New quote" or "Edit quote", and a filled **Save** capsule (disabled until the body is valid).
@@ -193,7 +202,7 @@ Deep links (`quoted://`):
 - Gallery: display name "Quote", description "A quote from your reminders, matching your latest reminder."
 
 ### 14. Notifications
-- The subtitle is the author, and the body reads `“body”` in plain text with the quote's line breaks (each line tidied, runs of blank lines kept to one): notifications can't render runs. There is no title, so iOS shows "Quoted". `threadIdentifier` is `reminders`. `userInfo` carries `quoteID`, and a tap opens the detail.
+- The subtitle is the author, and the body reads `“body”` in plain text with the quote's line breaks (each line tidied, runs of blank lines kept to one): notifications can't render runs. There is no title, so iOS shows "Quoted". `threadIdentifier` is `reminders`. `userInfo` carries `quoteID`, and a tap opens the quote full screen (§6a).
 - Plan with `ReminderPlanner` (at most 60). Replan on launch, on foreground, on any change, and in a `BGAppRefreshTask` (`com.hwei.quoted.refresh`, about every 12 h) that also refreshes the widget snapshot.
 
 ## States checklist (every screen)
