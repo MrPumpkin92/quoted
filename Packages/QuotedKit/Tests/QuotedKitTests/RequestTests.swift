@@ -343,6 +343,29 @@ struct RequestTests {
         #expect(insert.query["select"]?.contains("requester:profiles!friendships_requester_id_fkey") == true)
     }
 
+    /// The insert's embed can't see the addressee yet (the profiles policy runs before the new
+    /// friendship exists), so the real server returns `addressee: null`.
+    @Test func sentRequestNamesTheAddresseeFromTheLookup() async throws {
+        let server = StubServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/rest/v1/rpc/find_profile"):
+                .json(200, #"[{"id":"\#(Self.friend)","username":"bob","display_name":"Bob Ray"}]"#)
+            case ("POST", "/rest/v1/friendships"):
+                .json(201, """
+                {"id":"\(UUID())","requester_id":"\(Self.me)","addressee_id":"\(Self.friend)","status":"pending",
+                 "created_at":"2026-10-24T05:12:00+00:00","responded_at":null,
+                 "requester":{"id":"\(Self.me)","username":"me","display_name":null},"addressee":null}
+                """)
+            default: .notFound(request)
+            }
+        }
+        let backend = try await server.makeSignedInBackend()
+        let request = try await backend.social.sendFriendRequest(toUsername: "bob")
+        #expect(request.otherParty?.username == "bob")
+        #expect(request.otherParty?.displayName == "Bob Ray")
+        #expect(request.isOutgoingRequest(for: Self.me))
+    }
+
     @Test func friendshipsAskForBothPartiesProfiles() async throws {
         let server = StubServer { request in
             request.path == "/rest/v1/friendships" ? .json(200, """

@@ -159,7 +159,13 @@ public struct SocialRepository: Sendable {
                 .execute()
                 .value
         }
-        return Self.decorate(row, me: me)
+        var request = Self.decorate(row, me: me)
+        // The insert's embed runs before the new friendship exists for the profiles policy, so the
+        // addressee's profile comes back null; use the one the lookup just returned.
+        if request.otherParty == nil {
+            request.otherParty = profile
+        }
+        return request
     }
 
     /// Accepts an incoming request. Throws ``QuotedError/notFound`` if it is gone, was not sent to
