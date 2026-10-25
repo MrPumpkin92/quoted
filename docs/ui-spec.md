@@ -50,7 +50,7 @@ RootView (SessionStore.phase)
      ├─ Tab "Friends" (person.2, badge = incoming requests + unseen shares) → FriendsView
      └─ Tab(role: .search) "Search"      NavigationStack → SearchView
 Sheets: AddEditQuoteView, ShareQuoteSheet, WidgetGuideView, ReminderQuotePicker
-Pushes: QuoteDetailView, RemindersView, SharedInboxView, AccountView, BlockedUsersView, TextPageView
+Pushes: QuoteDetailView, RemindersView, SharedInboxView, ProfileView, AccountView, BlockedUsersView, TextPageView
 ```
 Deep links (`quoted://`):
 - `quote/<id>` (from a notification tap or a widget) shows that quote full screen (§6a), over whatever is on screen.
@@ -101,11 +101,12 @@ Deep links (`quoted://`):
   - Off states: "Reminders off · Turn on", or "Notifications off in Settings · Turn on", which opens `UIApplication.openNotificationSettingsURLString`.
 - **Widget tip** (one-time and dismissible): "Put a quote on your Home Screen" opens `WidgetGuideView` (three numbered steps). Hide it permanently after dismissal, or when `WidgetCenter.shared.currentConfigurations()` reports a Quoted widget.
 - **Shared row**: "2 shared with you · From Maya and Jordan", with overlapping avatars. Shown only when unseen shares exist. Pushes `SharedInboxView`.
+- Once any quote is a favorite, a segmented **All / Favorites** control above the count. Favorites lists only hearted quotes, newest heart first, and the count reads "3 favorites". Removing the last favorite returns to All.
 - A count header ("8 quotes"), then the `QuoteRow` list:
-  - Rows have no per-row share icon (council fix).
-  - Tapping a row opens `QuoteDetailView`.
-  - Leading swipe: Share. Trailing swipe: Delete (destructive) and Reminders (add or remove).
-  - The context menu holds Share, Add to / Remove from reminders, Edit and Delete.
+  - Rows have no per-row share icon (council fix). The attribution line starts with a small accent bell for quotes in reminders and a small accent heart for favorites.
+  - Tapping a row opens `QuoteDetailView`, paging across the list as shown.
+  - Leading swipe: Share and Favorite / Remove from favorites (pink fill). Trailing swipe: Delete (destructive) and Reminders (add or remove).
+  - The context menu holds Share, Add to / Remove from reminders, Favorite / Remove from favorites, Edit and Delete.
 - Pull to refresh.
 - **Empty state:** "Your library is empty" with a filled **Add your first quote** button and a quiet "Pick from the starter pack" link (presents the starter picker). The StatusCard stays hidden. The toolbar `+` turns quiet (glass with an accent glyph) while the empty or load-failed state shows, so the screen keeps one filled action.
 
@@ -116,13 +117,13 @@ Deep links (`quoted://`):
   - For a verified quote, a bordered accent capsule **Verified quote** (`checkmark.seal.fill`) above Share. It opens a sheet: the seal and "Verified quote", one sentence on the check, a card with the work (serif italic), the author and where in the work, a **Read it on Project Gutenberg / Wikisource** row (in-app browser), and "Change the wording, author or source and the seal comes off."
   - A primary **Share** button.
   - An "In reminders" `Toggle` with the caption "Shows up in widgets and reminders".
-- Toolbar: Edit, plus a `…` menu with Delete (behind a confirmation).
+- Toolbar: the favorite heart (`heart` / `heart.fill`; VoiceOver "Favorite", Selected while on), then Edit and a `…` menu with Delete (behind a confirmation).
 
 ### 6a. Full-screen quote (a reminder or widget tap; graft from Daily)
 - The council's call: Daily's big card is the screen a notification or widget opens. `QuoteSpotlightView` in a `fullScreenCover` over the tabs (no tab bar), Ground background.
 - The quote alone, centred: serif `.spotlight` (about 40 pt, scaled with Dynamic Type; quotes over 280 characters use `.hero`), hanging quotation marks, then the attribution line (bell when in reminders, verified seal). Long quotes and large text sizes scroll.
 - Pinned at the bottom: a primary **Share** (the share sheet opens over the cover) and a quiet **Open in Library**, which closes the cover and shows the quote's detail (§6), paging across the reminder quotes.
-- The system close button (`Button(role: .close)`) top left; VoiceOver escape closes it too.
+- The system close button (`Button(role: .close)`) top left; VoiceOver escape closes it too. The favorite heart top right, as on the detail screen.
 - At accessibility text sizes the quote uses `.hero` and the buttons scroll with it instead of staying pinned.
 - Before the library has loaded (a cold launch from a tap), or while a refresh may still bring the quote in: a delayed spinner. If the library can't load: the error with Try again and Close. A quote that is no longer in the library: "This quote is gone" with Close.
 - A newer tap replaces the quote shown. A tap while Share or the display-name sheet is open (they may hold typed text) waits until it closes. Toasts sit above Share.
@@ -169,10 +170,17 @@ Deep links (`quoted://`):
   - At the default text size the buttons stay beside the person; a long name wraps to two lines instead. They move under the name only at larger sizes.
   - Press and hold (or VoiceOver actions): **Report @x…** and **Block @x**.
 - **Shared with you:** the latest 2 as cards (quote, from-line, **Save**, and a `…` menu with Report and Block @x), then "See all" pushing `SharedInboxView`. Opening the tab or the inbox marks shares as seen.
-- **Friends:** rows with avatar, name and @handle. Swipe for Remove. The context menu has Remove, Report @x… and Block @x (also VoiceOver actions).
+- **Friends:** rows with avatar, name and @handle. Tapping the person opens their profile (§10a). Swipe for Remove. The `…` menu and the context menu have View Profile, Remove, Report @x… and Block @x (also VoiceOver actions).
 - **Empty states:** "Add friends by username to share quotes" and "Nothing shared yet".
-- **Report:** a confirmation dialog with reasons (spam, harassment, inappropriate, other) and "We review reports every day", then a toast "Thanks, we'll review it". The same dialog reports a person ("Report @x?") from a request, a friend or a blocked user. **Block:** a confirmation, after which the friendship and shares disappear.
+- **Report:** a confirmation dialog with reasons (spam, harassment, inappropriate, other) and "We review reports every day", then a toast "Thanks, we'll review it". The same dialog reports a person ("Report @x?") from a request, a friend, a friend's profile or a blocked user. **Block:** a confirmation, after which the friendship and shares disappear.
 - **Shared with you (inbox):** swipe left for Delete (full swipe deletes), Block and Report; the "…" menu also has Delete. Delete asks nothing: the card goes at once with "Deleted the quote from Maya" and Undo for 5 s, and the server delete happens when the toast closes.
+
+### 10a. Profile (`ProfileView`, route `.profile`)
+- Margin cards on Ground, inline title (the person's name, or "Your profile"). Header: a 72-pt avatar (hidden at accessibility sizes), display name, @handle.
+- **A friend's profile:** a `…` menu in the toolbar with **Report @x…** and **Block @x** (the same confirmations as on the Friends list; Guideline 1.2). A "Favorites" section with their favorites as `QuoteRow` cards (verified seal included), newest first, each with a bordered **Save** capsule, or "✓ In your library" once you have the same text and author. Save copies it into your library (not into reminders) with "Saved to your library".
+  - States: a delayed spinner while loading; "<Name> keeps favorites private" (lock tile) when they haven't turned sharing on; "No favorites yet" when they have none; "You're not friends" (Only friends can see each other's favorites) after an unfriend or block; "Couldn't load favorites" with Try Again. Pull to refresh.
+- **Your profile** (Account > Your profile): a **Show favorites to friends** toggle (caption: "Friends can see the quotes you heart." / "Only you can see your favorites."), the footnote "Your other quotes always stay private.", then your favorites as cards that open the detail pager. Empty: "No favorites yet", "Tap ♡ on any quote to add it here."
+- Reminders (the playlist) never show on a profile.
 
 ### 11. Share sheet (council fix)
 - A custom sheet in two parts.
@@ -182,6 +190,7 @@ Deep links (`quoted://`):
 
 ### 12. Account (graft + App Store fixes)
 - Header: avatar, display name, @username, and, for an email account only, the sign-in email in `.secondary`.
+- **Your profile:** "Friends can see your favorites" or "Your favorites are private" under the title; pushes §10a.
 - **Notifications:** the status (On/Off), opening Settings or Reminders.
 - **Blocked users:** a list with Unblock.
 - **Community guidelines**, **Terms of use** and **Privacy policy** open in-app `TextPageView` with bundled markdown in `App/Resources/Legal/` (no draft banner; legal review is a founder step in `docs/app-store-submission.md`). `{{SUPPORT_EMAIL}}` in the pages becomes a `mailto:` link; without an address the sentence is left out.

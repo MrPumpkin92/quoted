@@ -262,6 +262,7 @@ struct FriendsView: View {
             ForEach(Array(social.friends.enumerated()), id: \.element.id) { index, friend in
                 FriendRow(
                     friend: friend,
+                    onOpen: { router.push(.profile(friend.profile)) },
                     onRemove: { confirmation = .remove(friendshipID: friend.id) },
                     onReport: { confirmation = .reportUser(userID: friend.profile.id) },
                     onBlock: { confirmation = .block(userID: friend.profile.id) }
@@ -292,6 +293,9 @@ struct FriendsView: View {
                     .tint(SwipeTint.report)
                 }
                 .contextMenu {
+                    Button("View Profile", systemImage: "person.crop.circle") {
+                        router.push(.profile(friend.profile))
+                    }
                     Button("Remove Friend", systemImage: "person.badge.minus") {
                         confirmation = .remove(friendshipID: friend.id)
                     }
@@ -602,24 +606,32 @@ private struct SharedSummaryRow: View {
     }
 }
 
-/// A friend: the person and a "…" menu (Remove Friend, Report, Block). The row's swipe actions and
-/// context menu, and the person's VoiceOver actions, offer the same.
+/// A friend: the person, which opens their profile, and a "…" menu (View Profile, Remove Friend,
+/// Report, Block). The row's swipe actions and context menu, and the person's VoiceOver actions, offer
+/// the same.
 private struct FriendRow: View {
     let friend: Connection
+    let onOpen: () -> Void
     let onRemove: () -> Void
     let onReport: () -> Void
     let onBlock: () -> Void
 
     var body: some View {
         HStack(spacing: Theme.Spacing.xs) {
-            SocialPersonLabel(profile: friend.profile)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityActions {
-                    Button("Remove friend", action: onRemove)
-                    Button("Report\u{2026}", action: onReport)
-                    Button("Block", action: onBlock)
-                }
+            Button(action: onOpen) {
+                SocialPersonLabel(profile: friend.profile)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Shows their profile")
+            .accessibilityActions {
+                Button("Remove friend", action: onRemove)
+                Button("Report\u{2026}", action: onReport)
+                Button("Block", action: onBlock)
+            }
             PersonMoreMenu(profile: friend.profile, onReport: onReport, onBlock: onBlock) {
+                Button("View Profile", systemImage: "person.crop.circle", action: onOpen)
                 Button("Remove Friend", systemImage: "person.badge.minus", action: onRemove)
             }
         }

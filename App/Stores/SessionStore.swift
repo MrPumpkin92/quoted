@@ -102,6 +102,10 @@ final class SessionStore {
     @ObservationIgnored private var listener: Task<Void, Never>?
     /// The user whose session is starting or started; guards against double starts.
     @ObservationIgnored private var activeUserID: UUID?
+    /// Profile writes (name, favorites setting), so a profile read that overlapped one is dropped.
+    @ObservationIgnored private var profileWrites = WriteTracker()
+    /// Set when a profile read was dropped or a profile write failed: read again once no write runs.
+    @ObservationIgnored private var rereadProfileAfterWrites = false
     /// True while `startAccount()` waits for the server, so one tap creates one account.
     @ObservationIgnored private var isCreatingAccount = false
     /// The pending automatic launch retry (`scheduleLaunchRetry()`).
@@ -324,7 +328,11 @@ final class SessionStore {
     /// phase moves to the starter pack (or straight to the library if the user already has quotes).
     func createProfile(username: String, displayName: String?) async throws(QuotedError) {
         let assertion = BackgroundTaskAssertion("Create profile")
-        defer { assertion.end() }
+        profileWrites.begin()
+        defer {
+            profileWrites.end()
+            assertion.end()
+        }
         let created: Profile
         do {
             created = try await backend.social.createProfile(username: username, displayName: displayName)
@@ -339,14 +347,51 @@ final class SessionStore {
 
     /// Changes the display name (blank clears it, showing the username).
     func updateDisplayName(_ displayName: String?) async throws(QuotedError) {
+        let assertion = BackgroundTaskAssertion("Update display name")
+        profileWrites.begin()
+        defer {
+            profileWrites.end()
+            assertion.end()
+            rereadProfileIfWritesSettled()
+        }
         let updated: Profile
         do {
             updated = try await backend.social.updateDisplayName(displayName)
         } catch {
+            // The change may have landed even though the answer was lost.
+            rereadProfileAfterWrites = true
             throw QuotedError(error)
         }
         profile = updated
         preferences.cacheProfile(updated)
+    }
+
+    /// Shows or hides your favorites from your friends (off by default).
+    func setShowsFavorites(_ shows: Bool) async throws(QuotedError) {
+        let assertion = BackgroundTaskAssertion("Show favorites to friends")
+        profileWrites.begin()
+        defer {
+            profileWrites.end()
+            assertion.end()
+            rereadProfileIfWritesSettled()
+        }
+        let updated: Profile
+        do {
+            updated = try await backend.social.setShowsFavorites(shows)
+        } catch {
+            // The change may have landed even though the answer was lost.
+            rereadProfileAfterWrites = true
+            throw QuotedError(error)
+        }
+        profile = updated
+        preferences.cacheProfile(updated)
+    }
+
+    /// Re-reads your profile (name, favorites setting), for pull to refresh on Your profile. Quiet
+    /// on failure: the profile shown stays.
+    func refreshProfile() async {
+        guard let id = activeUserID else { return }
+        await refreshProfile(userID: id)
     }
 
     /// Finishes onboarding (after the starter pack and notification priming, or Skip): records the
@@ -680,8 +725,15 @@ final class SessionStore {
     }
 
     private func refreshProfile(userID id: UUID) async {
+        let token = profileWrites.token
         do {
             guard let fetched = try await backend.social.myProfile(), activeUserID == id else { return }
+            // A name or setting saved while this read was out wins; read again once writes settle.
+            guard profileWrites.isQuiet(since: token) else {
+                rereadProfileAfterWrites = true
+                rereadProfileIfWritesSettled()
+                return
+            }
             profile = fetched
             preferences.cacheProfile(fetched)
         } catch {
@@ -691,11 +743,19 @@ final class SessionStore {
         }
     }
 
+    /// Re-reads the profile when a read was dropped or a write failed, once no profile write runs.
+    private func rereadProfileIfWritesSettled() {
+        guard rereadProfileAfterWrites, profileWrites.isIdle, let id = activeUserID else { return }
+        rereadProfileAfterWrites = false
+        Task { await refreshProfile(userID: id) }
+    }
+
     /// Local cleanup after sign-out, session expiry or account deletion. Reminder settings are per
     /// device and survive everything but account deletion.
     private func endSession(accountDeleted: Bool) async {
         let endedUserID = activeUserID ?? userID
         activeUserID = nil
+        rereadProfileAfterWrites = false
         toasts.reset()
         library.reset()
         social.reset()

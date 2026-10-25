@@ -14,6 +14,7 @@
 		0B6C7E15885AFCD45CC80361 /* QuotedCore in Frameworks */ = {isa = PBXBuildFile; productRef = 764D8AD3D08B2E7AD8CCD859 /* QuotedCore */; };
 		1011DC071FFEF4B7C21D90B1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97D890F1349B2B56278D4EB9 /* Theme.swift */; };
 		1051314787C2964B783DB1E9 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86F3FCC9D34E62D6DF822F7A /* RootView.swift */; };
+		1CEE800E3B5A737D2907D80B /* FavoriteButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA77D8E90216432DC37DFE7C /* FavoriteButton.swift */; };
 		1DE44F7AF66F2A1DF329D7D0 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA7BA6919FC5E53AE56E3F8 /* SearchView.swift */; };
 		2147341DB7D87BF5706A1BE6 /* WriteTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 077FA3930C50C888FC1A008D /* WriteTracker.swift */; };
 		23D2A3F2DF12BDD06D41BD92 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4662AB0AB66FE3AE62A830D0 /* LibraryView.swift */; };
@@ -78,6 +79,7 @@
 		E1B844FA9526AF9255C45E55 /* TextPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77718D195FE431086FF4F540 /* TextPageView.swift */; };
 		E5E6AB774107349CB1FA286B /* AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE0E7418B11687696354033 /* AppInfo.swift */; };
 		E8221BCD59034C561CEC076C /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 269B2438C41F14F44C21BA7E /* Haptics.swift */; };
+		E8AB78DCDE00D375F1B38D37 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6F782AEDBE2808A8323E740 /* ProfileView.swift */; };
 		EA3DD4F3DBE6B24043C236BE /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DB4FCB3BD05D902E5778D2F /* Typography.swift */; };
 		F17043BF1C6822D727E2FC63 /* QuotedUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5CB2D0A8612EDE52944DD9 /* QuotedUITests.swift */; };
 		F25CF4568D1BA098B59A4B1C /* BackgroundTaskAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70665718DF9407777878DBBB /* BackgroundTaskAssertion.swift */; };
@@ -177,6 +179,7 @@
 		A36B379043DBB13303CB924C /* ReminderStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderStore.swift; sourceTree = "<group>"; };
 		A40334BA985EAC8C988AD5D3 /* VerifiedQuoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifiedQuoteSheet.swift; sourceTree = "<group>"; };
 		A7717710C53778F9DEC3EE08 /* terms.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = terms.md; sourceTree = "<group>"; };
+		AA77D8E90216432DC37DFE7C /* FavoriteButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteButton.swift; sourceTree = "<group>"; };
 		AD08AA55DA2521F0B4CB70C0 /* RecentSearches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentSearches.swift; sourceTree = "<group>"; };
 		AE10962298587AD169C3CA8A /* ShareQuoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareQuoteSheet.swift; sourceTree = "<group>"; };
 		AF9AE3420CEF42E5B32BFB99 /* WidgetBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetBridge.swift; sourceTree = "<group>"; };
@@ -186,6 +189,7 @@
 		B7364C03C87AAC3B5478B993 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		BB93A89A971C0C294DFBD301 /* Samples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Samples.swift; sourceTree = "<group>"; };
 		BBDC5F3A251E62F47ABCC399 /* QuotedUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = QuotedUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6F782AEDBE2808A8323E740 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		C76A3BC7761476E57F5CF9C0 /* SharedDebug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = SharedDebug.xcconfig; sourceTree = "<group>"; };
 		C90FCC06AC82404FFEB8A129 /* Hosted.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Hosted.xcconfig; sourceTree = "<group>"; };
 		CA704C43BA42D9983255DD5A /* QuotedWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = QuotedWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -249,6 +253,7 @@
 			isa = PBXGroup;
 			children = (
 				DE0D80293813543BF71ED295 /* FriendsView.swift */,
+				C6F782AEDBE2808A8323E740 /* ProfileView.swift */,
 				68FBA54276BAE996F4D38C9B /* SharedInboxView.swift */,
 			);
 			path = Friends;
@@ -386,6 +391,7 @@
 			isa = PBXGroup;
 			children = (
 				E2D413167345685AC19F3510 /* AddEditQuoteView.swift */,
+				AA77D8E90216432DC37DFE7C /* FavoriteButton.swift */,
 				DC3159128D7845B39C097583 /* QuoteDetailView.swift */,
 				D7AD5C5C802748C6700C3009 /* QuoteSpotlightView.swift */,
 				AE10962298587AD169C3CA8A /* ShareQuoteSheet.swift */,
@@ -709,6 +715,7 @@
 				3DADF8CEC77131398B9AE82A /* ComponentGallery.swift in Sources */,
 				5FD1FA0B827766FB27734EE5 /* EmptyStateView.swift in Sources */,
 				CCFA6D1B4A2EDB63374002B8 /* ErrorMessages.swift in Sources */,
+				1CEE800E3B5A737D2907D80B /* FavoriteButton.swift in Sources */,
 				DAD74971F220D16D3F43DD69 /* FriendsView.swift in Sources */,
 				E8221BCD59034C561CEC076C /* Haptics.swift in Sources */,
 				B31E91C14005E4EF9B9AF8B0 /* InboxAlerts.swift in Sources */,
@@ -721,6 +728,7 @@
 				CCE3C32876C25CD904337BB6 /* NotificationScheduler.swift in Sources */,
 				C4904A06E5CFE3AF514DBED5 /* OnboardingComponents.swift in Sources */,
 				B6743C9C15A85AA279D55DC6 /* PrimaryButton.swift in Sources */,
+				E8AB78DCDE00D375F1B38D37 /* ProfileView.swift in Sources */,
 				3C60E5C5CA83E4697E635EC3 /* QuoteCard.swift in Sources */,
 				D5F6987CDD31A5AFCC968E5F /* QuoteDetailView.swift in Sources */,
 				3600A78F7EB419CE430C5CFA /* QuoteRow.swift in Sources */,

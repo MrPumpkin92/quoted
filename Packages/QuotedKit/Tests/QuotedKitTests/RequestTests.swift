@@ -341,6 +341,9 @@ struct RequestTests {
         let insert = try #require(server.requests(table: "friendships").first)
         #expect((insert.json as? [String: Any])?["addressee_id"] as? String == Self.friend.uuidString)
         #expect(insert.query["select"]?.contains("requester:profiles!friendships_requester_id_fkey") == true)
+        // Only the columns find_profile returns: asking for any other (shows_favorites) fails with 42703.
+        let lookup = try #require(server.requests(table: "rpc/find_profile").first)
+        #expect(lookup.query["select"]?.filter { !$0.isWhitespace } == "id,username,display_name")
     }
 
     /// The insert's embed can't see the addressee yet (the profiles policy runs before the new
@@ -366,6 +369,43 @@ struct RequestTests {
         #expect(request.isOutgoingRequest(for: Self.me))
     }
 
+    @Test func favoritesRequests() async throws {
+        let quoteID = UUID()
+        let server = StubServer { request in
+            switch (request.method, request.path) {
+            case ("PATCH", "/rest/v1/quotes"):
+                .json(200, """
+                {"id":"\(quoteID)","body":"Hi","created_at":"2026-10-25T09:00:00+00:00","is_favorite":true,
+                 "favorited_at":"2026-10-25T09:00:00+00:00"}
+                """)
+            case ("PATCH", "/rest/v1/profiles"):
+                .json(200, #"{"id":"\#(Self.me)","username":"me","display_name":null,"shows_favorites":true}"#)
+            case ("POST", "/rest/v1/rpc/friend_favorites"):
+                .json(200, #"[{"id":"\#(UUID())","body":"Hope","body_format":[],"author":"Emily Dickinson","source":null,"verified_starter_id":null,"favorited_at":null}]"#)
+            default: .notFound(request)
+            }
+        }
+        let backend = try await server.makeSignedInBackend()
+
+        let quote = try await backend.quotes.setFavorite(id: quoteID, true)
+        #expect(quote.isFavorite)
+        let heart = try #require(server.requests(table: "quotes").first)
+        // Only the heart travels; the server stamps favorited_at.
+        #expect((heart.json as? [String: Any]).map { Set($0.keys) } == ["is_favorite"])
+        #expect(heart.query["id"] == "eq.\(quoteID.uuidString)")
+
+        let profile = try await backend.social.setShowsFavorites(true)
+        #expect(profile.showsFavorites)
+        let setting = try #require(server.requests(table: "profiles").first)
+        #expect((setting.json as? [String: Any]).map { Set($0.keys) } == ["shows_favorites"])
+        #expect(setting.query["id"] == "eq.\(Self.me.uuidString)")
+
+        let favorites = try await backend.social.favorites(of: Self.friend)
+        #expect(favorites.map(\.author) == ["Emily Dickinson"])
+        let call = try #require(server.requests.first { $0.path == "/rest/v1/rpc/friend_favorites" })
+        #expect((call.json as? [String: Any])?["p_user"] as? String == Self.friend.uuidString)
+    }
+
     @Test func friendshipsAskForBothPartiesProfiles() async throws {
         let server = StubServer { request in
             request.path == "/rest/v1/friendships" ? .json(200, """
@@ -381,7 +421,7 @@ struct RequestTests {
         #expect(friendships.first?.isIncomingRequest(for: Self.me) == true)
         let request = try #require(server.requests.first)
         #expect(request.query["or"] == "(requester_id.eq.\(Self.me.uuidString),addressee_id.eq.\(Self.me.uuidString))")
-        #expect(request.query["select"]?.contains("addressee:profiles!friendships_addressee_id_fkey(id,username,display_name)") == true)
+        #expect(request.query["select"]?.contains("addressee:profiles!friendships_addressee_id_fkey(id,username,display_name,shows_favorites)") == true)
     }
 
     @Test func createProfileMapsTheUniqueUsername() async throws {

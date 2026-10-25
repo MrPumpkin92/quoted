@@ -9,7 +9,8 @@ enum Samples {
     static let emerson = quote(
         "Trust thyself: every heart vibrates to that iron string.",
         styled: ("Trust thyself", .bold),
-        author: "Ralph Waldo Emerson", source: "Self-Reliance", position: 0, minutesAgo: 10, verified: 3
+        author: "Ralph Waldo Emerson", source: "Self-Reliance", position: 0, minutesAgo: 10, verified: 3,
+        favoritedMinutesAgo: 5
     )
     static let shelley = quote(
         "Beware; for I am fearless, and therefore powerful.",
@@ -39,7 +40,8 @@ enum Samples {
     )
     static let austen = quote(
         "There is a stubbornness about me that never can bear to be frightened at the will of others. My courage always rises at every attempt to intimidate me.",
-        author: "Jane Austen", source: "Pride and Prejudice", position: 5, minutesAgo: 80
+        author: "Jane Austen", source: "Pride and Prejudice", position: 5, minutesAgo: 80,
+        favoritedMinutesAgo: 15
     )
 
     /// The library, newest first. Six of the eight are in reminders.
@@ -48,10 +50,30 @@ enum Samples {
     // MARK: People
 
     static let alex = Profile(id: uuid(1), username: "alex", displayName: "Alex")
-    static let maya = Profile(id: uuid(2), username: "maya", displayName: "Maya Reyes")
+    static let maya = Profile(id: uuid(2), username: "maya", displayName: "Maya Reyes", showsFavorites: true)
     static let jordan = Profile(id: uuid(3), username: "jordan", displayName: "Jordan Lee")
     static let sam = Profile(id: uuid(4), username: "samk", displayName: "Sam Kim")
     static let riley = Profile(id: uuid(5), username: "riley", displayName: "Riley Park")
+
+    /// Maya's favorites, as her profile shows them to Alex (she shows them to friends).
+    static let mayaFavorites: [FriendFavorite] = [
+        FriendFavorite(
+            id: uuid(40),
+            body: shelley.body,
+            format: shelley.format,
+            author: shelley.author,
+            source: shelley.source,
+            verifiedStarterID: shelley.verifiedStarterID,
+            favoritedAt: Date(timeIntervalSinceNow: -2 * 3600)
+        ),
+        FriendFavorite(
+            id: uuid(41),
+            body: "Not all those who wander are lost.",
+            author: "J. R. R. Tolkien",
+            source: "The Fellowship of the Ring",
+            favoritedAt: Date(timeIntervalSinceNow: -26 * 3600)
+        ),
+    ]
 
     /// Accepted friendships and pending requests, from Alex's point of view.
     static let friendships: [Friendship] = [
@@ -100,7 +122,8 @@ enum Samples {
         source: String? = nil,
         position: Int? = nil,
         minutesAgo: Double,
-        verified: Int? = nil
+        verified: Int? = nil,
+        favoritedMinutesAgo: Double? = nil
     ) -> Quote {
         var runs: [TextRun] = []
         if let styled, let range = body.range(of: styled.0) {
@@ -116,7 +139,9 @@ enum Samples {
             origin: .manual,
             rotationPosition: position,
             createdAt: Date(timeIntervalSinceNow: -minutesAgo * 60),
-            verifiedStarterID: verified
+            verifiedStarterID: verified,
+            isFavorite: favoritedMinutesAgo != nil,
+            favoritedAt: favoritedMinutesAgo.map { Date(timeIntervalSinceNow: -$0 * 60) }
         )
     }
 

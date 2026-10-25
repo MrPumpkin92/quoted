@@ -10,11 +10,15 @@ public struct Profile: Identifiable, Hashable, Sendable {
     public var username: String
     /// Shown name, 1–50 characters.
     public var displayName: String
+    /// Whether accepted friends may see this user's favorite quotes (`profiles.shows_favorites`).
+    /// Off by default.
+    public var showsFavorites: Bool
 
-    public init(id: UUID, username: String, displayName: String? = nil) {
+    public init(id: UUID, username: String, displayName: String? = nil, showsFavorites: Bool = false) {
         self.id = id
         self.username = username
         self.displayName = displayName ?? username
+        self.showsFavorites = showsFavorites
     }
 
     /// The username prefixed with "@".
@@ -25,12 +29,14 @@ extension Profile: Codable {
     enum CodingKeys: String, CodingKey {
         case id, username
         case displayName = "display_name"
+        case showsFavorites = "shows_favorites"
     }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         username = try container.decode(String.self, forKey: .username)
+        showsFavorites = try container.decodeIfPresent(Bool.self, forKey: .showsFavorites) ?? false
         if let name = try container.decodeIfPresent(String.self, forKey: .displayName), !name.isEmpty {
             displayName = name
         } else {
@@ -43,6 +49,61 @@ extension Profile: Codable {
         try container.encode(id, forKey: .id)
         try container.encode(username, forKey: .username)
         try container.encode(displayName, forKey: .displayName)
+        try container.encode(showsFavorites, forKey: .showsFavorites)
+    }
+}
+
+/// One of a friend's favorite quotes, from `public.friend_favorites` (only when they show favorites).
+/// `id` is a handle for this viewer, stable across loads, not the quote's own ID.
+public struct FriendFavorite: Identifiable, Hashable, Sendable, RichTextContent {
+    public var id: UUID
+    public var body: String
+    public var format: [TextRun]
+    public var author: String?
+    public var source: String?
+    /// Set when the wording and attribution match a starter quote (the verified seal).
+    public var verifiedStarterID: Int?
+    public var favoritedAt: Date?
+
+    public init(
+        id: UUID,
+        body: String,
+        format: [TextRun] = [],
+        author: String? = nil,
+        source: String? = nil,
+        verifiedStarterID: Int? = nil,
+        favoritedAt: Date? = nil
+    ) {
+        self.id = id
+        self.body = body
+        self.format = RichText.normalize(format, in: body)
+        self.author = author
+        self.source = source
+        self.verifiedStarterID = verifiedStarterID
+        self.favoritedAt = favoritedAt
+    }
+
+    /// Whether the wording and attribution were checked against a public-domain source.
+    public var isVerified: Bool { verifiedStarterID != nil }
+}
+
+extension FriendFavorite: Decodable {
+    enum CodingKeys: String, CodingKey {
+        case id, body, author, source
+        case format = "body_format"
+        case verifiedStarterID = "verified_starter_id"
+        case favoritedAt = "favorited_at"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        body = try container.decode(String.self, forKey: .body)
+        format = LossyRuns.decode(from: container, forKey: .format, body: body)
+        author = try container.decodeIfPresent(String.self, forKey: .author)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        verifiedStarterID = try container.decodeIfPresent(Int.self, forKey: .verifiedStarterID)
+        favoritedAt = try container.decodeIfPresent(Date.self, forKey: .favoritedAt)
     }
 }
 

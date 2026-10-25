@@ -151,6 +151,8 @@ struct RouteDestination: View {
             RemindersView()
         case .sharedInbox:
             SharedInboxView()
+        case .profile(let profile):
+            ProfileView(profile: profile)
         case .account:
             AccountView()
         case .blockedUsers:

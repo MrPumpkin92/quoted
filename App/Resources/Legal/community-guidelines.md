@@ -1,6 +1,6 @@
 # Community Guidelines
 
-Last updated: October 19, 2026.
+Last updated: October 25, 2026.
 
 Quoted is for keeping and sharing words that matter to you. Sharing works only between friends who have both said yes. Please help keep it kind.
 
@@ -27,7 +27,7 @@ There is no tolerance for objectionable content or abusive users. That includes:
 ## If something's wrong
 
 - **Report a quote** from its menu (the "…" button) and choose a reason. You can also swipe it in Shared with you.
-- **Report a person**, for example for an offensive name or unwanted friend requests, by pressing and holding their request or their name in your friends list.
+- **Report a person**, for example for an offensive name, unwanted friend requests or the favorites their profile shows, by pressing and holding their request or their name in your friends list, or from the "…" menu on their profile.
 - **Block** someone from the same places. Blocking removes your friendship and the quotes you've shared with each other, and they can't send you requests or quotes. You can unblock people in Account > Blocked users.
 - Nobody is told who reported or blocked them.
 - We review reports every day and aim to act on each one within 24 hours. We remove content that breaks these guidelines and suspend or close the accounts responsible.

@@ -157,6 +157,31 @@ struct DecodingTests {
         #expect(starters[1].sourceURL?.scheme == nil)
     }
 
+    @Test func favoritesAndProfileVisibility() throws {
+        let quote = try decode(Quote.self, """
+        {"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a01","body":"Hi","created_at":"2026-10-19T03:26:38+00:00",
+         "is_favorite":true,"favorited_at":"2026-10-25T09:00:00+00:00"}
+        """)
+        #expect(quote.isFavorite)
+        #expect(quote.favoritedAt != nil)
+        // Older rows and caches have neither field.
+        let older = try decode(Quote.self, #"{"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a02","body":"Hi","created_at":"2026-10-19T03:26:38+00:00"}"#)
+        #expect(older.isFavorite == false)
+        #expect(older.favoritedAt == nil)
+
+        let profile = try decode(Profile.self, #"{"id":"\#(Self.alice)","username":"alice","display_name":null,"shows_favorites":true}"#)
+        #expect(profile.showsFavorites)
+        let embedded = try decode(Profile.self, #"{"id":"\#(Self.alice)","username":"alice","display_name":null}"#)
+        #expect(embedded.showsFavorites == false)
+
+        let favorites = try decode([FriendFavorite].self, """
+        [{"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a03","body":"Trust thyself.","body_format":[{"start":0,"length":5,"bold":true}],
+          "author":"Ralph Waldo Emerson","source":"Self-Reliance","verified_starter_id":1,"favorited_at":"2026-10-25T09:00:00+00:00"}]
+        """)
+        #expect(favorites.first?.isVerified == true)
+        #expect(favorites.first?.format.first?.bold == true)
+    }
+
     @Test func partialRows() throws {
         let rows = try decode([RotationPositionRow].self, #"[{"rotation_position":7},{"rotation_position":null}]"#)
         #expect(rows.map(\.rotationPosition) == [7, nil])
@@ -216,7 +241,8 @@ struct PayloadTests {
     @Test func restoreRowKeepsIdentityAndLeavesTimestampsToTheServer() throws {
         let quote = Quote(body: " Back ", author: "", source: "Notes", origin: .shared, rotationPosition: 4)
         let json = try object(QuoteRestoreRow(quote, content: try QuoteDraft(quote: quote).validated()))
-        #expect(Set(json.keys) == ["id", "body", "body_format", "author", "source", "origin", "rotation_position"])
+        // The heart comes back with Undo; timestamps stay the server's.
+        #expect(Set(json.keys) == ["id", "body", "body_format", "author", "source", "origin", "rotation_position", "is_favorite"])
         #expect(json["id"] as? String == quote.id.uuidString)
         #expect(json["body"] as? String == "Back")
         #expect(isNull(json["author"]))

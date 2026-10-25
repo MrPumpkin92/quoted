@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The single-quote screen (docs/ui-spec.md §6): a horizontal pager of `QuoteCard` pages across the
 /// list it was opened from (Library order, reminder order or search results), with Share, the
-/// "In reminders" toggle, and Edit / Delete in the toolbar. A verified quote also gets a "Verified
+/// "In reminders" toggle, and the favorite heart, Edit and Delete in the toolbar. A verified quote also gets a "Verified
 /// quote" button that opens `VerifiedQuoteSheet`. At accessibility text sizes the counter,
 /// Share and the toggle scroll with each page, below its card.
 ///
@@ -183,6 +183,10 @@ struct QuoteDetailView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if let current {
+            ToolbarItem(placement: .topBarTrailing) {
+                FavoriteButton(quote: current)
+            }
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Edit") {
                     router.present(.editQuote(current))

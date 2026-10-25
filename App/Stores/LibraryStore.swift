@@ -57,6 +57,14 @@ final class LibraryStore {
     @ObservationIgnored private var undoneDeletes: Set<UUID> = []
     /// `saveShared` calls in flight by share ID, so a double tap saves once.
     @ObservationIgnored private var sharesBeingSaved: [UUID: Task<Quote?, Never>] = [:]
+    /// Each quote's queued heart writes (`setFavorite`), so one quote's writes run in order.
+    @ObservationIgnored private var favoriteWrites: [UUID: FavoriteWrite] = [:]
+    @ObservationIgnored private var favoriteSerial = 0
+    /// The server's heart for quotes whose heart write failed or was skipped while they were
+    /// deleted, so a failed delete that brings the quote back can send its heart again.
+    @ObservationIgnored private var heartsWhileDeleted: [UUID: FavoriteWrite.Heart] = [:]
+    /// Quotes whose server delete hasn't answered yet; only these record `heartsWhileDeleted`.
+    @ObservationIgnored private var deletesInFlight: Set<UUID> = []
 
     init(backend: Backend, appGroup: AppGroupStore?, toasts: ToastCenter, reminders: ReminderStore) {
         self.backend = backend
@@ -179,6 +187,9 @@ final class LibraryStore {
         let owner = userID
         var edited = quote
         edited.rotationPosition = old.rotationPosition
+        // Only setFavorite and a refresh change the heart; an edit keeps it as it is here.
+        edited.isFavorite = old.isFavorite
+        edited.favoritedAt = old.favoritedAt
         upsertLocal(edited)
         beginWrite()
         let assertion = BackgroundTaskAssertion("Save quote")
@@ -189,10 +200,13 @@ final class LibraryStore {
         do {
             let saved = try await backend.quotes.update(edited)
             guard userID == owner else { return false }
-            // Keep a later edit, and the local reminder position (a reminder write may be queued).
+            // Keep a later edit, and the local reminder position and heart (their writes may be
+            // queued).
             if let current = self.quote(id: saved.id), Self.hasSameContent(current, edited) {
                 var merged = saved
                 merged.rotationPosition = current.rotationPosition
+                merged.isFavorite = current.isFavorite
+                merged.favoritedAt = current.favoritedAt
                 upsertLocal(merged)
             }
             writeCache()
@@ -203,6 +217,8 @@ final class LibraryStore {
             if let current = self.quote(id: edited.id), Self.hasSameContent(current, edited) {
                 var reverted = old
                 reverted.rotationPosition = current.rotationPosition
+                reverted.isFavorite = current.isFavorite
+                reverted.favoritedAt = current.favoritedAt
                 upsertLocal(reverted)
             }
             refreshAfterWrites = true
@@ -225,6 +241,7 @@ final class LibraryStore {
         undoneDeletes.remove(removed.id)
 
         beginWrite()
+        deletesInFlight.insert(removed.id)
         let assertion = BackgroundTaskAssertion("Delete quote")
         let commit = Task { () -> Bool in
             defer {
@@ -233,13 +250,23 @@ final class LibraryStore {
             }
             do {
                 try await self.backend.quotes.delete(id: removed.id)
+                self.deletesInFlight.remove(removed.id)
+                self.heartsWhileDeleted[removed.id] = nil
                 return true
             } catch {
+                self.deletesInFlight.remove(removed.id)
                 guard self.userID == owner else { return false }
                 if self.quote(id: removed.id) == nil {
                     self.upsertLocal(removed)
                     self.writeCache()
                     if removed.isInRotation { self.reminders.replan() }
+                }
+                // A heart write failed or was skipped while the quote looked deleted: send the heart
+                // it came back with, which rolls back with a toast if the server still refuses.
+                // Compare with the heart on screen now: a tap made after Undo counts, not the snapshot.
+                if let heart = self.heartsWhileDeleted.removeValue(forKey: removed.id),
+                   heart.isFavorite != (self.quote(id: removed.id)?.isFavorite ?? removed.isFavorite) {
+                    Task { await self.writeFavorite(id: removed.id, confirmed: heart) }
                 }
                 self.refreshAfterWrites = true
                 if self.undoneDeletes.remove(removed.id) == nil {
@@ -251,6 +278,107 @@ final class LibraryStore {
         toasts.show("Quote deleted") { [weak self] in
             await self?.undoDelete(removed, reminderOrder: reminderOrder, owner: owner, after: commit)
         }
+    }
+
+    // MARK: Favorites
+
+    /// Your favorites, most recently hearted first.
+    var favorites: [Quote] {
+        quotes.filter(\.isFavorite).sorted { ($0.favoritedAt ?? .distantPast) > ($1.favoritedAt ?? .distantPast) }
+    }
+
+    /// Hearts or un-hearts a quote. Optimistic: the heart changes at once. One quote's writes run one
+    /// at a time, and each sends the heart as it is when its turn comes, so rapid taps end with the
+    /// server holding the last one. If the last write fails, the heart goes back to what the server
+    /// last confirmed, with a toast; a quote deleted meanwhile gets neither (its Undo toast stays).
+    @discardableResult
+    func setFavorite(_ quote: Quote, _ isFavorite: Bool) async -> Bool {
+        guard var edited = self.quote(id: quote.id), edited.isFavorite != isFavorite else { return true }
+        // What the server holds: the last answer while writes are queued, else the heart before this tap.
+        let confirmed = favoriteWrites[quote.id]?.confirmed ?? FavoriteWrite.Heart(isFavorite: edited.isFavorite, at: edited.favoritedAt)
+        edited.isFavorite = isFavorite
+        edited.favoritedAt = isFavorite ? .now : nil
+        upsertLocal(edited)
+        writeCache()
+        Haptics.selection()
+        return await writeFavorite(id: quote.id, confirmed: confirmed)
+    }
+
+    /// Queues a write of the quote's heart, sent as it is when the write's turn comes. `confirmed` is
+    /// what the server holds before it (used when no write for the quote is queued yet).
+    private func writeFavorite(id: UUID, confirmed: FavoriteWrite.Heart) async -> Bool {
+        let owner = userID
+        beginWrite()
+        favoriteSerial += 1
+        let serial = favoriteSerial
+        let prior = favoriteWrites[id]
+        let task = Task { () -> Bool in
+            _ = await prior?.task.value
+            let assertion = BackgroundTaskAssertion("Favorite quote")
+            defer {
+                assertion.end()
+                self.endWrite()
+                if self.favoriteWrites[id]?.serial == serial { self.favoriteWrites[id] = nil }
+            }
+            guard self.userID == owner else { return false }
+            guard let wanted = self.quote(id: id)?.isFavorite else {
+                // Deleted meanwhile: keep the server's heart in case the delete fails.
+                self.noteHeartWhileDeleted(id: id, serial: serial)
+                return false
+            }
+            do {
+                let saved = try await self.backend.quotes.setFavorite(id: id, wanted)
+                guard self.userID == owner else { return false }
+                let heart = FavoriteWrite.Heart(isFavorite: saved.isFavorite, at: saved.favoritedAt)
+                self.favoriteWrites[id]?.confirmed = heart
+                // Take the server's time. The latest write also takes its heart: it sent the last tap,
+                // so a different local heart means a server row (an edit, an Undo) replaced it meanwhile.
+                let isLatest = self.favoriteWrites[id]?.serial == serial
+                if var current = self.quote(id: id) {
+                    if current.isFavorite == saved.isFavorite || isLatest {
+                        current.isFavorite = heart.isFavorite
+                        current.favoritedAt = heart.at
+                        self.upsertLocal(current)
+                        self.writeCache()
+                    }
+                } else {
+                    self.noteHeartWhileDeleted(id: id, serial: serial)
+                }
+                return true
+            } catch {
+                guard self.userID == owner else { return false }
+                self.refreshAfterWrites = true
+                // A later tap already queued its own write, which decides the heart.
+                guard let write = self.favoriteWrites[id], write.serial == serial else { return false }
+                // Deleted meanwhile, or its delete is being undone: nothing to put back now.
+                guard var current = self.quote(id: id), !self.undoneDeletes.contains(id) else {
+                    self.noteHeartWhileDeleted(id: id, serial: serial)
+                    return false
+                }
+                // An earlier write already left the server where the user wants it.
+                if write.confirmed.isFavorite == wanted { return true }
+                current.isFavorite = write.confirmed.isFavorite
+                current.favoritedAt = write.confirmed.at
+                self.upsertLocal(current)
+                self.writeCache()
+                self.toasts.show(
+                    error: error,
+                    failure: wanted ? "Couldn\u{2019}t add to favorites" : "Couldn\u{2019}t remove from favorites"
+                )
+                return false
+            }
+        }
+        favoriteWrites[id] = FavoriteWrite(serial: serial, task: task, confirmed: prior?.confirmed ?? confirmed)
+        return await task.value
+    }
+
+    /// Records the server's heart for a quote whose delete hasn't answered yet (gone from the
+    /// library, or back on screen while Undo waits for the delete), when `serial` is still its latest
+    /// heart write, for `delete` to settle if the delete fails.
+    private func noteHeartWhileDeleted(id: UUID, serial: Int) {
+        guard deletesInFlight.contains(id), self.quote(id: id) == nil || undoneDeletes.contains(id),
+              let write = favoriteWrites[id], write.serial == serial else { return }
+        heartsWhileDeleted[id] = write.confirmed
     }
 
     // MARK: Reminders
@@ -383,6 +511,30 @@ final class LibraryStore {
         return saved
     }
 
+    /// Whether the library already holds a friend's favorite (same text and author), so their
+    /// profile shows "In your library" instead of Save.
+    func containsCopy(of favorite: FriendFavorite) -> Bool {
+        existingCopy(of: QuoteDraft(favorite: favorite)) != nil
+    }
+
+    /// Saves a friend's favorite (from their profile) into the library, outside reminders, and shows
+    /// "Saved to your library". Never adds a duplicate: when the same text and author are already
+    /// here, it says so and returns that quote. `id` is the new quote's ID; the profile keeps one per
+    /// favorite, so Save after a lost answer returns the first copy instead of adding another.
+    @discardableResult
+    func saveFavorite(_ favorite: FriendFavorite, id: UUID) async -> Quote? {
+        let draft = QuoteDraft(favorite: favorite)
+        if let existing = existingCopy(of: draft) {
+            toasts.show("Already in your library")
+            return existing
+        }
+        guard let quote = await create(draft: draft, id: id, includeInReminders: false, origin: .shared) else {
+            return nil
+        }
+        toasts.show("Saved to your library", style: .success)
+        return quote
+    }
+
     // MARK: Cache
 
     /// Writes the library and the shared inbox to the App Group cache, off the main thread, in order.
@@ -425,6 +577,9 @@ final class LibraryStore {
         refreshSerial += 1
         undoneDeletes = []
         sharesBeingSaved = [:]
+        favoriteWrites = [:]
+        heartsWhileDeleted = [:]
+        deletesInFlight = []
     }
 
     /// Seeds quotes for SwiftUI previews.
@@ -468,6 +623,8 @@ final class LibraryStore {
                 return .superseded
             }
             quotes = Self.sorted(fetched)
+            // No write overlapped this read, so the server's hearts are all here now.
+            heartsWhileDeleted = [:]
             hasLoaded = true
             lastError = nil
             lastRefreshed = .now
@@ -543,8 +700,14 @@ final class LibraryStore {
         // A failed delete already left the quote in place.
         guard deleted, userID == owner else { return }
         do {
-            let restored = try await backend.quotes.restore(quote)
+            var restored = try await backend.quotes.restore(quote)
             guard userID == owner else { return }
+            heartsWhileDeleted[quote.id] = nil
+            // A heart write still queued for this quote decides the heart, not this row.
+            if favoriteWrites[quote.id] != nil, let current = self.quote(id: quote.id) {
+                restored.isFavorite = current.isFavorite
+                restored.favoritedAt = current.favoritedAt
+            }
             upsertLocal(restored)
             writeCache()
             reminders.replan()
@@ -567,7 +730,13 @@ final class LibraryStore {
 
     /// The library copy of a share, if the library already holds the same text and author.
     private func existingCopy(of share: SharedQuote) -> Quote? {
-        guard let content = try? QuoteDraft(shared: share).validated() else { return nil }
+        existingCopy(of: QuoteDraft(shared: share))
+    }
+
+    /// The library's quote with the same text and author as `draft`, compared the way a save cleans
+    /// them.
+    private func existingCopy(of draft: QuoteDraft) -> Quote? {
+        guard let content = try? draft.validated() else { return nil }
         return quotes.first { quote in
             quote.body == content.body && Self.cleaned(quote.author) == content.author
         }
@@ -748,4 +917,17 @@ final class LibraryStore {
             return lhs.id.uuidString < rhs.id.uuidString
         }
     }
+}
+
+/// A quote's queued heart writes (`LibraryStore.setFavorite`): the latest one, and the heart the
+/// server last confirmed (or held before the first of them).
+private struct FavoriteWrite {
+    struct Heart {
+        var isFavorite: Bool
+        var at: Date?
+    }
+
+    var serial: Int
+    var task: Task<Bool, Never>
+    var confirmed: Heart
 }

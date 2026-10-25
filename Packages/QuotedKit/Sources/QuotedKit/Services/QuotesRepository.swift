@@ -69,6 +69,21 @@ public struct QuotesRepository: Sendable {
         }
     }
 
+    /// Hearts or un-hearts one of your quotes. The server stamps `favoritedAt`. Throws
+    /// ``QuotedError/notFound`` if the quote is gone.
+    public func setFavorite(id: UUID, _ isFavorite: Bool) async throws -> Quote {
+        _ = try client.requireUserID()
+        return try await mappingErrors {
+            try await client.from(Table.quotes)
+                .update(FavoriteUpdate(isFavorite: isFavorite), returning: .representation)
+                .eq("id", value: id)
+                .select(Columns.quote)
+                .single()
+                .execute()
+                .value
+        }
+    }
+
     /// Deletes a quote. Deleting one that is already gone succeeds.
     public func delete(id: UUID) async throws {
         _ = try client.requireUserID()

@@ -48,6 +48,45 @@ public struct SocialRepository: Sendable {
         }
     }
 
+    /// Shows or hides your favorites from your friends. Off by default.
+    public func setShowsFavorites(_ shows: Bool) async throws -> Profile {
+        let me = try client.requireUserID()
+        return try await mappingErrors {
+            try await client.from(Table.profiles)
+                .update(ShowsFavoritesUpdate(showsFavorites: shows), returning: .representation)
+                .eq("id", value: me)
+                .select(Columns.profile)
+                .single()
+                .execute()
+                .value
+        }
+    }
+
+    /// A linked person's profile as it is now (a friend's name and whether they show favorites), or
+    /// nil when you can no longer see it (unfriended and unlinked, or blocked).
+    public func profile(id: UUID) async throws -> Profile? {
+        _ = try client.requireUserID()
+        return try await mappingErrors {
+            try await client.from(Table.profiles)
+                .select(Columns.profile)
+                .eq("id", value: id)
+                .maybeSingle()
+                .execute()
+                .value
+        }
+    }
+
+    /// A friend's favorite quotes, newest first (at most 100). Empty unless you are accepted friends,
+    /// neither has blocked the other, and they show favorites.
+    public func favorites(of userID: UUID) async throws -> [FriendFavorite] {
+        _ = try client.requireUserID()
+        return try await mappingErrors {
+            try await client.rpc(RPC.friendFavorites, params: FriendFavoritesParam(user: userID))
+                .execute()
+                .value
+        }
+    }
+
     /// Changes the signed-in user's display name. Nil or blank clears it (the username is shown).
     public func updateDisplayName(_ displayName: String?) async throws -> Profile {
         let me = try client.requireUserID()
@@ -91,7 +130,7 @@ public struct SocialRepository: Sendable {
         guard let name = try? Username.validate(username) else { return nil }
         return try await mappingErrors {
             let rows: [Profile] = try await client.rpc(RPC.findProfile, params: UsernameParam(username: name))
-                .select(Columns.profile)
+                .select(Columns.foundProfile)
                 .retry(enabled: retrying)
                 .execute()
                 .value

@@ -64,7 +64,7 @@ App Store Connect needs a public **Privacy Policy URL** (App Information) and a 
      sed "s/{{SUPPORT_EMAIL}}/support@yourdomain/g" App/Resources/Legal/$f.md > ../quoted-site/$f.md
    done
    ```
-3. Add `support.md`: how to reach you (the support address), how to delete your account (Account > Delete account), how to report or block someone (the quote's "…" menu, or press and hold a request or friend), and that reports are reviewed daily.
+3. Add `support.md`: how to reach you (the support address), how to delete your account (Account > Delete account), how to report or block someone (the quote's "…" menu, press and hold a request or friend, or the "…" menu on a friend's profile), and that reports are reviewed daily.
 4. Add an `index.md` that links to the four pages.
 5. In the repository's Settings > Pages, deploy from the `main` branch, root folder. The pages appear at `https://<you>.github.io/quoted-site/privacy` and so on (a custom domain also works).
 6. Use `…/privacy` as the Privacy Policy URL and `…/support` as the Support URL.
@@ -102,7 +102,7 @@ Answer the questionnaire as follows:
 
 - Content descriptions (violence, sexual content, profanity, drugs, horror, mature themes, medical, gambling, contests): **None**. The app ships no such content; quotes come from users and the public-domain starter pack.
 - **Unrestricted web access: Yes.** "Search the web" opens Google in an in-app browser (`SFSafariViewController`), from which any site is reachable. Apple maps this capability to **16+** (Age ratings values and definitions, checked 2026-10-19). It is the founder's deliberate choice (`docs/decisions/2026-10-19-web-search-browser.md`). To lower the rating, switch the row to open the Safari app and answer No.
-- **User-generated content: Yes.** Users write quotes and notes, pick a display name and share with friends. Report and Block exist on every shared quote, request and friend.
+- **User-generated content: Yes.** Users write quotes and notes, pick a display name and share with friends. Report and Block exist on every shared quote, request and friend, and on a friend's profile (which shows their favorites).
 - **Messaging and chat: Yes.** A shared quote can carry a short note to an accepted friend.
 - **Social media: No.** Apple defines it as a feed or discovery method that spreads content to many users (that would mean 13+). Quoted only sends a quote to chosen, accepted friends; there is no feed.
 - **Expected result: 16+**, driven only by unrestricted web access. User-generated content and messaging do not raise the rating.

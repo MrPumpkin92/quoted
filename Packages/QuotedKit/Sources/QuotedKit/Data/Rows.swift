@@ -30,13 +30,18 @@ enum RPC {
     static let isUsernameAvailable = "is_username_available"
     /// `public.touch_activity()`: stamps the caller's `profiles.last_active_at`, at most every 12 h.
     static let touchActivity = "touch_activity"
+    /// `public.friend_favorites(p_user uuid)`: an accepted friend's favorites when they show them
+    /// (migration `20261025090000_favorites`).
+    static let friendFavorites = "friend_favorites"
 }
 
 /// `select` column lists, with embeds through the stable foreign-key names (`<table>_<column>_fkey`).
 enum Columns {
-    static let profile = "id, username, display_name"
+    static let profile = "id, username, display_name, shows_favorites"
+    /// What `public.find_profile` returns. A stranger's lookup never includes `shows_favorites`.
+    static let foundProfile = "id, username, display_name"
 
-    static let quote = "id, body, body_format, author, source, origin, rotation_position, created_at, updated_at, verified_starter_id"
+    static let quote = "id, body, body_format, author, source, origin, rotation_position, created_at, updated_at, verified_starter_id, is_favorite, favorited_at"
 
     static let friendship = """
         id, requester_id, addressee_id, status, created_at, responded_at, \
@@ -136,6 +141,7 @@ struct QuoteRestoreRow: Encodable, Equatable, Sendable {
     var source: String?
     var origin: QuoteOrigin
     var rotationPosition: Int?
+    var isFavorite: Bool
 
     init(_ quote: Quote, content: QuoteDraft.Validated) {
         id = quote.id
@@ -145,12 +151,14 @@ struct QuoteRestoreRow: Encodable, Equatable, Sendable {
         source = content.source
         origin = quote.origin
         rotationPosition = quote.rotationPosition.map { max(0, $0) }
+        isFavorite = quote.isFavorite
     }
 
     enum CodingKeys: String, CodingKey {
         case id, body, author, source, origin
         case format = "body_format"
         case rotationPosition = "rotation_position"
+        case isFavorite = "is_favorite"
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -162,6 +170,16 @@ struct QuoteRestoreRow: Encodable, Equatable, Sendable {
         try container.encode(source, forKey: .source)
         try container.encode(origin, forKey: .origin)
         try container.encode(rotationPosition, forKey: .rotationPosition)
+        try container.encode(isFavorite, forKey: .isFavorite)
+    }
+}
+
+/// The heart on one of your quotes. `favorited_at` is stamped by the server.
+struct FavoriteUpdate: Encodable, Equatable, Sendable {
+    var isFavorite: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isFavorite = "is_favorite"
     }
 }
 
@@ -220,6 +238,24 @@ struct DisplayNameUpdate: Encodable, Equatable, Sendable {
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(displayName, forKey: .displayName)
+    }
+}
+
+/// Whether friends may see your favorites.
+struct ShowsFavoritesUpdate: Encodable, Equatable, Sendable {
+    var showsFavorites: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case showsFavorites = "shows_favorites"
+    }
+}
+
+/// The argument of `public.friend_favorites`.
+struct FriendFavoritesParam: Encodable, Equatable, Sendable {
+    var user: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case user = "p_user"
     }
 }
 

@@ -47,11 +47,13 @@ Keep every type name and initializer exactly as listed. The shell's routing call
 | Features/Quote/QuoteDetailView.swift | `QuoteDetailView(quoteID: UUID, contextIDs: [UUID])` | route `.quote(id:contextIDs:)` | library |
 | Features/Quote/AddEditQuoteView.swift | `AddEditQuoteView(editing: Quote?)` | sheets `.addQuote`, `.editQuote(quote)` | library |
 | Features/Quote/ShareQuoteSheet.swift | `ShareQuoteSheet(quote: Quote)` | sheet `.share(quote)` | library |
+| Features/Quote/FavoriteButton.swift | `FavoriteButton(quote: Quote)`, `FavoriteActionLabel(isFavorite: Bool)` | the heart in the detail and full-screen toolbars; the Library swipe and menu label | library |
 | Features/Search/SearchView.swift | `SearchView()` | Search tab root | search |
 | Features/Reminders/RemindersView.swift | `RemindersView()` | route `.reminders` | search |
 | Features/Reminders/ReminderQuotePicker.swift | `ReminderQuotePicker()` | sheet `.reminderPicker` | search |
 | Features/Friends/FriendsView.swift | `FriendsView()` | Friends tab root | friends |
 | Features/Friends/SharedInboxView.swift | `SharedInboxView()` | route `.sharedInbox` | friends |
+| Features/Friends/ProfileView.swift | `ProfileView(profile: Profile)` | route `.profile(profile)` (a friend's favorites; yours with the "Show favorites to friends" toggle) | friends |
 | Features/Account/AccountView.swift | `AccountView()` | route `.account` | friends |
 | Features/Account/BlockedUsersView.swift | `BlockedUsersView()` | route `.blockedUsers` | friends |
 | Features/Account/TextPageView.swift | `TextPageView(page: LegalPage)` | route `.textPage(page)` | friends |
@@ -122,6 +124,8 @@ private(set) var launchError: String?              // LaunchView shows it with "
 func isUsernameAvailable(_ username: String) async throws(QuotedError) -> Bool
 func createProfile(username: String, displayName: String?) async throws(QuotedError)
 func updateDisplayName(_ displayName: String?) async throws(QuotedError)
+func setShowsFavorites(_ shows: Bool) async throws(QuotedError)   // "Show favorites to friends"; updates profile and its cache
+func refreshProfile() async                                       // pull to refresh on Your profile; quiet on failure; a read that overlapped a profile write is dropped and re-read once writes settle
 func completeOnboarding()
 func signOut() async                               // offered only when canSignOut (never in anonymous mode)
 func deleteAccount() async throws(QuotedError)
@@ -182,6 +186,10 @@ func delete(_ quote: Quote)                                            // delete
 func moveReminders(fromOffsets: IndexSet, toOffset: Int)               // List.onMove
 @discardableResult func importStarter(_ starters: [StarterQuote]) async -> Bool   // into the library + end of reminders
 @discardableResult func saveShared(_ share: SharedQuote, addToReminders: Bool) async -> Quote?  // "Saved to your library", or "Already in your library"
+var favorites: [Quote]                                                 // hearted quotes, newest heart first
+@discardableResult func setFavorite(_ quote: Quote, _ isFavorite: Bool) async -> Bool   // optimistic; rolls back with a toast
+func containsCopy(of favorite: FriendFavorite) -> Bool                 // same text and author already in the library
+@discardableResult func saveFavorite(_ favorite: FriendFavorite, id: UUID) async -> Quote?  // a friend's favorite, outside reminders
 ```
 
 - `create` waits for the server and returns nil on failure (the toast is already shown, so keep the sheet open). Build the draft with `QuotedCore.QuoteDraft(body:format:author:source:)`. Check `draft.isValid` to enable Save, and use `try draft.validated()` for inline errors. Pass `origin: .pasted` when the body came from the PasteButton.
@@ -224,6 +232,7 @@ func connection(with userID: UUID) -> Connection?
 @discardableResult func refresh(userInitiated: Bool = false) async -> Bool
 func refreshIfStale(maxAge: TimeInterval = 60) async
 func loadBlocked() async
+func profileAndFavorites(of userID: UUID) async throws -> (profile: Profile?, favorites: [FriendFavorite])  // ProfileView; throws for its error state
 @discardableResult func sendRequest(toUsername: String) async -> FriendRequestResult   // toasts the message
 @discardableResult func accept(_ request: Connection) async -> Bool
 @discardableResult func decline(_ request: Connection) async -> Bool
@@ -246,7 +255,7 @@ func markSeen(_ shares: [SharedQuote]) async
 - `block` removes the friendship, requests and shares at once. `ReportReason.allCases` and `.title` drive the report dialog. To report and then block, use `reportAndBlock`: the report must be filed before the block, because a block deletes the share.
 - **Sending commits immediately; Undo deletes.** Both `share` and `send` validate (at least one recipient, note ≤ 280 characters; otherwise a toast and false) and insert the shares at once. `share` is synchronous: it shows "Sent to Maya" with Undo for 5 s right away and returns true, so dismiss the sheet; a send that then fails shows "Couldn't send. …". `send` waits for the server (show progress on Send): on success it shows the same toast and returns true; on failure it toasts and returns false, so the sheet keeps the selection and the note. Prefer `send`. Undo waits for the insert, then deletes the sent shares (`SocialRepository.deleteShares`); "Couldn't undo. …" if that fails.
 - `deleteShares` removes inbox shares at once (no Undo: only the sender can create a share, so confirm first if you need to). Either party may delete; the sender's copy is the same row. `SharedInboxView` deletes without asking: it hides the share at once and shows "Deleted the quote from Maya" with Undo through `ToastCenter.showDeferred`, and calls `deleteShares` only when that toast closes (timeout, a newer toast, leaving the inbox, going to the background, signing out). Undo just shows the share again.
-- `reportUser` is the report for a person rather than a quote: Friends offers it on request and friend rows (context menu and VoiceOver actions) and Blocked users on each row, through `.reportUserConfirmation(isPresented:profile:context:)` / `.reportUserConfirmation(item:context:)` (in `SharedInboxView.swift`). The details record where it came from and the display name the reporter saw, since the server snapshots only the username.
+- `reportUser` is the report for a person rather than a quote: Friends offers it on request and friend rows (context menu and VoiceOver actions), Blocked users on each row, and a friend's profile in its `…` menu (context `.profile`), through `.reportUserConfirmation(isPresented:profile:context:)` / `.reportUserConfirmation(item:context:)` (in `SharedInboxView.swift`). The details record where it came from and the display name the reporter saw, since the server snapshots only the username.
 - Mutations roll back only what they changed (an accept that fails removes just that friend and puts just that request back), and refreshes follow the same single-flight and drop-if-overlapped rules as `LibraryStore`.
 - Your own profile is `SessionStore.profile`, not here.
 - Call `markInboxSeen()` when Friends or the inbox appears.
@@ -339,6 +348,7 @@ enum AppTab { case library, friends, search }
 enum Route: Hashable {
     case quote(id: UUID, contextIDs: [UUID])   // QuoteDetailView pages across contextIDs
     case reminders, sharedInbox, account, blockedUsers
+    case profile(Profile)                      // ProfileView: a friend's favorites, or yours
     case textPage(LegalPage)
 }
 enum SheetRoute: Identifiable, Hashable {
@@ -373,7 +383,7 @@ Examples:
 
 - Open a quote from a list: `router.showQuote(quote.id, in: library.quotes.map(\.id))`, or `NavigationLink(value: Route.quote(id: quote.id, contextIDs: ids))`.
 - Open from Reminders: pass `library.reminderQuotes.map(\.id)`. From search: pass the result IDs.
-- Other pushes: `router.push(.reminders)`, `router.push(.account)`, `router.push(.textPage(.privacy))`.
+- Other pushes: `router.push(.reminders)`, `router.push(.account)`, `router.push(.profile(friend.profile))`, `router.push(.textPage(.privacy))`.
 - Sheets: `router.present(.addQuote)`, `.editQuote(quote)`, `.share(quote)`, `.widgetGuide`, `.reminderPicker`, `.starterPack`, `.safari(url)` (the search tab's in-app Google browser; it holds no unsaved input).
 - From Share's "no friends" link to Friends: `dismiss(); router.spotlight = nil; router.select(.friends)` (Share is presented by the shell or by the full-screen quote).
 - A reminder or widget tap shows the quote full screen: `router.open(.quote(id), reminderQuoteIDs:)` sets `router.spotlight`; `router.openSpotlightInLibrary(id, reminderQuoteIDs:)` closes it and pushes the detail. A sheet you present yourself that may hold typed input gets `.holdsDeepLinks()`.
@@ -414,8 +424,8 @@ Modifiers:
 | Component | Signature | Use |
 |---|---|---|
 | QuoteText | `QuoteText(_ content: some RichTextContent, style: QuoteStyle = .row, quoteMarks: .none/.hanging, lineLimit: Int? = nil, highlighting: [String] = [])`; also `QuoteText(body:runs:style:quoteMarks:lineLimit:highlighting:)` | Every quote body. Use `.hanging` for hero quotes; the open quote hangs left, so give the text ≥ 24 pt leading room. `highlighting` tints search matches. |
-| AttributionLine | `AttributionLine(author:source:inReminders: Bool = false, verified: Bool = false)`, `AttributionLine(_ content: some QuoteContent, inReminders:verified:)` | Under quotes. `inReminders` adds the accent `bell.fill` ("In reminders"); `verified` (default: `content.isVerified`) ends the line with the accent `checkmark.seal.fill` ("verified"). |
-| QuoteRow | `QuoteRow(_ content: some QuoteContent, inReminders: Bool? = nil /*nil = quote.isInRotation*/, style: .row/.excerpt, highlighting: [String] = [])` | Library, search, starter and picker rows. No padding of its own; use `.groundListRow()` in a List. |
+| AttributionLine | `AttributionLine(author:source:inReminders: Bool = false, favorite: Bool = false, verified: Bool = false)`, `AttributionLine(_ content: some QuoteContent, inReminders:favorite:verified:)` | Under quotes. `inReminders` adds the accent `bell.fill` ("In reminders"); `favorite` adds the accent `heart.fill` after it ("Favorite"; list rows only, never share images); `verified` (default: `content.isVerified`) ends the line with the accent `checkmark.seal.fill` ("verified"). |
+| QuoteRow | `QuoteRow(_ content: some QuoteContent, inReminders: Bool? = nil /*nil = quote.isInRotation*/, favorite: Bool? = nil /*nil = quote.isFavorite*/, style: .row/.excerpt, highlighting: [String] = [])` | Library, search, starter and picker rows. No padding of its own; use `.groundListRow()` in a List. |
 | QuoteCard | `QuoteCard(_ content: some QuoteContent, inReminders: Bool? = nil, showsWordmark: Bool = false)`; `QuoteCard.shareImage(for:width:) -> UIImage?` (3x, light, with wordmark) | Detail pager pages; the share image (`ShareLink` with `Image(uiImage:)`). |
 | StatusCard | `StatusCard(summary: ReminderStatusSummary, onOpen: () -> Void, onTurnOn: (() -> Void)?)`; also `StatusCard(title:detail:isOff:actionTitle:onOpen:onTurnOn:)` | Library top: `onOpen: { router.push(.reminders) }`, `onTurnOn: { Task { await reminders.turnOn() } }`. At accessibility text sizes the tile sits above the text and "Turn on" below it. |
 | IconTile | `IconTile(systemName: String, tone: .accent / .muted)`; `IconTile.layout(for: DynamicTypeSize, alignment: VerticalAlignment = .center) -> AnyLayout` (in StatusCard.swift) | The 40-pt glyph tile of cards and banners. It grows to 64 pt with Dynamic Type and its glyph stops at AX1. Lay a tile and its text out with `let layout = IconTile.layout(for: dynamicTypeSize); layout { IconTile(…); text }`, which stacks them at accessibility sizes. |

@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: October 21, 2026.
+Last updated: October 25, 2026.
 
 Quoted is built to keep the words that move you, not to collect data about you. This policy explains what we store, why, who can see it and how to delete it. "We" means the developer of Quoted, the seller shown on its App Store page.
 
@@ -10,7 +10,7 @@ Quoted is built to keep the words that move you, not to collect data about you. 
 |---|---|
 | An account ID that Quoted creates when you tap Get started | To keep your library, friends and shares together. The account has no email address or password, and it isn't linked to your phone number or Apple ID. |
 | Your username and display name (optional) | So friends can find you and see who sent a quote. |
-| Your quotes (text, formatting, author, source) and which ones are in your reminders, in order | To keep your library in sync and to show your reminders and widgets. |
+| Your quotes (text, formatting, author, source), which ones are in your reminders, in order, and which ones you marked as favorites | To keep your library in sync, to show your reminders and widgets, and to show your favorites on your profile. |
 | Your friends, friend requests and blocks | To let you share quotes with the people you choose and keep out the people you don't. |
 | Quotes you share, with any note | To deliver them to the friends you picked. We also record when your friend first opens and saves each one, so their inbox can show what's new. |
 | Reports you file | To review content and accounts that may break the Community Guidelines. A report keeps the reason, any details sent with it (such as the person's display name at the time), a copy of the reported quote (if any) and the reported username. It stays linked to your account until you delete your account. |
@@ -33,7 +33,7 @@ On your iPhone, Quoted keeps a copy of your library so the app, reminders and wi
 
 ## Who can see what
 
-- Your quotes are private to you.
+- Your quotes are private to you. The one exception is your choice: if you turn on "Show favorites to friends" on your profile, your friends can see the quotes you marked as favorites (text, formatting, author and source) and when you marked each one, and can save a copy of one to their own library; that copy is theirs. It's off until you turn it on and it covers only favorites. If you turn it off, friends stop seeing your favorites the next time their app loads your profile, and copies they already saved stay with them. People who aren't your friends, or who you blocked or who blocked you, never see them.
 - Your username and display name are visible to people you're connected with (friends, friend requests, shared quotes and blocks) and to anyone who types your exact username. People you blocked, or who blocked you, can't find you by username.
 - A quote you share is visible to you and the friend you sent it to, along with when they opened or saved it. They can save a copy to their own library, and that copy is theirs.
 - People you block can't send you friend requests or quotes. They aren't told that you blocked them or reported them.

@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The quote a reminder or widget tap opens, full screen (the council's graft from Daily: the big card
 /// is the screen a notification or widget opens, not the home tab). One quote, large serif type with
-/// hanging quotation marks, its attribution (bell and verified seal included), Share, and
-/// "Open in Library" for the detail screen with its toggle, Edit and Delete.
+/// hanging quotation marks, its attribution (bell and verified seal included), the favorite heart,
+/// Share, and "Open in Library" for the detail screen with its toggle, Edit and Delete.
 ///
 /// Presented by `MainTabView` with `fullScreenCover(item: $router.spotlight)`. Short quotes use the
 /// `.spotlight` size and sit centred; long ones, and every quote at accessibility text sizes, use
@@ -50,6 +50,11 @@ struct QuoteSpotlightView: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button(role: .close) {
                             dismiss()
+                        }
+                    }
+                    if let quote = library.quote(id: quoteID) {
+                        ToolbarItem(placement: .primaryAction) {
+                            FavoriteButton(quote: quote)
                         }
                     }
                 }

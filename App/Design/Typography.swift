@@ -23,6 +23,7 @@ extension StarterQuote: QuoteContent {
     var isVerified: Bool { true }
 }
 extension SnapshotQuote: QuoteContent {}
+extension FriendFavorite: QuoteContent {}
 
 /// How a quote body is set. Quotes always use the system serif (New York) and scale with Dynamic Type.
 ///

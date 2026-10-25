@@ -3,7 +3,8 @@ import QuotedCore
 import SwiftUI
 
 /// Account (docs/ui-spec.md §12): your profile (the username is selectable; with anonymous accounts a
-/// line says the account lives on this iPhone), your display name (editable), the Reminders status,
+/// line says the account lives on this iPhone), your display name (editable), Your profile (favorites
+/// and whether friends see them), the Reminders status,
 /// blocked users, the legal pages, support, sign out (email accounts only) and account deletion, with
 /// the version in the footer.
 ///
@@ -33,6 +34,7 @@ struct AccountView: View {
         List {
             header
             displayNameRow
+            profileRow
             remindersRow
             safetySection
             aboutSection
@@ -158,6 +160,29 @@ struct AccountView: View {
     private var customDisplayName: String? {
         guard let profile = session.profile, profile.displayName != profile.username else { return nil }
         return profile.displayName
+    }
+
+    // MARK: Profile
+
+    /// Your profile: your favorites and the switch that shows them to friends. The detail line says
+    /// who can see them.
+    private var profileRow: some View {
+        let shows = session.profile?.showsFavorites == true
+        return Button {
+            if let profile = session.profile {
+                router.push(.profile(profile))
+            }
+        } label: {
+            AccountRowLabel(
+                title: "Your profile",
+                systemImage: "heart.text.square",
+                detail: shows ? "Friends can see your favorites" : "Your favorites are private",
+                accessory: .disclosure
+            )
+        }
+        .accessibilityHint("Shows your favorites and who can see them")
+        .disabled(session.profile == nil)
+        .marginCardRow(.middle, separatorInset: rowSeparatorInset)
     }
 
     // MARK: Reminders

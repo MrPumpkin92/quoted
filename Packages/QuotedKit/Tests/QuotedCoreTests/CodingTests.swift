@@ -116,8 +116,10 @@ struct ModelCodingTests {
         let object = try Fixture.jsonObject(quote)
         #expect(Set(object.keys) == [
             "id", "body", "body_format", "author", "source", "origin", "rotation_position", "created_at", "updated_at",
-            "verified_starter_id",
+            "verified_starter_id", "is_favorite", "favorited_at",
         ])
+        #expect(object["is_favorite"] as? Bool == false)
+        #expect(object["favorited_at"] is NSNull)
         #expect(object["verified_starter_id"] is NSNull)
         #expect(object["source"] is NSNull)
         #expect(object["origin"] as? String == "starter")

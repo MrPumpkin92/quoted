@@ -21,6 +21,9 @@ enum Route: Hashable, Sendable {
     case reminders
     /// `SharedInboxView()`: every quote shared with you.
     case sharedInbox
+    /// `ProfileView(profile:)`: a friend's favorites (when they show them), or your own with the
+    /// switch that shows them to friends.
+    case profile(Profile)
     /// `AccountView()`: profile, notifications, legal, sign out, delete account.
     case account
     /// `BlockedUsersView()`.

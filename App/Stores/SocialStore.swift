@@ -193,6 +193,17 @@ final class SocialStore {
         }
     }
 
+    // MARK: Profiles
+
+    /// A friend's profile (nil if it can't be read) and their favorites, newest first. The favorites
+    /// are empty unless you are friends, neither has blocked the other and they show them
+    /// (`public.friend_favorites`). Throws, so `ProfileView` can show its own error.
+    func profileAndFavorites(of userID: UUID) async throws -> (profile: Profile?, favorites: [FriendFavorite]) {
+        async let profile = backend.social.profile(id: userID)
+        async let favorites = backend.social.favorites(of: userID)
+        return try await (profile, favorites)
+    }
+
     // MARK: Requests
 
     /// Sends a friend request by exact username ("@maya" or "maya"), shows the result as a toast and

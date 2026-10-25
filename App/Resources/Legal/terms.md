@@ -1,6 +1,6 @@
 # Terms of Use
 
-Last updated: October 21, 2026.
+Last updated: October 25, 2026.
 
 These terms are an agreement between you and the developer of Quoted, the seller shown on its App Store page ("we", "us"). By using Quoted, you agree to them and to the Community Guidelines. If you don't agree, please don't use the app.
 
@@ -13,7 +13,7 @@ These terms are an agreement between you and the developer of Quoted, the seller
 ## Your content
 
 - The quotes, notes and other things you add are "your content". You keep any rights you have in it.
-- You give us permission to store, copy and display your content only so we can run Quoted for you: to sync your library, show your reminders and widgets, and deliver quotes you share to the friends you choose.
+- You give us permission to store, copy and display your content only so we can run Quoted for you: to sync your library, show your reminders and widgets, deliver quotes you share to the friends you choose, and show your favorites to your friends when you turn on "Show favorites to friends".
 - Only share content you have the right to share. Many quotes are short excerpts from published works; you are responsible for how you use them.
 
 ## No tolerance for objectionable content or abusive users

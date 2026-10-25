@@ -5,9 +5,10 @@ import SwiftUI
 /// The Library tab root (docs/ui-spec.md §5): the reminders status card, a one-time widget tip, the
 /// "shared with you" row, a count header and the quote list. A filled "+" opens Add.
 ///
-/// Rows open the detail pager across the Library order. Leading swipe shares; trailing swipe deletes
-/// (with Undo) or adds to / removes from reminders (Undo puts it back in its old place); the context
-/// menu has all four. Pull to refresh. Empty: "Your library is empty" with Add and the starter pack;
+/// Rows open the detail pager across the Library order. Leading swipe shares or hearts; trailing swipe
+/// deletes (with Undo) or adds to / removes from reminders (Undo puts it back in its old place); the
+/// context menu has all five. Once any quote is a favorite, "All / Favorites" above the count narrows
+/// the list to favorites. Pull to refresh. Empty: "Your library is empty" with Add and the starter pack;
 /// the toolbar "+" is then quiet glass, so the screen has one filled action.
 struct LibraryView: View {
     @Environment(AppModel.self) private var app
@@ -22,12 +23,19 @@ struct LibraryView: View {
 
     /// Whether a Quoted widget is installed (nil until WidgetKit answers; the tip waits for it).
     @State private var widgetInstalled: Bool?
+    /// The list shows only favorites ("All / Favorites"). Goes back to All when the last favorite goes.
+    @State private var showsFavoritesOnly = false
 
     init() {}
 
     var body: some View {
         content
             .groundBackground()
+            // On `content`, not the list: deleting the last quote replaces the list with the empty
+            // state, and the filter must not come back on with no favorites to show.
+            .onChange(of: hasFavorites) { _, has in
+                if !has { showsFavoritesOnly = false }
+            }
             .navigationTitle("Library")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -91,8 +99,17 @@ struct LibraryView: View {
         }
     }
 
+    /// The quotes the list shows: all of them, or only favorites (newest heart first).
+    private var listedQuotes: [Quote] {
+        filtersFavorites ? library.favorites : library.quotes
+    }
+
+    /// The Favorites filter applies only while there are favorites (its picker is hidden otherwise).
+    private var filtersFavorites: Bool { showsFavoritesOnly && hasFavorites }
+
     private var quoteList: some View {
-        let ids = library.quotes.map(\.id)
+        let listed = listedQuotes
+        let ids = listed.map(\.id)
         return List {
             if let summary = reminders.statusSummary {
                 StatusCard(
@@ -111,8 +128,11 @@ struct LibraryView: View {
                 sharedRow
                     .headerCardRow()
             }
+            if hasFavorites {
+                favoritesFilter
+            }
             countHeader
-            ForEach(library.quotes) { quote in
+            ForEach(listed) { quote in
                 NavigationLink(value: Route.quote(id: quote.id, contextIDs: ids)) {
                     QuoteRow(quote)
                 }
@@ -125,6 +145,12 @@ struct LibraryView: View {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
                     .tint(Color.accentColor)
+                    Button {
+                        toggleFavorite(quote)
+                    } label: {
+                        FavoriteActionLabel(isFavorite: quote.isFavorite)
+                    }
+                    .tint(SwipeTint.favorite)
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
@@ -151,6 +177,11 @@ struct LibraryView: View {
                         reminderLabel(for: quote)
                     }
                     Button {
+                        toggleFavorite(quote)
+                    } label: {
+                        FavoriteActionLabel(isFavorite: quote.isFavorite)
+                    }
+                    Button {
                         router.present(.editQuote(quote))
                     } label: {
                         Label("Edit", systemImage: "pencil")
@@ -166,7 +197,27 @@ struct LibraryView: View {
         }
         .listStyle(.plain)
         .animation(.default, value: showsWidgetTip)
+        .animation(.default, value: showsFavoritesOnly)
         .refreshable { await refreshAll() }
+    }
+
+    private var hasFavorites: Bool { library.quotes.contains(where: \.isFavorite) }
+
+    /// "All / Favorites", above the count once any quote is a favorite.
+    private var favoritesFilter: some View {
+        Picker("Show", selection: $showsFavoritesOnly) {
+            Text("All").tag(false)
+            Text("Favorites").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .listRowInsets(EdgeInsets(
+            top: Theme.Spacing.s,
+            leading: Theme.Spacing.gutter,
+            bottom: 0,
+            trailing: Theme.Spacing.gutter
+        ))
+        .listRowBackground(Color.ground)
+        .listRowSeparator(.hidden)
     }
 
     private var emptyLibrary: some View {
@@ -290,12 +341,12 @@ struct LibraryView: View {
 
     private var countHeader: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(library.quotes.count == 1 ? "1 quote" : "\(library.quotes.count) quotes")
+            Text(countTitle)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
-            if library.quotes.contains(where: \.isInRotation) {
+            if listedQuotes.contains(where: \.isInRotation) {
                 HStack(spacing: Theme.Spacing.xxs) {
                     Image(systemName: "bell.fill")
                         .font(.caption2)
@@ -318,7 +369,19 @@ struct LibraryView: View {
         .listRowSeparatorTint(Color.hairline)
     }
 
+    private var countTitle: String {
+        let count = listedQuotes.count
+        if filtersFavorites {
+            return count == 1 ? "1 favorite" : "\(count) favorites"
+        }
+        return count == 1 ? "1 quote" : "\(count) quotes"
+    }
+
     // MARK: Actions
+
+    private func toggleFavorite(_ quote: Quote) {
+        Task { await library.setFavorite(quote, !quote.isFavorite) }
+    }
 
     @ViewBuilder
     private func reminderLabel(for quote: Quote) -> some View {

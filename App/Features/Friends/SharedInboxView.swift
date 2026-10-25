@@ -366,14 +366,15 @@ struct MoreMenuLabel: View {
 }
 
 /// Swipe-action fills. Destructive swipes keep `role: .destructive` and say red explicitly, because
-/// the app-wide accent tint would otherwise win. Report and Block use the Increased Contrast light
-/// variants of system orange and gray, so their white glyph and title reach 4.5:1 in either mode
-/// (plain `.orange` is about 2.2:1).
+/// the app-wide accent tint would otherwise win. Report, Block and Favorite use the Increased
+/// Contrast light variants of system orange, gray and pink, so their white glyph and title reach
+/// 4.5:1 in either mode (plain `.orange` is about 2.2:1).
 @MainActor
 enum SwipeTint {
     static let destructive = Color.red
     static let report = highContrast(.systemOrange)
     static let block = highContrast(.systemGray)
+    static let favorite = highContrast(.systemPink)
 
     private static func highContrast(_ color: UIColor) -> Color {
         let traits = UITraitCollection { traits in
@@ -473,6 +474,7 @@ enum ReportUserContext: Sendable {
     case incomingRequest
     case outgoingRequest
     case friend
+    case profile
     case blockedUser
 
     var summary: String {
@@ -480,6 +482,7 @@ enum ReportUserContext: Sendable {
         case .incomingRequest: "a friend request they sent"
         case .outgoingRequest: "a friend request the reporter sent"
         case .friend: "the reporter\u{2019}s friends list"
+        case .profile: "their profile, which shows their favorite quotes"
         case .blockedUser: "the reporter\u{2019}s blocked users"
         }
     }

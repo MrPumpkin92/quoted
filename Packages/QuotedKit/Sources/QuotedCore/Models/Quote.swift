@@ -39,6 +39,10 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
     /// The starter quote whose wording, author and source this quote matches exactly, or nil. Set by
     /// the server only (trigger `quotes_set_verified`); editing the text clears it.
     public var verifiedStarterID: Int?
+    /// The owner's heart. Friends see favorites only when the owner shows them (`Profile.showsFavorites`).
+    public var isFavorite: Bool
+    /// When it became a favorite (server clock), or nil.
+    public var favoritedAt: Date?
 
     /// Whether the quote is part of the Rotation.
     public var isInRotation: Bool { rotationPosition != nil }
@@ -56,7 +60,9 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
         rotationPosition: Int? = nil,
         createdAt: Date = Date(),
         updatedAt: Date? = nil,
-        verifiedStarterID: Int? = nil
+        verifiedStarterID: Int? = nil,
+        isFavorite: Bool = false,
+        favoritedAt: Date? = nil
     ) {
         self.id = id
         self.body = body
@@ -68,6 +74,8 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
         self.verifiedStarterID = verifiedStarterID
+        self.isFavorite = isFavorite
+        self.favoritedAt = isFavorite ? favoritedAt : nil
     }
 
     /// "author, source", or nil when neither is set.
@@ -89,6 +97,8 @@ extension Quote: Codable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case verifiedStarterID = "verified_starter_id"
+        case isFavorite = "is_favorite"
+        case favoritedAt = "favorited_at"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -103,6 +113,8 @@ extension Quote: Codable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
         verifiedStarterID = try container.decodeIfPresent(Int.self, forKey: .verifiedStarterID)
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        favoritedAt = isFavorite ? try container.decodeIfPresent(Date.self, forKey: .favoritedAt) : nil
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -117,5 +129,7 @@ extension Quote: Codable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(verifiedStarterID, forKey: .verifiedStarterID)
+        try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encode(favoritedAt, forKey: .favoritedAt)
     }
 }
