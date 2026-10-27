@@ -7,6 +7,10 @@ import SwiftUI
 /// Tapping a row toggles it (an accent check circle shows the selection). **Add** appends the picked
 /// quotes to the end of the reminders in library order (`LibraryStore.addToReminders`, optimistic)
 /// and closes the sheet.
+///
+/// With nothing to pick (every Library quote is already in reminders, which is where onboarding
+/// leaves everyone), it offers more quotes instead: the starter pack (its picks join reminders) and
+/// Write your own.
 struct ReminderQuotePicker: View {
     @Environment(LibraryStore.self) private var library
     @Environment(Router.self) private var router
@@ -62,11 +66,11 @@ struct ReminderQuotePicker: View {
                 EmptyStateView(
                     systemImage: library.isEmpty ? "text.quote" : "bell.badge",
                     title: library.isEmpty ? "Your library is empty" : "Every quote is in your reminders",
-                    message: library.isEmpty
-                        ? "Save a quote first, then pick the ones you want to see again."
-                        : "New quotes can join your reminders when you save them.",
-                    actionTitle: "Add a quote",
-                    action: { router.present(.addQuote) }
+                    message: "Pick more from the starter pack, or write your own. They join your reminders.",
+                    actionTitle: "Browse the starter pack",
+                    action: { router.present(.starterPack) },
+                    secondaryTitle: "Write your own",
+                    secondaryAction: { router.present(.addQuote) }
                 )
             }
         } else {

@@ -95,7 +95,11 @@ Deep links (`quoted://`):
 - Both paths lead to Main. If the user denied, the status card shows the off state (Library section).
 
 ### 5. Library (Home)
-- Large title "Library". A filled accent `+` in the toolbar opens Add.
+- Large title "Library". A filled accent `+` in the toolbar opens a menu:
+  - **New Quote** opens Add.
+  - **From the Starter Pack** opens the starter picker, with the quotes you already have dimmed. Its picks join your reminders.
+
+  This is how people find more verified quotes after onboarding; the empty state used to be the only way in.
 - **StatusCard** (shown when at least one quote is in reminders) pushes Reminders. It has a bell tile in a soft accent square and reads:
   - Normal: "**6 quotes in your reminders**" / "3× daily · Next at 8:00 PM".
   - Off states: "Reminders off · Turn on", or "Notifications off in Settings · Turn on", which opens `UIApplication.openNotificationSettingsURLString`.
@@ -137,6 +141,8 @@ Deep links (`quoted://`):
 - **Keyboard toolbar:** B, I and U toggle buttons with the selected state in `AccentSoft`. They reflect the selection's current flags and toggle runs through `RichText.toggle`. Then a `Spacer`, then a `PasteButton`. Return in the editor inserts a newline. The Author field submits to Source, and Source submits to Save.
 - **Paste heuristics:** text like `“…” — Name` or `"…" - Name, Work` is split into body, author and source. Smart quotes around the body are stripped. `QuotedCore.PastedQuote`, linear in the pasted length, so pasting a long page doesn't stall the sheet.
 - Validation errors appear inline. If saving fails, keep the sheet open and show a toast.
+- A new quote closes with the toast "Saved to your library", or "Saved to your library and reminders" when it joined them. Library switches to All and scrolls to the quote, so it's visible even if Favorites was selected or the list was scrolled down.
+- Opened from the Search tab's copied-quote card (`SheetRoute.pastedQuote`), the sheet starts filled from the pasted text, using the same split as Paste.
 
 ### 8. Reminders (`Margin-Rotation.png` + fixes)
 - Pushed screen titled "Reminders".
@@ -150,6 +156,8 @@ Deep links (`quoted://`):
 - **List:** reorderable rows (drag handles via `onMove`, always in edit mode for this list). Each row shows a number, a one-line serif excerpt and the author in small caps. Swipe a row to remove it from reminders ("Removed from reminders · Undo"; Undo puts it back in its old place).
 - **Shuffle:** the order is random each cycle, so rows show no numbers and can't be reordered (no drag handles, no Move up/down actions). The section footer reads "Shown in random order. Choose In order to arrange them."
 - An "Add quotes" button opens `ReminderQuotePicker`, a multi-select of library quotes that aren't in reminders.
+  - The button is never disabled.
+  - When every library quote is already in reminders (where onboarding leaves everyone), the picker says "Every quote is in your reminders" and offers **Browse the starter pack** (filled) and **Write your own** (quiet).
 - Every change re-plans notifications and updates the widget snapshot right away.
 
 ### 9. Search (`Tab(role: .search)`, `Margin-Search.png`)
@@ -157,8 +165,13 @@ Deep links (`quoted://`):
 - **Typing:** results are grouped as follows.
   - **In your library**: `QuoteRow`s with matched terms highlighted in `AccentSoft`. Tapping one opens the detail.
   - **Shared with you**: the row adds "from Jordan · yesterday" and a **Save** (bookmark) button. Save works as in the inbox: the quote goes to the library and the reminders.
-  - **Web row, always last:** a globe icon, then "Search the web for “courage” quotes" (in the accent), the caption "Opens Google. Copy a quote, then tap Paste in Add.", and `arrow.up.right`. It opens `SearchIndex.googleURL` in the in-app browser (`SafariView` through `router.present(.safari(url))`; see docs/decisions/2026-10-19-web-search-browser.md) and logs `web_search_tap`.
+  - **Web row, always last:** a globe icon, then "Search the web for “courage” quotes" (in the accent), the caption "Opens Google. Copy a quote, then come back here to add it.", and `arrow.up.right`. It opens `SearchIndex.googleURL` in the in-app browser (`SafariView` through `router.present(.safari(url))`; see docs/decisions/2026-10-19-web-search-browser.md) and logs `web_search_tap`.
   - **No matches:** a short "Nothing in your library yet" line, followed by the web row.
+  - **Copied-quote card:** when the in-app browser closes and the pasteboard changed while it was open (`changeCount` and `hasStrings`, which show no paste prompt), a card at the top reads "Add the quote you copied".
+    - It has the system `PasteButton` and "Not now".
+    - Paste opens Add filled from the copied text (`SheetRoute.pastedQuote`).
+    - The card scrolls into view when it appears, and VoiceOver announces it.
+    - It goes away once something else is copied (checked on return to the app and to the tab).
 
 ### 10. Friends (`Margin-Friends.png` + graft)
 - Large title "Friends".

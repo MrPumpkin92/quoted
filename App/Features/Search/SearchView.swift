@@ -1,5 +1,7 @@
+import Accessibility
 import QuotedCore
 import SwiftUI
+import UIKit
 
 /// The search tab root (docs/ui-spec.md §9).
 ///
@@ -9,7 +11,10 @@ import SwiftUI
 /// lists "In your library", then "Shared with you", then always the "Search the web" row last.
 ///
 /// The web row opens Google in an in-app browser (`SafariView`, presented as the shell's `.safari` sheet),
-/// as the founder chose (docs/decisions/2026-10-19-web-search-browser.md).
+/// as the founder chose (docs/decisions/2026-10-19-web-search-browser.md). When the browser closes and
+/// something new was copied while it was open, a card offers the system Paste button, which opens a new
+/// quote filled from the copied text (`SheetRoute.pastedQuote`). The app never reads the pasteboard
+/// itself (only `changeCount` and `hasStrings`, which show no paste prompt).
 struct SearchView: View {
     @Environment(AppModel.self) private var model
     @Environment(LibraryStore.self) private var library
@@ -17,34 +22,89 @@ struct SearchView: View {
     @Environment(RecentSearches.self) private var recents
     @Environment(Router.self) private var router
     @Environment(ToastCenter.self) private var toasts
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var indexCache = SearchIndexCache()
+    /// `UIPasteboard.changeCount` when the web row opened the browser.
+    @State private var pasteboardCountAtWebSearch: Int?
+    /// Whether to offer "Add the quote you copied" (the browser closed after something was copied).
+    @State private var offersCopiedQuote = false
+    /// `UIPasteboard.changeCount` when the card was offered. Copying anything else since makes the
+    /// card stale, so it goes.
+    @State private var pasteboardCountAtOffer: Int?
 
     init() {}
 
     var body: some View {
         let results = indexCache.index(quotes: library.quotes, shared: social.inbox).search(router.searchText)
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.group) {
-                if results.webQuery.isEmpty {
-                    SearchStartContent(onPick: pick)
-                } else {
-                    SearchResultsContent(
-                        results: results,
-                        isLoading: !library.hasLoaded,
-                        onOpen: open,
-                        onWebSearch: { searchWeb(results) }
-                    )
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.group) {
+                    if offersCopiedQuote {
+                        CopiedQuoteCard(onDismiss: hideCopiedQuote)
+                            .id(CopiedQuoteCard.scrollID)
+                            .transition(.opacity)
+                    }
+                    if results.webQuery.isEmpty {
+                        SearchStartContent(onPick: pick)
+                    } else {
+                        SearchResultsContent(
+                            results: results,
+                            isLoading: !library.hasLoaded,
+                            onOpen: open,
+                            onWebSearch: { searchWeb(results) }
+                        )
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.gutter)
+                .padding(.top, Theme.Spacing.xs)
+                .padding(.bottom, Theme.Spacing.group)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollDismissesKeyboard(.immediately)
+            .groundBackground()
+            .navigationTitle("Search")
+            .animation(.default, value: offersCopiedQuote)
+            .onChange(of: router.sheet) { old, new in
+                if case .pastedQuote = new { hideCopiedQuote() }
+                guard case .safari = old, new == nil, let count = pasteboardCountAtWebSearch else { return }
+                pasteboardCountAtWebSearch = nil
+                let pasteboard = UIPasteboard.general
+                offersCopiedQuote = pasteboard.changeCount != count && pasteboard.hasStrings
+                pasteboardCountAtOffer = offersCopiedQuote ? pasteboard.changeCount : nil
+            }
+            // The web row is often below the fold, so the card would appear out of sight above it.
+            .onChange(of: offersCopiedQuote) { _, shows in
+                guard shows else { return }
+                withAnimation { proxy.scrollTo(CopiedQuoteCard.scrollID, anchor: .top) }
+                Task { @MainActor in
+                    // After the sheet's own screen-change notification, which would cut it off.
+                    try? await Task.sleep(for: .milliseconds(500))
+                    AccessibilityNotification.Announcement("Add the quote you copied, at the top of Search").post()
                 }
             }
-            .padding(.horizontal, Theme.Spacing.gutter)
-            .padding(.top, Theme.Spacing.xs)
-            .padding(.bottom, Theme.Spacing.group)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { hideCopiedQuoteIfStale() }
+            }
+            .onAppear(perform: hideCopiedQuoteIfStale)
         }
-        .scrollDismissesKeyboard(.immediately)
-        .groundBackground()
-        .navigationTitle("Search")
+    }
+
+    // MARK: Copied quote
+
+    private func hideCopiedQuote() {
+        offersCopiedQuote = false
+        pasteboardCountAtOffer = nil
+    }
+
+    /// Hides the card once something else was copied (in another app, or on another tab), so it
+    /// never offers a pasteboard that has moved on. Reads only `changeCount` and `hasStrings`.
+    private func hideCopiedQuoteIfStale() {
+        guard offersCopiedQuote else { return }
+        let pasteboard = UIPasteboard.general
+        if pasteboard.changeCount != pasteboardCountAtOffer || !pasteboard.hasStrings {
+            hideCopiedQuote()
+        }
     }
 
     // MARK: Actions
@@ -62,12 +122,15 @@ struct SearchView: View {
     }
 
     /// The web row: log the tap (no term is stored) and open Google in the in-app browser. The user
-    /// copies a quote there, closes it and taps Paste in Add.
+    /// copies a quote there and closes it; the copied-quote card then offers Paste.
     private func searchWeb(_ results: SearchResults) {
         recents.add(results.webQuery)
         model.logWebSearchTap()
+        hideCopiedQuote()
+        pasteboardCountAtWebSearch = UIPasteboard.general.changeCount
         router.present(.safari(results.webURL))
     }
+
 }
 
 // MARK: - Empty query
@@ -393,6 +456,56 @@ private struct SharedResultRow: View {
     }
 }
 
+/// "Add the quote you copied", shown after the in-app browser closes with something new copied. The
+/// system PasteButton reads the text without a paste prompt and opens a new quote filled from it
+/// (`SheetRoute.pastedQuote`); Not now hides the card.
+private struct CopiedQuoteCard: View {
+    /// The card's scroll target, so it comes into view when it appears.
+    static let scrollID = "copiedQuoteCard"
+
+    let onDismiss: () -> Void
+
+    @Environment(Router.self) private var router
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            let layout = IconTile.layout(for: dynamicTypeSize, alignment: .top)
+            layout {
+                IconTile(systemName: "doc.on.clipboard")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Add the quote you copied")
+                        .font(.headline)
+                    Text("Paste it into a new quote. You can check the words and the author before you save.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .accessibilityElement(children: .combine)
+            HStack(spacing: Theme.Spacing.s) {
+                PasteButton(payloadType: String.self) { @Sendable [router] strings in
+                    guard let text = strings.first else { return }
+                    Task { @MainActor in router.present(.pastedQuote(text)) }
+                }
+                .buttonBorderShape(.capsule)
+                .labelStyle(.titleAndIcon)
+                .tint(Color.accentColor)
+                Button(action: onDismiss) {
+                    // The 44-pt target is in the label: a frame outside a Button adds no hit area.
+                    Text("Not now")
+                        .padding(.horizontal, Theme.Spacing.xxs)
+                        .frame(minWidth: Theme.Metrics.minTouchTarget, minHeight: Theme.Metrics.minTouchTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .card(padding: Theme.Spacing.l)
+    }
+}
+
 /// The web link-out, always last: globe · “Search the web for “courage” quotes” · ↗.
 private struct WebSearchRow: View {
     let term: String
@@ -412,7 +525,7 @@ private struct WebSearchRow: View {
                         .font(.title3)
                         .foregroundStyle(Color.accentColor)
                         .multilineTextAlignment(.leading)
-                    Text("Opens Google. Copy a quote, then tap Paste in Add.")
+                    Text("Opens Google. Copy a quote, then come back here to add it.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)

@@ -382,6 +382,8 @@ struct RemindersView: View {
 
     private var addQuotesSection: some View {
         Section {
+            // Never disabled: with every Library quote already here, the picker offers the starter
+            // pack and Write your own instead (the dead end testers hit after onboarding).
             Button {
                 router.present(.reminderPicker)
             } label: {
@@ -389,12 +391,7 @@ struct RemindersView: View {
                     .frame(maxWidth: .infinity, minHeight: Theme.Metrics.minTouchTarget, alignment: .leading)
                     .contentShape(Rectangle())
             }
-            .disabled(library.quotesNotInReminders.isEmpty)
             .listRowBackground(Color.surface)
-        } footer: {
-            if library.quotesNotInReminders.isEmpty {
-                Text("Every quote in your library is in your reminders.")
-            }
         }
         .listSectionMargins(.horizontal, Theme.Spacing.gutter)
     }

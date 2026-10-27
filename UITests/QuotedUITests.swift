@@ -144,8 +144,8 @@ final class QuotedUITests: XCTestCase {
         try waitFor(app.staticTexts["3 quotes"])
         snapshot("07-library")
 
-        // 6. Add a quote, with "Trust thyself" in bold from the B button.
-        app.buttons["Add quote"].tap()
+        // 6. Add a quote, with "Trust thyself" in bold from the B button. The "+" is a menu.
+        try openNewQuote(in: app)
         let editor = app.textViews["Quote"]
         try waitFor(editor)
         try waitFor(app.navigationBars["New quote"])
@@ -389,7 +389,7 @@ final class QuotedUITests: XCTestCase {
         // A link never discards a draft: with text typed in Add it waits until the sheet closes.
         app.tabBars.buttons["Library"].tap()
         try waitFor(app.navigationBars["Library"])
-        app.buttons["Add quote"].tap()
+        try openNewQuote(in: app)
         let editor = app.textViews["Quote"]
         try waitFor(editor)
         if !app.keyboards.firstMatch.waitForExistence(timeout: 3) {
@@ -483,6 +483,15 @@ final class QuotedUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// Library's "+" opens a menu (New Quote / From the Starter Pack); this picks New Quote.
+    @MainActor
+    private func openNewQuote(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) throws {
+        app.buttons["library.add"].tap()
+        let newQuote = app.buttons["New Quote"]
+        try waitFor(newQuote, file: file, line: line)
+        newQuote.tap()
     }
 
     /// Waits for `element`; when it never appears, attaches a screenshot and the element tree, fails

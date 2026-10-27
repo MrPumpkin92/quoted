@@ -37,6 +37,9 @@ enum Route: Hashable, Sendable {
 enum SheetRoute: Identifiable, Hashable, Sendable {
     /// `AddEditQuoteView(editing: nil)`.
     case addQuote
+    /// `AddEditQuoteView(editing: nil, pasted: text)`: a new quote filled from text pasted with the
+    /// system Paste button after a web search (split into body, author and source when it can be).
+    case pastedQuote(String)
     /// `AddEditQuoteView(editing: quote)`.
     case editQuote(Quote)
     /// `ShareQuoteSheet(quote:)`.
@@ -55,7 +58,7 @@ enum SheetRoute: Identifiable, Hashable, Sendable {
     /// after the sheet is dismissed (see `Router.open(_:reminderQuoteIDs:)`).
     var mayHoldUnsavedInput: Bool {
         switch self {
-        case .addQuote, .editQuote, .share, .reminderPicker, .starterPack: true
+        case .addQuote, .pastedQuote, .editQuote, .share, .reminderPicker, .starterPack: true
         case .widgetGuide, .safari: false
         }
     }
@@ -63,6 +66,7 @@ enum SheetRoute: Identifiable, Hashable, Sendable {
     var id: String {
         switch self {
         case .addQuote: "addQuote"
+        case .pastedQuote: "pastedQuote"
         case .editQuote(let quote): "editQuote-\(quote.id.uuidString)"
         case .share(let quote): "share-\(quote.id.uuidString)"
         case .widgetGuide: "widgetGuide"

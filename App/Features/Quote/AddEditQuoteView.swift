@@ -10,8 +10,8 @@ import UIKit
 /// for `.addQuote` and `AddEditQuoteView(editing: quote)` for `.editQuote(quote)`.
 ///
 /// Save stays disabled until the body is valid (`QuoteDraft.isValid`). A new quote waits for the
-/// server (`LibraryStore.create`) with a spinner on Save; a failed save keeps the sheet open (the store
-/// already showed the toast).
+/// server (`LibraryStore.create`) with a spinner on Save, then closes with "Saved to your library"; a
+/// failed save keeps the sheet open (the store already showed the toast).
 struct AddEditQuoteView: View {
     let editing: Quote?
 
@@ -37,9 +37,17 @@ struct AddEditQuoteView: View {
         case source
     }
 
-    init(editing: Quote?) {
+    /// - Parameters:
+    ///   - editing: The quote to edit, or nil for a new one.
+    ///   - pasted: Text the user pasted before the sheet opened (the Search tab's copied-quote card).
+    ///     It goes through the same split as the Paste button. New quotes only.
+    init(editing: Quote?, pasted: String? = nil) {
         self.editing = editing
-        _form = State(initialValue: QuoteForm(editing: editing))
+        let form = QuoteForm(editing: editing)
+        if editing == nil, let pasted {
+            form.paste(pasted)
+        }
+        _form = State(initialValue: form)
     }
 
     var body: some View {
@@ -211,7 +219,14 @@ struct AddEditQuoteView: View {
             let created = await library.create(
                 draft: draft, id: newQuoteID, includeInReminders: form.includeInReminders, origin: form.origin
             )
-            return created != nil
+            guard let created else { return false }
+            // Say it worked: the sheet closes onto a list that may be filtered or scrolled away from the
+            // new quote (Library also switches to All and scrolls to it).
+            toasts.show(
+                created.isInRotation ? "Saved to your library and reminders" : "Saved to your library",
+                style: .success
+            )
+            return true
         }
         guard let current = library.quote(id: editing.id) else {
             toasts.show("This quote was deleted.")

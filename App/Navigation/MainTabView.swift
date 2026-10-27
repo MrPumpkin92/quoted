@@ -177,6 +177,8 @@ struct SheetHost: View {
         switch sheet {
         case .addQuote:
             AddEditQuoteView(editing: nil)
+        case .pastedQuote(let text):
+            AddEditQuoteView(editing: nil, pasted: text)
         case .editQuote(let quote):
             AddEditQuoteView(editing: quote)
         case .share(let quote):

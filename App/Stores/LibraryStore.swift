@@ -23,6 +23,8 @@ final class LibraryStore {
 
     /// Every quote, newest first. A deleted quote is gone at once (its Undo restores it).
     private(set) var quotes: [Quote] = []
+    /// The quote `create` added last, so Library can show it (switch to All, scroll to it).
+    private(set) var lastCreatedQuoteID: UUID?
     /// True once the cache or the server has answered for this user (gates "empty" states).
     private(set) var hasLoaded = false
     /// True while a refresh is running.
@@ -166,6 +168,7 @@ final class LibraryStore {
             let quote = try await backend.quotes.create(draft, id: id, origin: origin, rotationPosition: position)
             guard userID == owner else { return nil }
             upsertLocal(quote)
+            lastCreatedQuoteID = quote.id
             writeCache()
             if quote.isInRotation { reminders.replan() }
             Haptics.success()
@@ -565,6 +568,7 @@ final class LibraryStore {
     /// write is queued until the next `prepare(for:)`.
     func reset() {
         quotes = []
+        lastCreatedQuoteID = nil
         starterImportIDs = [:]
         sharedSaveIDs = [:]
         hasLoaded = false

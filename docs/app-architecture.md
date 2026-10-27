@@ -176,6 +176,7 @@ func reminderPosition(of id: UUID) -> Int?    // index in the reminder order; ca
 @discardableResult func refresh(userInitiated: Bool = false) async -> Bool
 func refreshIfStale(maxAge: TimeInterval = 60) async
 @discardableResult func create(draft: QuoteDraft, includeInReminders: Bool, origin: QuoteOrigin = .manual) async -> Quote?
+var lastCreatedQuoteID: UUID?                                          // set by create; Library switches to All and scrolls to it
 @discardableResult func update(_ quote: Quote) async -> Bool          // body/format/author/source only
 func delete(_ quote: Quote)                                            // deletes now; "Quote deleted · Undo" restores it
 @discardableResult func setInReminders(_ quote: Quote, _ included: Bool) async -> Bool
@@ -352,7 +353,7 @@ enum Route: Hashable {
     case textPage(LegalPage)
 }
 enum SheetRoute: Identifiable, Hashable {
-    case addQuote, editQuote(Quote), share(Quote), widgetGuide, reminderPicker, starterPack
+    case addQuote, pastedQuote(String), editQuote(Quote), share(Quote), widgetGuide, reminderPicker, starterPack
 }
 enum LegalPage: String, CaseIterable, Identifiable { case terms, privacy, communityGuidelines
     var title: String; var resourceName: String; var url: URL?; func loadMarkdown() -> String? }
@@ -376,7 +377,7 @@ enum LegalPage: String, CaseIterable, Identifiable { case terms, privacy, commun
     @discardableResult func open(_ link: DeepLink, reminderQuoteIDs: [UUID]) -> Bool   // AppModel calls this; false = waiting
     func openPendingLink(reminderQuoteIDs: [UUID])          // MainTabView's sheet onDismiss calls this
 }
-extension SheetRoute { var mayHoldUnsavedInput: Bool }      // addQuote, editQuote, share, reminderPicker, starterPack
+extension SheetRoute { var mayHoldUnsavedInput: Bool }      // addQuote, pastedQuote, editQuote, share, reminderPicker, starterPack
 ```
 
 Examples:
@@ -384,7 +385,7 @@ Examples:
 - Open a quote from a list: `router.showQuote(quote.id, in: library.quotes.map(\.id))`, or `NavigationLink(value: Route.quote(id: quote.id, contextIDs: ids))`.
 - Open from Reminders: pass `library.reminderQuotes.map(\.id)`. From search: pass the result IDs.
 - Other pushes: `router.push(.reminders)`, `router.push(.account)`, `router.push(.profile(friend.profile))`, `router.push(.textPage(.privacy))`.
-- Sheets: `router.present(.addQuote)`, `.editQuote(quote)`, `.share(quote)`, `.widgetGuide`, `.reminderPicker`, `.starterPack`, `.safari(url)` (the search tab's in-app Google browser; it holds no unsaved input).
+- Sheets: `router.present(.addQuote)`, `.pastedQuote(text)` (Add filled from text pasted with the system Paste button), `.editQuote(quote)`, `.share(quote)`, `.widgetGuide`, `.reminderPicker`, `.starterPack`, `.safari(url)` (the search tab's in-app Google browser; it holds no unsaved input).
 - From Share's "no friends" link to Friends: `dismiss(); router.spotlight = nil; router.select(.friends)` (Share is presented by the shell or by the full-screen quote).
 - A reminder or widget tap shows the quote full screen: `router.open(.quote(id), reminderQuoteIDs:)` sets `router.spotlight`; `router.openSpotlightInLibrary(id, reminderQuoteIDs:)` closes it and pushes the detail. A sheet you present yourself that may hold typed input gets `.holdsDeepLinks()`.
 

@@ -3,7 +3,8 @@ import QuotedKit
 import SwiftUI
 
 /// The Library tab root (docs/ui-spec.md §5): the reminders status card, a one-time widget tip, the
-/// "shared with you" row, a count header and the quote list. A filled "+" opens Add.
+/// "shared with you" row, a count header and the quote list. A filled "+" opens a menu: New Quote, or
+/// From the Starter Pack (the verified quotes not yet in the library).
 ///
 /// Rows open the detail pager across the Library order. Leading swipe shares or hearts; trailing swipe
 /// deletes (with Undo) or adds to / removes from reminders (Undo puts it back in its old place); the
@@ -41,6 +42,9 @@ struct LibraryView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     addButton
                 }
+                // The menu brings its own glass; the bar's shared background would wrap it in a
+                // second circle.
+                .sharedBackgroundVisibility(.hidden)
             }
             .task(id: scenePhase) {
                 // Re-check when the app comes back (the user may have just added the widget).
@@ -51,31 +55,40 @@ struct LibraryView: View {
 
     // MARK: Toolbar
 
-    /// The toolbar "+". Filled accent over the list; quiet glass with an accent glyph when the screen
-    /// already shows its own filled action ("Add your first quote", "Try again"), so there is only one.
+    /// The toolbar "+": a menu with New Quote and From the Starter Pack, so the other verified starter
+    /// quotes stay reachable after onboarding (the empty state was the only way in). Filled accent
+    /// over the list; quiet glass with an accent glyph when the screen already shows its own filled
+    /// action ("Add your first quote", "Try again"), so there is only one.
     @ViewBuilder
     private var addButton: some View {
         if showsOwnPrimaryAction {
-            Button {
-                router.present(.addQuote)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.glass)
-            .accessibilityLabel("Add quote")
+            addMenu(glyph: Color.accentColor)
+                .buttonStyle(.glass)
         } else {
-            Button {
-                router.present(.addQuote)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.onAccent)
-            }
-            .buttonStyle(.glassProminent)
-            .accessibilityLabel("Add quote")
+            addMenu(glyph: Color.onAccent)
+                .buttonStyle(.glassProminent)
         }
+    }
+
+    private func addMenu(glyph: Color) -> some View {
+        Menu {
+            Button("New Quote", systemImage: "square.and.pencil") {
+                router.present(.addQuote)
+            }
+            Button("From the Starter Pack", systemImage: "checkmark.seal") {
+                router.present(.starterPack)
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(glyph)
+        }
+        .menuStyle(.button)
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .accessibilityIdentifier("library.add")
+        .accessibilityLabel("Add")
+        .accessibilityHint("Write a new quote or pick from the starter pack")
     }
 
     /// Whether the content is the empty or the load-failed state, each with its own filled button.
@@ -110,95 +123,106 @@ struct LibraryView: View {
     private var quoteList: some View {
         let listed = listedQuotes
         let ids = listed.map(\.id)
-        return List {
-            if let summary = reminders.statusSummary {
-                StatusCard(
-                    summary: summary,
-                    onOpen: { router.push(.reminders) },
-                    onTurnOn: { Task { await reminders.turnOn() } }
-                )
-                .headerCardRow()
-            }
-            if showsWidgetTip {
-                widgetTip
+        return ScrollViewReader { proxy in
+            List {
+                if let summary = reminders.statusSummary {
+                    StatusCard(
+                        summary: summary,
+                        onOpen: { router.push(.reminders) },
+                        onTurnOn: { Task { await reminders.turnOn() } }
+                    )
                     .headerCardRow()
-                    .transition(.opacity)
-            }
-            if showsSharedRow {
-                sharedRow
-                    .headerCardRow()
-            }
-            if hasFavorites {
-                favoritesFilter
-            }
-            countHeader
-            ForEach(listed) { quote in
-                NavigationLink(value: Route.quote(id: quote.id, contextIDs: ids)) {
-                    QuoteRow(quote)
                 }
-                .navigationLinkIndicatorVisibility(.hidden)
-                .groundListRow()
-                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    Button {
-                        router.present(.share(quote))
-                    } label: {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                    .tint(Color.accentColor)
-                    Button {
-                        toggleFavorite(quote)
-                    } label: {
-                        FavoriteActionLabel(isFavorite: quote.isFavorite)
-                    }
-                    .tint(SwipeTint.favorite)
+                if showsWidgetTip {
+                    widgetTip
+                        .headerCardRow()
+                        .transition(.opacity)
                 }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
-                        library.delete(quote)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                    Button {
-                        toggleReminders(quote)
-                    } label: {
-                        reminderLabel(for: quote)
-                    }
-                    .tint(Color.accentColor)
+                if showsSharedRow {
+                    sharedRow
+                        .headerCardRow()
                 }
-                .contextMenu {
-                    Button {
-                        router.present(.share(quote))
-                    } label: {
-                        Label("Share", systemImage: "square.and.arrow.up")
+                if hasFavorites {
+                    favoritesFilter
+                }
+                countHeader
+                ForEach(listed) { quote in
+                    NavigationLink(value: Route.quote(id: quote.id, contextIDs: ids)) {
+                        QuoteRow(quote)
                     }
-                    Button {
-                        toggleReminders(quote)
-                    } label: {
-                        reminderLabel(for: quote)
+                    .navigationLinkIndicatorVisibility(.hidden)
+                    .groundListRow()
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        Button {
+                            router.present(.share(quote))
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                        .tint(Color.accentColor)
+                        Button {
+                            toggleFavorite(quote)
+                        } label: {
+                            FavoriteActionLabel(isFavorite: quote.isFavorite)
+                        }
+                        .tint(SwipeTint.favorite)
                     }
-                    Button {
-                        toggleFavorite(quote)
-                    } label: {
-                        FavoriteActionLabel(isFavorite: quote.isFavorite)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            library.delete(quote)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        Button {
+                            toggleReminders(quote)
+                        } label: {
+                            reminderLabel(for: quote)
+                        }
+                        .tint(Color.accentColor)
                     }
-                    Button {
-                        router.present(.editQuote(quote))
-                    } label: {
-                        Label("Edit", systemImage: "pencil")
+                    .contextMenu {
+                        Button {
+                            router.present(.share(quote))
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                        Button {
+                            toggleReminders(quote)
+                        } label: {
+                            reminderLabel(for: quote)
+                        }
+                        Button {
+                            toggleFavorite(quote)
+                        } label: {
+                            FavoriteActionLabel(isFavorite: quote.isFavorite)
+                        }
+                        Button {
+                            router.present(.editQuote(quote))
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        Divider()
+                        Button(role: .destructive) {
+                            library.delete(quote)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
-                    Divider()
-                    Button(role: .destructive) {
-                        library.delete(quote)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
+                }
+            }
+            .listStyle(.plain)
+            .animation(.default, value: showsWidgetTip)
+            .animation(.default, value: showsFavoritesOnly)
+            .refreshable { await refreshAll() }
+            // A new quote: show it, even if Favorites is selected or the list is scrolled away.
+            .onChange(of: library.lastCreatedQuoteID) { _, id in
+                guard let id else { return }
+                showsFavoritesOnly = false
+                Task { @MainActor in
+                    await Task.yield()
+                    withAnimation { proxy.scrollTo(id, anchor: .center) }
                 }
             }
         }
-        .listStyle(.plain)
-        .animation(.default, value: showsWidgetTip)
-        .animation(.default, value: showsFavoritesOnly)
-        .refreshable { await refreshAll() }
     }
 
     private var hasFavorites: Bool { library.quotes.contains(where: \.isFavorite) }
