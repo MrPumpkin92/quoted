@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App Store 2: Library</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.add { position: absolute; top: 56px; right: 16px; width: 48px; height: 48px; border-radius: 24px; background: var(--accent); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(43, 68, 201, 0.30); }
+.large-title { position: absolute; top: 106px; left: 20px; margin: 0; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: 0.3px; }
+
+.content { position: absolute; top: 162px; left: 16px; right: 16px; }
+.row-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 12px; }
+.row-card .text { flex: 1; min-width: 0; }
+.row-card b { display: block; font-size: 17px; line-height: 22px; font-weight: 600; }
+.row-card span { display: block; font-size: 15px; line-height: 20px; color: var(--secondary); }
+.tile .letters { font-family: var(--serif); font-size: 16px; font-weight: 600; color: var(--accent); word-spacing: 0.15em; }
+.start { flex: none; height: 34px; padding: 0 16px; border-radius: 17px; background: var(--accent); color: #FFFFFF; font-size: 15px; font-weight: 600; display: flex; align-items: center; }
+
+.segmented { display: flex; height: 36px; padding: 2px; border-radius: 18px; background: var(--fill); margin-top: 6px; }
+.segmented div { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; border-radius: 16px; }
+.segmented .on { background: #FFFFFF; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10); font-weight: 600; }
+
+.list-head { display: flex; justify-content: space-between; align-items: center; margin: 22px 4px 0; padding-bottom: 10px; border-bottom: 1px solid var(--hairline); }
+.list-head .count { font-size: 17px; color: var(--secondary); }
+.list-head .legend { display: flex; align-items: center; gap: 5px; font-size: 15px; color: var(--secondary); }
+
+.quote { padding: 14px 4px; border-bottom: 1px solid var(--hairline); }
+.quote p { margin: 0; font-size: 21px; line-height: 28px; }
+.quote .attr { margin-top: 10px; }
+
+.fade { position: absolute; left: 0; right: 0; bottom: 0; height: 130px; background: linear-gradient(180deg, rgba(248, 248, 246, 0) 0%, rgba(248, 248, 246, 0.92) 55%, #F8F8F6 100%); }
+.tabbar { position: absolute; left: 16px; bottom: 24px; width: 196px; height: 62px; padding: 4px; border-radius: 31px; background: rgba(255, 255, 255, 0.88); box-shadow: 0 6px 20px rgba(22, 22, 40, 0.12), inset 0 0 0 0.5px rgba(0, 0, 0, 0.06); display: flex; }
+.tab { flex: 1; border-radius: 27px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 600; }
+.tab.on { background: var(--accent-soft); color: var(--accent); }
+.search { position: absolute; right: 16px; bottom: 24px; width: 62px; height: 62px; border-radius: 31px; background: rgba(255, 255, 255, 0.88); box-shadow: 0 6px 20px rgba(22, 22, 40, 0.12), inset 0 0 0 0.5px rgba(0, 0, 0, 0.06); display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<div class="canvas store">
+  <div class="headline">
+    <h1>Keep the words that move you.</h1>
+    <p class="sub">Save lines from books, friends and the web. Quoted brings them back.</p>
+  </div>
+
+  <div class="phone"><div class="screen" role="img" aria-label="Library with the Know it by heart card pinned at the top">
+    <div class="island"></div>
+    <div class="statusbar">
+      <span>9:41</span>
+      <span class="icons">
+        <svg width="19" height="12" viewBox="0 0 19 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+        <svg width="17" height="12" viewBox="0 0 17 12"><path d="M8.5 2.2c2.4 0 4.7.9 6.4 2.5l1.3-1.3C14.1 1.4 11.4.4 8.5.4S2.9 1.4.8 3.4l1.3 1.3C3.8 3.1 6.1 2.2 8.5 2.2zm0 3.5c1.5 0 2.9.6 4 1.6l1.3-1.3C12.8 4.6 10.7 3.8 8.5 3.8S4.2 4.6 2.7 6l1.3 1.3c1.1-1 2.5-1.6 4.5-1.6zm0 3.4c.7 0 1.3.3 1.8.7L8.5 11.6 6.7 9.8c.5-.4 1.1-.7 1.8-.7z"/></svg>
+        <svg width="27" height="13" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="20" height="9" rx="2"/><path d="M25 4.5v4c.8-.3 1.3-1.1 1.3-2s-.5-1.7-1.3-2z" opacity=".45"/></svg>
+      </span>
+    </div>
+
+    <div class="add" aria-label="Add"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M10 3v14M3 10h14"/></svg></div>
+    <h1 class="large-title">Library</h1>
+
+    <div class="content">
+      <div class="card row-card">
+        <div class="tile" aria-hidden="true"><span class="letters">T a</span></div>
+        <div class="text"><b>3 lines to know by heart</b><span>Under a minute · 11 by heart</span></div>
+        <div class="start">Start</div>
+      </div>
+
+      <div class="card row-card">
+        <div class="tile" aria-hidden="true"><svg width="18" height="20" viewBox="0 0 24 24" fill="#2B44C9"><path d="M12 2.5c-.8 0-1.4.6-1.4 1.4v.5C7.9 5 6 7.4 6 10.3v3.9l-1.6 2.1c-.4.6 0 1.4.7 1.4h13.8c.7 0 1.1-.8.7-1.4L18 14.2v-3.9c0-2.9-1.9-5.3-4.6-5.9v-.5c0-.8-.6-1.4-1.4-1.4zM9.5 18.9c.2 1.3 1.3 2.3 2.5 2.3s2.3-1 2.5-2.3z"/></svg></div>
+        <div class="text"><b>8 quotes in your reminders</b><span>3× daily · Next at 9:00 PM</span></div>
+        <svg width="9" height="15" viewBox="0 0 9 15" fill="none" stroke="rgba(60,60,67,0.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5l6 6-6 6"/></svg>
+      </div>
+
+      <div class="segmented"><div class="on">All</div><div>Favorites</div></div>
+
+      <div class="list-head">
+        <span class="count">8 quotes</span>
+        <span class="legend"><svg width="13" height="14" viewBox="0 0 24 24" fill="#2B44C9"><path d="M12 2.5c-.8 0-1.4.6-1.4 1.4v.5C7.9 5 6 7.4 6 10.3v3.9l-1.6 2.1c-.4.6 0 1.4.7 1.4h13.8c.7 0 1.1-.8.7-1.4L18 14.2v-3.9c0-2.9-1.9-5.3-4.6-5.9v-.5c0-.8-.6-1.4-1.4-1.4zM9.5 18.9c.2 1.3 1.3 2.3 2.5 2.3s2.3-1 2.5-2.3z"/></svg>In reminders</span>
+      </div>
+
+      <div class="quote">
+        <p class="serif">Well done is better than well said.</p>
+        <div class="attr">
+          <svg width="13" height="14" viewBox="0 0 24 24" fill="#2B44C9"><path d="M12 2.5c-.8 0-1.4.6-1.4 1.4v.5C7.9 5 6 7.4 6 10.3v3.9l-1.6 2.1c-.4.6 0 1.4.7 1.4h13.8c.7 0 1.1-.8.7-1.4L18 14.2v-3.9c0-2.9-1.9-5.3-4.6-5.9v-.5c0-.8-.6-1.4-1.4-1.4zM9.5 18.9c.2 1.3 1.3 2.3 2.5 2.3s2.3-1 2.5-2.3z"/></svg>
+          <span class="author">Benjamin Franklin</span>
+          <span class="chip">By heart</span>
+        </div>
+      </div>
+      <div class="quote">
+        <p class="serif">Do I contradict myself?<br>Very well then I contradict myself,<br>(I am large, I contain multitudes.)</p>
+        <div class="attr">
+          <svg width="13" height="14" viewBox="0 0 24 24" fill="#2B44C9"><path d="M12 2.5c-.8 0-1.4.6-1.4 1.4v.5C7.9 5 6 7.4 6 10.3v3.9l-1.6 2.1c-.4.6 0 1.4.7 1.4h13.8c.7 0 1.1-.8.7-1.4L18 14.2v-3.9c0-2.9-1.9-5.3-4.6-5.9v-.5c0-.8-.6-1.4-1.4-1.4zM9.5 18.9c.2 1.3 1.3 2.3 2.5 2.3s2.3-1 2.5-2.3z"/></svg>
+          <span class="author">Walt Whitman</span><span class="source">Song of Myself</span>
+          <svg class="seal" viewBox="0 0 16 16" aria-label="Verified"><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="2.4" fill="#2B44C9"/><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="2.4" fill="#2B44C9" transform="rotate(45 8 8)"/><path d="M5.3 8.2l1.8 1.8 3.6-3.8" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="chip">By heart</span>
+        </div>
+      </div>
+      <div class="quote">
+        <p class="serif">I went to the woods because I wished to live deliberately, to front only the essential facts of life.</p>
+        <div class="attr">
+          <span class="author">Henry David Thoreau</span><span class="source">Walden</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="fade"></div>
+    <div class="tabbar" aria-hidden="true">
+      <div class="tab on">
+        <svg width="26" height="22" viewBox="0 0 26 22" fill="#2B44C9"><rect x="1" y="3" width="5" height="18" rx="1.2"/><rect x="7.5" y="1" width="5" height="20" rx="1.2"/><rect x="14" y="5" width="4" height="16" rx="1.2"/><rect x="18.5" y="4" width="4.5" height="17.4" rx="1.2" transform="rotate(-12 20.7 12.7)"/></svg>
+        Library
+      </div>
+      <div class="tab">
+        <svg width="28" height="20" viewBox="0 0 28 20" fill="#16161A"><circle cx="10" cy="5.5" r="4.5"/><path d="M1 18.5c0-4.2 4-7 9-7s9 2.8 9 7c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1z"/><circle cx="20" cy="6.5" r="3.6"/><path d="M20.5 12.2c3.7.2 6.5 2.4 6.5 5.6 0 .5-.4.9-.9.9h-5.2c.3-1.9-.1-4.4-2.2-6.3.6-.1 1.2-.2 1.8-.2z"/></svg>
+        Friends
+      </div>
+    </div>
+    <div class="search" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="#16161A" stroke-width="2.6" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M17 17l6.5 6.5"/></svg></div>
+    <div class="home-indicator"></div>
+  </div></div>
+</div>
+</body>
+</html>

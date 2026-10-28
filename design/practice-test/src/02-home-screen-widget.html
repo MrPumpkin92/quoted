@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home Screen: Finish the line widget</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.wall { background: radial-gradient(120% 75% at 28% 18%, #5C70B6 0%, #34437A 48%, #1C2446 100%); }
+
+.widget { position: absolute; background: var(--surface); border-radius: 24px; padding: 18px 20px; display: flex; flex-direction: column; box-shadow: 0 6px 20px rgba(10, 14, 40, 0.18); }
+.widget-label { position: absolute; text-align: center; font-size: 12px; line-height: 15px; font-weight: 500; color: #FFFFFF; }
+
+.medium { top: 76px; left: 38px; width: 364px; height: 170px; justify-content: space-between; }
+.medium .kicker { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--accent); }
+.medium .cue { font-size: 32px; line-height: 38px; color: var(--ink); }
+
+.small { top: 286px; left: 38px; width: 170px; height: 170px; justify-content: center; gap: 10px; padding: 16px; }
+.small .q { font-size: 17px; line-height: 22px; }
+
+.icon { position: absolute; width: 64px; height: 64px; border-radius: 15px; }
+
+.search-pill { position: absolute; top: 760px; left: 50%; width: 92px; height: 30px; margin-left: -46px; border-radius: 15px; background: rgba(255, 255, 255, 0.20); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center; gap: 5px; color: #FFFFFF; font-size: 13px; font-weight: 600; }
+.dock { position: absolute; left: 14px; right: 14px; bottom: 26px; height: 96px; border-radius: 38px; background: rgba(255, 255, 255, 0.18); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16); }
+.dock .icon { top: 16px; }
+.quoted-icon { background: #2D46CC; color: #FFFFFF; display: flex; align-items: center; justify-content: center; }
+.quoted-icon span { font-family: var(--serif); font-weight: 600; font-size: 40px; line-height: 40px; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="canvas wall" role="img" aria-label="Home Screen with the Quoted Finish the line widget">
+  <div class="island"></div>
+  <div class="statusbar light">
+    <span>9:41</span>
+    <span class="icons">
+      <svg width="19" height="12" viewBox="0 0 19 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+      <svg width="17" height="12" viewBox="0 0 17 12"><path d="M8.5 2.2c2.4 0 4.7.9 6.4 2.5l1.3-1.3C14.1 1.4 11.4.4 8.5.4S2.9 1.4.8 3.4l1.3 1.3C3.8 3.1 6.1 2.2 8.5 2.2zm0 3.5c1.5 0 2.9.6 4 1.6l1.3-1.3C12.8 4.6 10.7 3.8 8.5 3.8S4.2 4.6 2.7 6l1.3 1.3c1.1-1 2.5-1.6 4.5-1.6zm0 3.4c.7 0 1.3.3 1.8.7L8.5 11.6 6.7 9.8c.5-.4 1.1-.7 1.8-.7z"/></svg>
+      <svg width="27" height="13" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="20" height="9" rx="2"/><path d="M25 4.5v4c.8-.3 1.3-1.1 1.3-2s-.5-1.7-1.3-2z" opacity=".45"/></svg>
+    </span>
+  </div>
+
+  <figure class="widget medium" aria-label="Quoted widget, Finish the line" style="margin: 0;">
+    <div class="kicker">Finish the line</div>
+    <div class="cue serif">T a a: t t o s b t.</div>
+    <div class="attr">
+      <span class="author">William Shakespeare</span><span class="source">Hamlet</span>
+      <svg class="seal" viewBox="0 0 16 16" aria-label="Verified"><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="2.4" fill="#2B44C9"/><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="2.4" fill="#2B44C9" transform="rotate(45 8 8)"/><path d="M5.3 8.2l1.8 1.8 3.6-3.8" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+  </figure>
+  <div class="widget-label" style="top: 252px; left: 38px; width: 364px;">Quoted</div>
+
+  <figure class="widget small" aria-label="Quoted widget, a quote" style="margin: 0;">
+    <div class="q serif">While we are postponing, life speeds by.</div>
+    <div class="author">Seneca</div>
+  </figure>
+  <div class="widget-label" style="top: 462px; left: 38px; width: 170px;">Quoted</div>
+
+  <div class="icon" style="top: 286px; left: 238px; background: #6B7BA8;"></div>
+  <div class="icon" style="top: 286px; left: 338px; background: #8190B8;"></div>
+  <div class="icon" style="top: 392px; left: 238px; background: #7787B2;"></div>
+  <div class="icon" style="top: 392px; left: 338px; background: #5F6E9C;"></div>
+
+  <div class="icon" style="top: 498px; left: 38px; background: #6E7DAA;"></div>
+  <div class="icon" style="top: 498px; left: 138px; background: #7F8EB7;"></div>
+  <div class="icon" style="top: 498px; left: 238px; background: #6676A4;"></div>
+  <div class="icon" style="top: 498px; left: 338px; background: #8796BD;"></div>
+  <div class="icon" style="top: 604px; left: 38px; background: #7484AF;"></div>
+  <div class="icon" style="top: 604px; left: 138px; background: #5E6D9B;"></div>
+  <div class="icon" style="top: 604px; left: 238px; background: #7B8AB4;"></div>
+  <div class="icon" style="top: 604px; left: 338px; background: #6A79A6;"></div>
+
+  <div class="search-pill" aria-hidden="true">
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="5" r="3.8"/><path d="M8 8l3 3"/></svg>Search
+  </div>
+  <div class="dock" aria-hidden="true">
+    <div class="icon quoted-icon" style="left: 24px;"><span>Q</span></div>
+    <div class="icon" style="left: 124px; background: #7D8CB6;"></div>
+    <div class="icon" style="left: 224px; background: #6A79A6;"></div>
+    <div class="icon" style="left: 324px; background: #8695BC;"></div>
+  </div>
+
+  <div class="home-indicator light"></div>
+</div>
+</body>
+</html>

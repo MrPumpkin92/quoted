@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App Store 3: By heart count</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.close { position: absolute; top: 60px; left: 16px; }
+.done-head { position: absolute; top: 112px; left: 16px; right: 16px; text-align: center; }
+.check { width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 26px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; }
+.done-head h2 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 700; }
+.done-head p { margin: 4px 0 0; font-size: 16px; line-height: 21px; color: var(--secondary); }
+
+.count-card { position: absolute; top: 250px; left: 16px; right: 16px; padding: 20px 20px 18px; }
+.kicker { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--secondary); }
+.big { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
+.big .n { font-size: 64px; line-height: 70px; font-weight: 600; }
+.big .plus { font-size: 16px; font-weight: 600; color: var(--accent); }
+.count-card .what { font-size: 15px; line-height: 20px; color: var(--secondary); }
+.rule { height: 1px; background: var(--hairline); margin: 16px 0 14px; }
+.week { display: flex; justify-content: space-between; padding: 0 4px; }
+.day { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; line-height: 16px; color: var(--secondary); width: 32px; }
+.dot { width: 14px; height: 14px; border-radius: 7px; box-shadow: inset 0 0 0 1.5px rgba(60, 60, 67, 0.22); }
+.dot.on { background: var(--accent); box-shadow: none; }
+.day.today { color: var(--accent); font-weight: 600; }
+.day.today .dot { box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 3.5px var(--accent); }
+.note { margin-top: 12px; font-size: 13px; line-height: 17px; color: var(--secondary); text-align: center; }
+
+.section { position: absolute; top: 528px; left: 36px; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--secondary); }
+.lines { position: absolute; top: 552px; left: 16px; right: 16px; padding: 0 16px; }
+.l { padding: 12px 0; border-bottom: 1px solid var(--hairline); }
+.l:last-child { border-bottom: 0; }
+.l p { margin: 0; font-size: 17px; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; line-height: 16px; color: var(--secondary); }
+.pips { display: flex; gap: 3px; }
+.pips i { width: 12px; height: 4px; border-radius: 2px; background: rgba(60, 60, 67, 0.16); }
+.pips i.on { background: var(--accent); }
+.status.known { color: var(--accent); font-weight: 600; }
+
+.primary { position: absolute; left: 16px; right: 16px; bottom: 38px; height: 52px; border-radius: 26px; background: var(--accent); color: #FFFFFF; font-size: 17px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<div class="canvas store">
+  <div class="headline">
+    <h1>A count that only goes up.</h1>
+    <p class="sub">Every line you learn by heart adds one. No streak to break, and nothing resets.</p>
+  </div>
+
+  <div class="phone"><div class="screen" role="img" aria-label="Done for today: 12 lines known by heart, this week's days, and today's three lines">
+    <div class="island"></div>
+    <div class="statusbar">
+      <span>9:41</span>
+      <span class="icons">
+        <svg width="19" height="12" viewBox="0 0 19 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+        <svg width="17" height="12" viewBox="0 0 17 12"><path d="M8.5 2.2c2.4 0 4.7.9 6.4 2.5l1.3-1.3C14.1 1.4 11.4.4 8.5.4S2.9 1.4.8 3.4l1.3 1.3C3.8 3.1 6.1 2.2 8.5 2.2zm0 3.5c1.5 0 2.9.6 4 1.6l1.3-1.3C12.8 4.6 10.7 3.8 8.5 3.8S4.2 4.6 2.7 6l1.3 1.3c1.1-1 2.5-1.6 4.5-1.6zm0 3.4c.7 0 1.3.3 1.8.7L8.5 11.6 6.7 9.8c.5-.4 1.1-.7 1.8-.7z"/></svg>
+        <svg width="27" height="13" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="20" height="9" rx="2"/><path d="M25 4.5v4c.8-.3 1.3-1.1 1.3-2s-.5-1.7-1.3-2z" opacity=".45"/></svg>
+      </span>
+    </div>
+
+    <div class="glass-circle close" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#16161A" stroke-width="2" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+    </div>
+
+    <div class="done-head">
+      <div class="check" aria-hidden="true"><svg width="24" height="20" viewBox="0 0 24 20" fill="none" stroke="#2B44C9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5l6 6L21 3.5"/></svg></div>
+      <h2>Done for today</h2>
+      <p>3 lines in 52 seconds</p>
+    </div>
+
+    <div class="card count-card">
+      <div class="kicker">By heart</div>
+      <div class="big"><span class="n serif">12</span><span class="plus">+1 today</span></div>
+      <div class="what">lines you know word for word</div>
+      <div class="rule"></div>
+      <div class="week">
+        <div class="day"><span class="dot on"></span>M</div>
+        <div class="day"><span class="dot on"></span>T</div>
+        <div class="day"><span class="dot"></span>W</div>
+        <div class="day today"><span class="dot on"></span>T</div>
+        <div class="day"><span class="dot"></span>F</div>
+        <div class="day"><span class="dot"></span>S</div>
+        <div class="day"><span class="dot"></span>S</div>
+      </div>
+      <div class="note">Skipped Wednesday. Nothing was lost.</div>
+    </div>
+
+    <div class="section">Today’s lines</div>
+    <div class="card lines">
+      <div class="l">
+        <p class="serif">This above all: to thine own self be true.</p>
+        <div class="status known"><span class="pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>Known by heart</div>
+      </div>
+      <div class="l">
+        <p class="serif">Trust thyself: every heart vibrates to that iron string.</p>
+        <div class="status"><span class="pips"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span>Got it · back in 7 days</div>
+      </div>
+      <div class="l">
+        <p class="serif">While we are postponing, life speeds by.</p>
+        <div class="status"><span class="pips"><i class="on"></i><i></i><i></i><i></i><i></i></span>Not yet · back tomorrow</div>
+      </div>
+    </div>
+
+    <div class="primary">Done</div>
+    <div class="home-indicator"></div>
+  </div></div>
+</div>
+</body>
+</html>
