@@ -1,10 +1,23 @@
 -- Hardening (supabase/migrations/20261019060000_hardening.sql): body_format
 -- validation and byte cap, non-blank text, server-owned timestamps, reports
 -- that record verification and stay reviewable, and the moderation queue view.
+-- Since 20261029090000_provenance_and_accounts clients cannot send created_at
+-- or updated_at for profiles and quotes at all (column grants, 42501); the
+-- stamping triggers stay behind them.
+-- Ported to 20261029090300_conversations_and_messages: shares became messages.
+-- Clients cannot send a snapshot or a time any more (column grants), so the
+-- body_format and created_at checks on messages run as the server; the blank
+-- checks use a text message and a note; seen_at and saved_at became each
+-- member's last_read_at and cleared_at (the server clock, never earlier than
+-- the stored time, never cleared by a client: "first seen wins" became
+-- "never moves back", and "saved_at can be cleared" became "a client cannot
+-- clear last_read_at"); share_id became message_id. Reporters no longer read
+-- the server's copy back (column grants), so the report checks read it with
+-- definer rights (tests.own_reports). Removed: none.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(52);
+select plan(54);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -45,6 +58,19 @@ begin
 end
 $$;
 
+-- The caller's own reports with every column, read with definer rights:
+-- reporters may not select the server's copy (20261029090300), so the tests
+-- read it as the founder does.
+create function tests.own_reports() returns setof public.reports language sql stable security definer as $$
+  select * from public.reports where reporter_id = auth.uid()
+$$;
+
+-- The user has accepted the current terms (social writes need them).
+create function tests.accept_terms(who text) returns void language sql security definer as $$
+  update public.profiles set terms_version = private.current_terms_version(), terms_accepted_at = now()
+  where id = tests.uid(who)
+$$;
+
 -- 200 runs; `flags` is merged into each {start, length} object.
 create function tests.runs(first_start int, step int, run_length int, flags jsonb) returns jsonb
 language sql immutable as $$
@@ -53,7 +79,7 @@ language sql immutable as $$
 $$;
 -- ---------------------------------------------------------------------------
 
--- A and B are friends; C is a stranger. A sent B one share.
+-- A and B are friends; C is a stranger. A sent B two quote messages.
 select tests.create_user('a');
 select tests.create_user('b');
 select tests.create_user('c');
@@ -63,11 +89,19 @@ insert into public.friendships (requester_id, addressee_id, status) values
   (tests.uid('a'), tests.uid('b'), 'accepted');
 insert into public.quotes (id, owner_id, body) values
   ('a0000000-0000-4000-8000-000000000001', tests.uid('a'), 'Seen long ago');
--- Share 2 was seen in 2001 (set directly here; clients cannot pre-set seen_at).
-insert into public.shares (id, sender_id, recipient_id, quote_id, body, seen_at) values
-  ('5a000000-0000-4000-8000-000000000001', tests.uid('a'), tests.uid('b'), null, 'A to B', null),
-  ('5a000000-0000-4000-8000-000000000002', tests.uid('a'), tests.uid('b'), 'a0000000-0000-4000-8000-000000000001',
-   'Seen long ago', '2001-01-01');
+update public.profiles set terms_version = private.current_terms_version(), terms_accepted_at = now()
+ where id in (tests.uid('a'), tests.uid('b'));
+insert into public.conversations (id, user_a, user_b) values
+  ('c0a00000-0000-4000-8000-0000000000ab', tests.uid('a'), tests.uid('b'));
+insert into public.conversation_members (conversation_id, user_id) values
+  ('c0a00000-0000-4000-8000-0000000000ab', tests.uid('a')), ('c0a00000-0000-4000-8000-0000000000ab', tests.uid('b'));
+-- Message 1 is a snapshot the server supplied; message 2 was made from A's quote.
+insert into public.messages (id, conversation_id, sender_id, kind, body) values
+  ('5a000000-0000-4000-8000-000000000001', 'c0a00000-0000-4000-8000-0000000000ab', tests.uid('a'), 'quote', 'A to B');
+insert into public.messages (id, conversation_id, sender_id, kind, source_quote_id) values
+  ('5a000000-0000-4000-8000-000000000002', 'c0a00000-0000-4000-8000-0000000000ab', tests.uid('a'), 'quote',
+   'a0000000-0000-4000-8000-000000000001');
+update public.messages set created_at = '2001-01-01' where id = '5a000000-0000-4000-8000-000000000002';
 
 -- ---- body_format ----------------------------------------------------------
 select tests.authenticate_as('a');
@@ -147,13 +181,14 @@ select throws_ok(
   'flags must be booleans'
 );
 
-select throws_ok(
-  $$ insert into public.shares (recipient_id, body, body_format) values (tests.uid('b'), 'x', '[{"start":0,"length":1,"junk":1}]') $$,
-  '23514', null,
-  'shares validate body_format the same way'
-);
-
 select tests.clear_authentication();
+
+select throws_ok(
+  $$ insert into public.messages (conversation_id, sender_id, kind, body, body_format)
+     values ('c0a00000-0000-4000-8000-0000000000ab', tests.uid('a'), 'quote', 'x', '[{"start":0,"length":1,"junk":1}]') $$,
+  '23514', null,
+  'messages validate body_format the same way (only the server can send one)'
+);
 
 select throws_ok(
   $$ insert into public.starter_quotes (id, body, body_format, author, sort_order, source_location, source_url)
@@ -195,15 +230,15 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$ insert into public.shares (recipient_id, body) values (tests.uid('b'), E'\t ') $$,
+  $$ insert into public.messages (conversation_id, kind, text) values ('c0a00000-0000-4000-8000-0000000000ab', 'text', E'\t ') $$,
   '23514', null,
-  'a blank share body is rejected'
+  'a blank text message is rejected'
 );
 
 select throws_ok(
-  $$ insert into public.shares (recipient_id, body, note) values (tests.uid('b'), 'x', '  ') $$,
+  $$ insert into public.messages (conversation_id, kind, starter_quote_id, note) values ('c0a00000-0000-4000-8000-0000000000ab', 'quote', 1, '  ') $$,
   '23514', null,
-  'a blank share note is rejected (the app sends null)'
+  'a blank note is rejected (the app sends null)'
 );
 
 select tests.authenticate_as('b');
@@ -217,18 +252,25 @@ select throws_ok(
 -- ---- server-owned timestamps ----------------------------------------------
 select tests.authenticate_as('c');
 
-select results_eq(
-  $$ insert into public.profiles (id, username, created_at) values (tests.uid('c'), 'cara', '1999-01-01')
-     returning created_at = now() $$,
-  $$ values (true) $$,
-  'profiles.created_at is the server clock, whatever the client sends'
+select throws_ok(
+  $$ insert into public.profiles (id, username, created_at) values (tests.uid('c'), 'cara', '1999-01-01') $$,
+  '42501', null,
+  'a client cannot send profiles.created_at'
 );
 
-select results_eq(
-  $$ update public.profiles set created_at = '1999-01-01' where id = tests.uid('c') returning created_at = now() $$,
-  $$ values (true) $$,
+insert into public.profiles (id, username) values (tests.uid('c'), 'cara');
+
+select throws_ok(
+  $$ update public.profiles set created_at = '1999-01-01' where id = tests.uid('c') $$,
+  '42501', null,
   'profiles.created_at cannot be changed later'
 );
+
+select tests.clear_authentication();
+select is((select created_at from public.profiles where id = tests.uid('c')), now(),
+  'profiles.created_at is the server clock');
+select tests.accept_terms('c');
+select tests.authenticate_as('c');
 
 select results_eq(
   $$ insert into public.friendships (addressee_id, created_at, responded_at) values (tests.uid('a'), '2099-01-01', '2099-01-01')
@@ -245,69 +287,83 @@ select results_eq(
 
 select tests.authenticate_as('a');
 
+select throws_ok(
+  $$ insert into public.quotes (body, created_at, updated_at) values ('Dated', '2099-01-01', '2099-01-01') $$,
+  '42501', null,
+  'a client cannot send quotes.created_at or updated_at'
+);
+
 select results_eq(
-  $$ insert into public.quotes (body, created_at, updated_at) values ('Dated', '2099-01-01', '2099-01-01')
-     returning created_at = now(), updated_at = now() $$,
+  $$ insert into public.quotes (body) values ('Dated') returning created_at = now(), updated_at = now() $$,
   $$ values (true, true) $$,
   'quotes.created_at and updated_at are the server clock on insert'
 );
 
+select tests.clear_authentication();
+
 select results_eq(
-  $$ insert into public.shares (id, recipient_id, body, created_at)
-     values ('5a000000-0000-4000-8000-000000000003', tests.uid('b'), 'Pinned?', '2099-01-01')
+  $$ insert into public.messages (id, conversation_id, sender_id, kind, text, created_at)
+     values ('5a000000-0000-4000-8000-000000000003', 'c0a00000-0000-4000-8000-0000000000ab', tests.uid('a'), 'text', 'Pinned?', '2099-01-01')
      returning created_at = now() $$,
   $$ values (true) $$,
-  'a share dated 2099 is stamped with the server clock, so it cannot pin itself to the top of the inbox'
+  'a message dated 2099 is stamped with the server clock, even from the server, so it cannot pin itself to the top of the inbox'
 );
 
 select tests.authenticate_as('b');
 
 select results_eq(
-  $$ update public.shares set seen_at = '2099-01-01', saved_at = '1999-01-01'
-     where id = '5a000000-0000-4000-8000-000000000001'
-     returning seen_at = now(), saved_at = now() $$,
+  $$ update public.conversation_members set last_read_at = '2099-01-01', cleared_at = '1999-01-01'
+     where conversation_id = 'c0a00000-0000-4000-8000-0000000000ab'
+     returning last_read_at = now(), cleared_at = now() $$,
   $$ values (true, true) $$,
-  'seen_at and saved_at take the server clock, not the client''s'
-);
-
-select results_eq(
-  $$ update public.shares set seen_at = '2099-01-01' where id = '5a000000-0000-4000-8000-000000000002'
-     returning seen_at $$,
-  $$ values ('2001-01-01'::timestamptz) $$,
-  'the first seen_at is kept'
-);
-
-select results_eq(
-  $$ update public.shares set saved_at = null where id = '5a000000-0000-4000-8000-000000000001'
-     returning saved_at is null, seen_at = now() $$,
-  $$ values (true, true) $$,
-  'saved_at can be cleared, and clearing it leaves seen_at alone'
+  'last_read_at and cleared_at take the server clock, not the client''s'
 );
 
 select tests.clear_authentication();
--- Deleting the source quote nulls shares.quote_id through the foreign key, an
--- UPDATE that runs the shares trigger; it must leave the stamps alone.
+update public.conversation_members set last_read_at = '2099-01-01'
+ where conversation_id = 'c0a00000-0000-4000-8000-0000000000ab' and user_id = tests.uid('b');
+select tests.authenticate_as('b');
+
+select results_eq(
+  $$ update public.conversation_members set last_read_at = '2000-01-01'
+     where conversation_id = 'c0a00000-0000-4000-8000-0000000000ab'
+     returning last_read_at $$,
+  $$ values ('2099-01-01'::timestamptz) $$,
+  'last_read_at never moves back'
+);
+
+select results_eq(
+  $$ update public.conversation_members set last_read_at = null
+     where conversation_id = 'c0a00000-0000-4000-8000-0000000000ab'
+     returning last_read_at, cleared_at = now() $$,
+  $$ values ('2099-01-01'::timestamptz, true) $$,
+  'a client cannot clear last_read_at, and trying leaves cleared_at alone'
+);
+
+select tests.clear_authentication();
+-- Deleting the source quote nulls messages.source_quote_id through the
+-- foreign key, an UPDATE; it must leave the message's time alone.
 delete from public.quotes where id = 'a0000000-0000-4000-8000-000000000001';
 
 select results_eq(
-  $$ select quote_id is null, seen_at from public.shares where id = '5a000000-0000-4000-8000-000000000002' $$,
+  $$ select source_quote_id is null, created_at from public.messages where id = '5a000000-0000-4000-8000-000000000002' $$,
   $$ values (true, '2001-01-01'::timestamptz) $$,
-  'a foreign-key update (quote deleted) leaves seen_at alone'
+  'a foreign-key update (quote deleted) leaves the message''s time alone'
 );
 
 -- ---- reports --------------------------------------------------------------
 select tests.authenticate_as('b');
 
 select lives_ok(
-  $$ insert into public.reports (id, share_id, reported_user_id, reason, created_at, reviewed_at, reported_username, content_verified)
+  $$ insert into public.reports (id, message_id, reported_user_id, reason, created_at, reviewed_at, reported_username, content_verified)
      values ('7e000000-0000-4000-8000-000000000001', '5a000000-0000-4000-8000-000000000001', tests.uid('a'), 'harassment',
              '2000-01-01', '2000-01-01', 'mallory', false) $$,
-  'B reports A''s share, trying to set every server-owned column'
+  'B reports A''s message, trying to set every server-owned column'
 );
 
 select results_eq(
   $$ select created_at = now(), reviewed_at is null, reported_username, content_verified, content_body
-     from public.reports where id = '7e000000-0000-4000-8000-000000000001' $$,
+     from tests.own_reports() where id = '7e000000-0000-4000-8000-000000000001' $$,
   $$ values (true, true, 'alice'::text, true, 'A to B'::text) $$,
   'created_at, reviewed_at, reported_username and content_verified are set by the server'
 );
@@ -315,14 +371,14 @@ select results_eq(
 select lives_ok(
   $$ insert into public.reports (id, reported_user_id, reason, content_body, content_verified)
      values ('7e000000-0000-4000-8000-000000000002', tests.uid('c'), 'other', 'Made up', true) $$,
-  'B can report a user without a share'
+  'B can report a user without a target'
 );
 
 select results_eq(
-  $$ select share_id is null, content_body, content_verified, reported_username
-     from public.reports where id = '7e000000-0000-4000-8000-000000000002' $$,
+  $$ select message_id is null, content_body, content_verified, reported_username
+     from tests.own_reports() where id = '7e000000-0000-4000-8000-000000000002' $$,
   $$ values (true, 'Made up'::text, false, 'cara'::text) $$,
-  'a report without a share keeps the client''s text but is marked unverified'
+  'a report without a target keeps the client''s text but is marked unverified'
 );
 
 select throws_ok(
@@ -353,16 +409,16 @@ select throws_ok(
 );
 
 select lives_ok(
-  $$ insert into public.reports (id, reporter_id, share_id, reported_user_id, reason, content_body)
+  $$ insert into public.reports (id, reporter_id, message_id, reported_user_id, reason, content_body)
      values ('7e000000-0000-4000-8000-000000000003', tests.uid('c'), '5a000000-0000-4000-8000-000000000001',
              tests.uid('a'), 'spam', 'Not what C saw') $$,
-  'service_role can file a report naming a share the reporter never received'
+  'service_role can file a report naming a message from a conversation the reporter is not in'
 );
 
 select results_eq(
   $$ select content_body is null, content_verified from public.reports where id = '7e000000-0000-4000-8000-000000000003' $$,
   $$ values (true, false) $$,
-  'that report gets no snapshot and is not verified: only the share''s recipient verifies it'
+  'that report gets no snapshot and is not verified: only a member of the conversation verifies it'
 );
 
 select tests.clear_authentication();
@@ -442,7 +498,7 @@ select results_eq(
   $$ select tgrelid::regclass::text, tgname::text collate "default" from pg_trigger
      where not tgisinternal and tgname like '%keep_created_at' order by 1 $$,
   $$ values ('profiles', 'profiles_keep_created_at'), ('quotes', 'quotes_keep_created_at') $$,
-  'the tables with a table-level UPDATE grant keep created_at on update'
+  'profiles and quotes keep created_at on update (behind their column grants)'
 );
 
 select is_empty(

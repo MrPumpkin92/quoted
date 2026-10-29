@@ -113,7 +113,7 @@ struct ReminderQuotePicker: View {
 
     private func filtered(_ candidates: [Quote]) -> [Quote] {
         guard !terms.isEmpty else { return candidates }
-        return SearchIndex.search(query, quotes: candidates, shared: []).library
+        return SearchIndex.search(query, quotes: candidates).library
     }
 
     private var addTitle: String {

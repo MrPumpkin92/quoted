@@ -1,4 +1,6 @@
--- friendships lifecycle and blocks.
+-- friendships lifecycle and blocks. Every user here has accepted the terms
+-- (20261029090000_provenance_and_accounts; 16_provenance_accounts covers the
+-- terms, suspension and 150-friend rules).
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
@@ -42,6 +44,12 @@ begin
   perform set_config('request.jwt.claims', '', true);
 end
 $$;
+
+-- The user has accepted the current terms (social writes need them).
+create function tests.accept_terms(who text) returns void language sql security definer as $$
+  update public.profiles set terms_version = private.current_terms_version(), terms_accepted_at = now()
+  where id = tests.uid(who)
+$$;
 -- ---------------------------------------------------------------------------
 
 select tests.create_user('a');
@@ -49,6 +57,7 @@ select tests.create_user('b');
 select tests.create_user('c');
 insert into public.profiles (id, username) values
   (tests.uid('a'), 'alice'), (tests.uid('b'), 'bob'), (tests.uid('c'), 'cara');
+select tests.accept_terms(w) from unnest(array['a', 'b', 'c']) w;
 
 -- ---- request --------------------------------------------------------------
 select tests.authenticate_as('a');

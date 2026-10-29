@@ -3,12 +3,13 @@ import SwiftUI
 import UIKit
 
 /// Anything the design components can show as a quote: a styled body plus an optional author and
-/// source. `Quote`, `SharedQuote`, `StarterQuote` and `SnapshotQuote` all conform.
+/// source. `Quote`, `QuoteSnapshot`, `InboxQuote`, `StarterQuote`, `FriendFavorite` and
+/// `SnapshotQuote` all conform.
 protocol QuoteContent: RichTextContent {
     var author: String? { get }
     var source: String? { get }
     /// Whether the wording and attribution were checked against a public-domain source (the verified
-    /// seal). The server decides it for quotes and shares (`verified_starter_id`).
+    /// seal). The server decides it for quotes and message snapshots (`verified_starter_id`).
     var isVerified: Bool { get }
 }
 
@@ -17,7 +18,15 @@ extension QuoteContent {
 }
 
 extension Quote: QuoteContent {}
-extension SharedQuote: QuoteContent {}
+extension QuoteSnapshot: QuoteContent {}
+/// A received quote message shows its snapshot.
+extension InboxQuote: QuoteContent {
+    var body: String { quote.body }
+    var format: [TextRun] { quote.format }
+    var author: String? { quote.author }
+    var source: String? { quote.source }
+    var isVerified: Bool { quote.isVerified }
+}
 extension StarterQuote: QuoteContent {
     /// Every starter quote was checked word for word against its source.
     var isVerified: Bool { true }

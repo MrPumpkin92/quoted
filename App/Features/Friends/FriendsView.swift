@@ -9,8 +9,11 @@ import UIKit
 /// Decline / Accept; outgoing: Requested / Cancel; each with a "…" menu: Report, Block, and Decline
 /// for incoming), "N shared with you" (one row that opens the inbox) and Friends (a "…" menu and
 /// trailing swipes: Remove, Block, Report). The "…" holds everything about a person, here and on shared
-/// quotes. Report and Block are also VoiceOver actions on each person. Opening the tab marks shares as
-/// seen. MainTabView puts `FriendsView()` at the root of the Friends tab's NavigationStack.
+/// quotes. Report and Block are also VoiceOver actions on each person. Opening the tab marks the
+/// quotes friends sent as seen (their conversations read). Sending a request and accepting one wait
+/// for the Terms of Use (`SocialStore.requireTerms(for:then:)`): Add and Accept show progress through
+/// the check, and a check still waiting when the screen goes away ends without a word. MainTabView
+/// puts `FriendsView()` at the root of the Friends tab's NavigationStack.
 struct FriendsView: View {
     @Environment(SocialStore.self) private var social
     @Environment(SessionStore.self) private var session
@@ -21,6 +24,10 @@ struct FriendsView: View {
     @State private var username = ""
     @State private var usernameError: String?
     @State private var isSendingRequest = false
+    /// Incoming requests whose Accept is waiting (the terms check, then the server).
+    @State private var acceptingIDs: Set<UUID> = []
+    /// This screen, as the owner of its terms checks (`SocialStore.requireTerms(for:then:)`).
+    @State private var termsOwner = UUID()
     @FocusState private var isUsernameFocused: Bool
     @State private var isVisible = false
     @State private var confirmation: SocialConfirmation?
@@ -50,6 +57,9 @@ struct FriendsView: View {
         }
         .onDisappear {
             isVisible = false
+            // A request or accept still waiting for the terms check would otherwise show the Terms
+            // sheet over whatever is on screen by then.
+            social.dropTermsChecks(for: termsOwner)
         }
         .onChange(of: social.unseenCount) {
             // New shares that arrive while the tab is on screen count as seen too.
@@ -168,14 +178,23 @@ struct FriendsView: View {
             return
         }
         usernameError = nil
+        // A friend request is a social write: the Terms sheet comes first if they aren't accepted.
+        // The button shows progress from the tap on, through the terms check.
         isSendingRequest = true
         Task {
-            let result = await social.sendRequest(toUsername: input)
+            await social.requireTerms(for: termsOwner) { await submitRequest(to: input) }
             isSendingRequest = false
-            if result.isSuccess {
-                username = ""
-                isUsernameFocused = false
-            }
+        }
+    }
+
+    /// The request itself: right away, or after Accept on the Terms sheet.
+    private func submitRequest(to input: String) async {
+        isSendingRequest = true
+        let result = await social.sendRequest(toUsername: input)
+        isSendingRequest = false
+        if result.isSuccess {
+            username = ""
+            isUsernameFocused = false
         }
     }
 
@@ -189,6 +208,7 @@ struct FriendsView: View {
             ForEach(Array(requests.enumerated()), id: \.element.id) { index, request in
                 FriendRequestRow(
                     request: request,
+                    isAccepting: acceptingIDs.contains(request.id),
                     onAccept: { accept(request) },
                     onDecline: { Task { await social.decline(request) } },
                     onCancel: { Task { await social.cancel(request) } },
@@ -223,7 +243,7 @@ struct FriendsView: View {
     // MARK: Shared with you
 
     /// One row, like Library's: who sent quotes and how many, opening the inbox. The cards with Save,
-    /// Delete, Report and Block live only in the inbox, so they behave the same everywhere.
+    /// Report and Block live only in the inbox, so they behave the same everywhere.
     @ViewBuilder
     private var sharedSection: some View {
         if social.inbox.isEmpty {
@@ -398,12 +418,21 @@ struct FriendsView: View {
         Task { await social.markInboxSeen() }
     }
 
-    /// Accepts, and once the server agrees says so: the new friend lands in the list further down.
+    /// Accepts (after the Terms sheet, if the terms aren't accepted yet), and once the server agrees
+    /// says so: the new friend lands in the list further down. The row shows progress from the tap
+    /// on, through the terms check, and a second tap meanwhile does nothing.
     private func accept(_ request: Connection) {
+        guard !acceptingIDs.contains(request.id) else { return }
+        acceptingIDs.insert(request.id)
         Task {
-            if await social.accept(request) {
-                toasts.show("You and \(request.profile.handle) are now friends", style: .success)
+            await social.requireTerms(for: termsOwner) {
+                acceptingIDs.insert(request.id)
+                if await social.accept(request) {
+                    toasts.show("You and \(request.profile.handle) are now friends", style: .success)
+                }
+                acceptingIDs.remove(request.id)
             }
+            acceptingIDs.remove(request.id)
         }
     }
 
@@ -673,6 +702,8 @@ private struct PersonMoreMenu<Extra: View>: View {
 /// (with Decline for incoming), the row's context menu and the person's VoiceOver actions.
 private struct FriendRequestRow: View {
     let request: Connection
+    /// Accept is waiting (the terms check, then the server): it shows progress, and Decline is off.
+    let isAccepting: Bool
     let onAccept: () -> Void
     let onDecline: () -> Void
     let onCancel: () -> Void
@@ -687,6 +718,7 @@ private struct FriendRequestRow: View {
 
     init(
         request: Connection,
+        isAccepting: Bool = false,
         onAccept: @escaping () -> Void,
         onDecline: @escaping () -> Void,
         onCancel: @escaping () -> Void,
@@ -694,6 +726,7 @@ private struct FriendRequestRow: View {
         onBlock: @escaping () -> Void
     ) {
         self.request = request
+        self.isAccepting = isAccepting
         self.onAccept = onAccept
         self.onDecline = onDecline
         self.onCancel = onCancel
@@ -758,6 +791,7 @@ private struct FriendRequestRow: View {
         PersonMoreMenu(profile: request.profile, onReport: onReport, onBlock: onBlock) {
             if request.kind == .incoming {
                 Button("Decline", systemImage: "xmark", action: onDecline)
+                    .disabled(isAccepting)
             }
         }
     }
@@ -768,23 +802,36 @@ private struct FriendRequestRow: View {
         case .incoming:
             // Plain: Accept is the one filled button on the row.
             Button(action: onDecline) {
-                // `Color.primary`: in a borderless button `.primary` would resolve to the tint.
+                // `Color.primary`: in a borderless button `.primary` would resolve to the tint. The
+                // explicit color also skips the disabled dimming, so it dims itself while Accept waits.
                 Text("Decline")
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(isAccepting ? Color.secondary : Color.primary)
                     .padding(.horizontal, Theme.Spacing.xs)
                     .frame(minHeight: Theme.Metrics.minTouchTarget)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
+            .disabled(isAccepting)
             .accessibilityLabel("Decline request from \(request.profile.displayName)")
             Button(action: onAccept) {
-                Text("Accept")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color.onAccent)
-                    .capsuleButtonLabel()
+                ZStack {
+                    Text("Accept").opacity(isAccepting ? 0 : 1)
+                    if isAccepting {
+                        ProgressView()
+                            .tint(Color.onAccent)
+                    }
+                }
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.onAccent)
+                .capsuleButtonLabel()
             }
             .buttonStyle(.borderedProminent)
-            .accessibilityLabel("Accept request from \(request.profile.displayName)")
+            // Like `PrimaryButton` while loading: it keeps its fill and ignores taps (`accept(_:)`
+            // runs once per request); Voice Control's "Tap Accept" keeps working.
+            .accessibilityLabel(isAccepting
+                ? "Accepting request from \(request.profile.displayName)"
+                : "Accept request from \(request.profile.displayName)")
+            .accessibilityInputLabels(["Accept", "Accept request"])
         case .outgoing:
             Text("Requested")
                 .font(.subheadline)
@@ -811,7 +858,7 @@ private struct FriendRequestRow: View {
 
 #Preview("Friends empty") {
     let model = AppModel.preview()
-    model.social.seedPreview(friendships: [], inbox: [], me: Samples.alex.id)
+    model.social.seedPreview(friendships: [], conversations: [], messages: [], me: Samples.alex.id)
     return NavigationStack { FriendsView() }
         .previewEnvironment(model)
 }

@@ -1,8 +1,11 @@
 -- profiles and quotes: own-row writes, no cross-user access, constraints.
+-- Since 20261029090000_provenance_and_accounts clients write profiles and
+-- quotes through column grants: a username is checked on insert (it cannot be
+-- updated), and server-owned quote columns are refused with 42501.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(30);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -46,6 +49,7 @@ $$;
 
 select tests.create_user('a');
 select tests.create_user('b');
+select tests.create_user('c');
 
 -- ---- profiles -------------------------------------------------------------
 select tests.authenticate_as('a');
@@ -95,16 +99,24 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$ update public.profiles set username = 'Not Valid!' where id = tests.uid('a') $$,
+  $$ update public.profiles set username = 'alice2' where id = tests.uid('a') $$,
+  '42501', null,
+  'a username cannot be updated (no column grant)'
+);
+
+select tests.authenticate_as('c');
+select throws_ok(
+  $$ insert into public.profiles (id, username) values (tests.uid('c'), 'Not Valid!') $$,
   '23514', null,
   'username must match ^[a-z0-9_.]{3,20}$'
 );
 
 select throws_ok(
-  $$ update public.profiles set username = 'bob' where id = tests.uid('a') $$,
+  $$ insert into public.profiles (id, username) values (tests.uid('c'), 'bob') $$,
   '23505', null,
   'usernames are unique'
 );
+select tests.authenticate_as('a');
 
 select throws_ok(
   $$ update public.profiles set display_name = repeat('x', 51) where id = tests.uid('a') $$,
@@ -168,8 +180,15 @@ select throws_ok(
   'A cannot hand a quote to B'
 );
 
+select throws_ok(
+  $$ update public.quotes set created_at = '2000-01-01', updated_at = '2000-01-01'
+     where id = 'a0000000-0000-4000-8000-000000000001' $$,
+  '42501', null,
+  'a client cannot send created_at or updated_at'
+);
+
 select results_eq(
-  $$ update public.quotes set body = 'A new', rotation_position = 0, created_at = '2000-01-01', updated_at = '2000-01-01'
+  $$ update public.quotes set body = 'A new', rotation_position = 0
      where id = 'a0000000-0000-4000-8000-000000000001'
      returning created_at = now(), updated_at = now() $$,
   $$ values (true, true) $$,
@@ -202,11 +221,15 @@ select throws_ok(
   'body_format holds at most 200 runs'
 );
 
+-- A client may only say manual or pasted (16_provenance_accounts); the check
+-- constraint binds the server too.
+select tests.clear_authentication();
 select throws_ok(
-  $$ insert into public.quotes (body, origin) values ('x', 'scraped') $$,
+  $$ insert into public.quotes (owner_id, body, origin) values (tests.uid('a'), 'x', 'scraped') $$,
   '23514', null,
   'origin must be manual, starter, shared or pasted'
 );
+select tests.authenticate_as('a');
 
 select throws_ok(
   $$ insert into public.quotes (body, author) values ('x', repeat('a', 201)) $$,

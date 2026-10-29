@@ -18,7 +18,7 @@ struct QuoteRow: View {
     private let highlighting: [String]
 
     /// - Parameters:
-    ///   - content: A `Quote`, `SharedQuote`, `StarterQuote` or `SnapshotQuote`.
+    ///   - content: A `Quote`, `InboxQuote`, `StarterQuote` or `SnapshotQuote`.
     ///   - inReminders: Shows the bell glyph. Nil means "ask the quote": a `Quote` in the Rotation
     ///     shows it, anything else does not.
     ///   - favorite: Shows the heart glyph. Nil asks the quote: a `Quote` you hearted shows it,

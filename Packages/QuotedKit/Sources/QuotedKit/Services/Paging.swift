@@ -1,4 +1,5 @@
 import Foundation
+import QuotedCore
 import Supabase
 
 /// Reads whole result sets in pages, so nothing is silently cut at PostgREST's `max_rows` (1000 in
@@ -34,5 +35,16 @@ enum Paging {
                 return rows
             }
         }
+    }
+}
+
+/// Keyset pages of newest-first lists ordered by `created_at desc, id` (the Feed, a conversation).
+enum Keyset {
+    /// The PostgREST `or` filter for the rows after `cursor` in that order: older, or as old with a
+    /// later id. Timestamps are quoted, since they hold reserved characters (`.` and `:`).
+    static func after(_ cursor: PageCursor) -> String {
+        let time = Timestamp.string(from: cursor.createdAt)
+        let id = cursor.id.uuidString.lowercased()
+        return #"created_at.lt."\#(time)",and(created_at.eq."\#(time)",id.gt.\#(id))"#
     }
 }

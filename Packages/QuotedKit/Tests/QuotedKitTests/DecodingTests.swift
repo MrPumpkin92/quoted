@@ -68,33 +68,57 @@ struct DecodingTests {
         #expect(friendship.otherParty?.id == Self.bob)
     }
 
-    @Test func inboxShareWithSenderEmbed() throws {
+    @Test func feedPostWithPosterEmbed() throws {
         let json = """
-        [{"id":"5e000000-0000-4000-8000-000000000001","sender_id":"\(Self.alice)","recipient_id":"\(Self.bob)",
-          "quote_id":null,"body":"Be bold","body_format":[{"start":3,"length":4,"bold":true,"underline":true}],
-          "author":"Anon","source":null,"note":"for you","created_at":"2026-10-19T05:00:00.5+00:00",
-          "seen_at":null,"saved_at":"2026-10-19T06:00:00+00:00",
-          "sender":{"id":"\(Self.alice)","username":"alice","display_name":"Alice"}}]
+        [{"id":"5e000000-0000-4000-8000-000000000001","author_id":"\(Self.alice)","starter_quote_id":null,"caption":"for you",
+          "body":"Be bold","body_format":[{"start":3,"length":4,"bold":true,"underline":true}],"author":"Anon","source":null,
+          "creator_id":"\(Self.bob)","creator_username":"bob","edited_from_id":null,"edited_from_username":null,
+          "verified_starter_id":null,"audience":"friends","held_at":null,"created_at":"2026-10-19T05:00:00.5+00:00",
+          "poster":{"id":"\(Self.alice)","username":"alice","display_name":"Alice","accepts_text_messages":true}}]
         """
-        let shares = try decode([SharedQuote].self, json)
-        let share = try #require(shares.first)
-        #expect(share.sender?.handle == "@alice")
-        #expect(share.recipient == nil)
-        #expect(share.format == [TextRun(start: 3, length: 4, bold: true, underline: true)])
-        #expect(share.note == "for you")
-        #expect(!share.isSeen)
-        #expect(share.isSaved)
+        let post = try #require(try decode([Post].self, json).first)
+        #expect(post.poster?.handle == "@alice")
+        #expect(post.quote.format == [TextRun(start: 3, length: 4, bold: true, underline: true)])
+        #expect(post.caption == "for you")
+        #expect(post.provenance.who(viewer: "alice") == .person("bob"))
+        #expect(post.quote.creatorID == Self.bob)
     }
 
     @Test func malformedEmbedDoesNotFailTheRow() throws {
         let json = """
-        {"id":"5e000000-0000-4000-8000-000000000002","sender_id":"\(Self.alice)","recipient_id":"\(Self.bob)",
-         "quote_id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a01","body":"Hi","body_format":[],"author":null,"source":null,"note":null,
-         "created_at":"2026-10-19T05:00:00Z","seen_at":null,"saved_at":null,"recipient":{"oops":true}}
+        {"id":"5e000000-0000-4000-8000-000000000002","author_id":"\(Self.alice)","body":"Hi","body_format":[],
+         "author":null,"source":null,"caption":null,"created_at":"2026-10-19T05:00:00Z","poster":{"oops":true}}
         """
-        let share = try decode(SharedQuote.self, json)
-        #expect(share.recipient == nil)
-        #expect(share.quoteID != nil)
+        let post = try decode(Post.self, json)
+        #expect(post.poster == nil)
+        #expect(post.quote.body == "Hi")
+    }
+
+    @Test func messagePageAndInboxRows() throws {
+        let messages = try decode([Message].self, """
+        [{"id":"30000000-0000-4000-8000-000000000002","conversation_id":"20000000-0000-4000-8000-000000000001",
+          "sender_id":"\(Self.bob)","kind":"text","text":"See you at 6.","note":null,"body":null,"body_format":null,
+          "author":null,"source":null,"creator_id":null,"creator_username":null,"edited_from_id":null,
+          "edited_from_username":null,"verified_starter_id":null,"starter_quote_id":null,"playlist_id":null,
+          "playlist_title":null,"created_at":"2026-10-29T09:01:00+00:00"},
+         {"id":"30000000-0000-4000-8000-000000000001","conversation_id":"20000000-0000-4000-8000-000000000001",
+          "sender_id":"\(Self.alice)","kind":"quote","text":null,"note":"for you","body":"Trust thyself.",
+          "body_format":[],"author":"Ralph Waldo Emerson","source":"Self-Reliance","creator_id":null,
+          "creator_username":null,"edited_from_id":null,"edited_from_username":null,"verified_starter_id":1,
+          "starter_quote_id":1,"playlist_id":null,"playlist_title":null,"created_at":"2026-10-29T09:00:00+00:00"}]
+        """)
+        #expect(messages.map(\.kind) == [.text, .quote])
+        #expect(messages[1].quote?.isVerified == true)
+        #expect(messages[1].note == "for you")
+
+        let inbox = try decode([InboxConversation].self, """
+        [{"conversation_id":"20000000-0000-4000-8000-000000000001","other_id":"\(Self.bob)","other_username":"bob",
+          "other_display_name":null,"other_accepts_text_messages":true,"is_closed":false,
+          "last_message_at":"2026-10-29T09:01:00+00:00","last_message_kind":"text","last_message_preview":"See you at 6.",
+          "last_message_sender_id":"\(Self.bob)","unread_count":1}]
+        """)
+        #expect(inbox.first?.other?.displayName == "bob")
+        #expect(inbox.first?.isUnread == true)
     }
 
     @Test func starterQuotes() throws {
@@ -122,6 +146,24 @@ struct DecodingTests {
         #expect(blocks[1].blocked == nil)
     }
 
+    @Test func quoteProvenanceColumns() throws {
+        let quote = try decode(Quote.self, """
+        {"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a01","body":"Mine now","created_at":"2026-10-19T03:26:38+00:00",
+         "origin":"shared","creator_id":"\(Self.alice)","creator_username":"alice","edited_from_id":"\(Self.bob)",
+         "edited_from_username":"bob"}
+        """)
+        #expect(quote.creatorID == Self.alice)
+        #expect(quote.editedFromID == Self.bob)
+        #expect(quote.provenance.who(viewer: "alice") == .you)
+        #expect(quote.provenance.editedFrom(viewer: "alice") == .person("bob"))
+        // Older rows and caches have none of the columns: "Added by a person".
+        let older = try decode(Quote.self, #"{"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a02","body":"Hi","created_at":"2026-10-19T03:26:38+00:00"}"#)
+        #expect(older.provenance == Provenance())
+        // The cache keeps them.
+        let cached = try decode(Quote.self, String(decoding: try QuotedJSON.makeEncoder().encode(quote), as: UTF8.self))
+        #expect(cached == quote)
+    }
+
     @Test func verificationFields() throws {
         let quote = try decode(Quote.self, """
         {"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a01","body":"Trust thyself.","body_format":[],"author":"Ralph Waldo Emerson",
@@ -137,12 +179,7 @@ struct DecodingTests {
         let cached = try decode(Quote.self, String(decoding: try QuotedJSON.makeEncoder().encode(quote), as: UTF8.self))
         #expect(cached.verifiedStarterID == 1)
 
-        let share = try decode(SharedQuote.self, """
-        {"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a03","sender_id":"\(Self.alice)","recipient_id":"\(Self.bob)","quote_id":null,
-         "body":"Trust thyself.","body_format":[],"author":"Ralph Waldo Emerson","source":"Self-Reliance","note":null,
-         "created_at":"2026-10-19T03:26:38+00:00","seen_at":null,"saved_at":null,"verified_starter_id":1}
-        """)
-        #expect(share.isVerified)
+        #expect(quote.provenance.isChecked)
 
         let starters = try decode([StarterQuote].self, """
         [{"id":1,"body":"Trust thyself.","body_format":[],"author":"Ralph Waldo Emerson","source":"Self-Reliance","sort_order":1,
@@ -169,17 +206,21 @@ struct DecodingTests {
         #expect(older.isFavorite == false)
         #expect(older.favoritedAt == nil)
 
-        let profile = try decode(Profile.self, #"{"id":"\#(Self.alice)","username":"alice","display_name":null,"shows_favorites":true}"#)
-        #expect(profile.showsFavorites)
+        let quiet = try decode(Profile.self, #"{"id":"\#(Self.alice)","username":"alice","display_name":null,"accepts_text_messages":false}"#)
+        #expect(quiet.acceptsTextMessages == false)
         let embedded = try decode(Profile.self, #"{"id":"\#(Self.alice)","username":"alice","display_name":null}"#)
-        #expect(embedded.showsFavorites == false)
+        #expect(embedded.acceptsTextMessages == nil, "unknown, never read as on")
 
         let favorites = try decode([FriendFavorite].self, """
         [{"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a03","body":"Trust thyself.","body_format":[{"start":0,"length":5,"bold":true}],
-          "author":"Ralph Waldo Emerson","source":"Self-Reliance","verified_starter_id":1,"favorited_at":"2026-10-25T09:00:00+00:00"}]
+          "author":"Ralph Waldo Emerson","source":"Self-Reliance","verified_starter_id":1,"creator_username":null,
+          "edited_from_username":null,"favorited_at":"2026-10-25T09:00:00+00:00"},
+         {"id":"0b9e6f1c-3a52-4d55-9c1f-7f6f3c1e2a04","body":"Mine","body_format":[],"author":null,"source":null,
+          "verified_starter_id":null,"creator_username":"alice","edited_from_username":"bob","favorited_at":null}]
         """)
         #expect(favorites.first?.isVerified == true)
         #expect(favorites.first?.format.first?.bold == true)
+        #expect(favorites[1].provenance == Provenance(creatorUsername: "alice", editedFromUsername: "bob"))
     }
 
     @Test func partialRows() throws {
@@ -250,30 +291,85 @@ struct PayloadTests {
         #expect(json["rotation_position"] as? Int == 4)
     }
 
-    @Test func shareProfileReportAndEventPayloads() throws {
-        let share = try object(ShareInsert(id: UUID(), recipientID: UUID(), quoteID: nil, body: "b", format: [], author: nil, source: "s", note: nil))
-        #expect(Set(share.keys) == ["id", "recipient_id", "quote_id", "body", "body_format", "author", "source", "note"])
-        #expect(isNull(share["quote_id"]) && isNull(share["note"]))
-        #expect(share["sender_id"] == nil)
-
+    @Test func profileReportAndEventPayloads() throws {
         let profile = try object(ProfileInsert(id: UUID(), username: "ada", displayName: nil))
         #expect(isNull(profile["display_name"]))
+        #expect(Set(profile.keys) == ["id", "username", "display_name"])
 
-        let report = try object(ReportInsert(shareID: nil, reportedUserID: UUID(), reason: .harassment, details: nil))
+        let report = try object(ReportInsert(userID: UUID(), reason: .harassment, details: nil, content: nil))
         #expect(report["reason"] as? String == "harassment")
-        #expect(isNull(report["share_id"]))
+        #expect(isNull(report["message_id"]))
         #expect(report["reporter_id"] == nil)
 
         #expect(try object(EventInsert.webSearchTap) as NSDictionary == ["name": "web_search_tap"])
         #expect(try object(FriendshipStatusUpdate(status: .accepted)) as NSDictionary == ["status": "accepted"])
         #expect(try object(FriendRequestInsert(addresseeID: DecodingTests.bob))["addressee_id"] as? String
             == DecodingTests.bob.uuidString)
+        #expect(try object(FavoritesVisibilityUpdate(favoritesVisibility: .onlyMe)) as NSDictionary == ["favorites_visibility": "private"])
+        #expect(try object(AcceptsTextMessagesUpdate(acceptsTextMessages: false)) as NSDictionary == ["accepts_text_messages": false])
+        #expect(try object(AcceptTermsParams(version: 1)) as NSDictionary == ["p_version": 1])
+        // profile_view goes as GET: a nil p_before is left out (its default), never sent as "null".
+        let view = try object(ProfileViewParams(username: "maya", before: nil))
+        #expect(view as NSDictionary == ["p_username": "maya"])
+        let set = try object(SetPlaylistPositionsParams(playlist: DecodingTests.bob, quoteIDs: [DecodingTests.bob], positions: [3]))
+        #expect(set as NSDictionary == [
+            "p_playlist": DecodingTests.bob.uuidString, "p_quote_ids": [DecodingTests.bob.uuidString], "p_positions": [3],
+        ])
+    }
+
+    @Test func postPayloadsNameOneSource() throws {
+        let id = UUID(), quoteID = UUID()
+        let own = try object(PostInsert(id: id, source: .quote(quoteID), caption: nil, audience: .friends))
+        #expect(Set(own.keys) == ["id", "source_quote_id", "starter_quote_id", "caption", "audience"])
+        #expect(own["source_quote_id"] as? String == quoteID.uuidString)
+        #expect(isNull(own["starter_quote_id"]) && isNull(own["caption"]))
+        #expect(own["audience"] as? String == "friends")
+        let catalog = try object(PostInsert(id: id, source: .catalog(5), caption: "hi", audience: .anyone))
+        #expect(catalog["starter_quote_id"] as? Int == 5 && isNull(catalog["source_quote_id"]))
+        #expect(catalog["audience"] as? String == "public")
+        #expect(try object(AudienceUpdate(audience: .friends)) as NSDictionary == ["audience": "friends"])
+    }
+
+    /// A message names only the columns its kind uses, so it never names a column without a grant.
+    @Test(arguments: [
+        (MessageDraft.text("hi"), ["text"]),
+        (.quote(.quote(UUID()), note: "n"), ["source_quote_id", "note"]),
+        (.quote(.catalog(3)), ["starter_quote_id"]),
+        (.quote(.post(UUID())), ["source_post_id"]),
+        (.quote(.message(UUID()), note: "fwd"), ["source_message_id", "note"]),
+        (.playlist(UUID()), ["playlist_id"]),
+    ])
+    func messagePayloads(draft: MessageDraft, keys: [String]) throws {
+        let json = try object(MessageInsert(id: UUID(), conversationID: UUID(), draft: draft))
+        #expect(Set(json.keys) == Set(["id", "conversation_id", "kind"] + keys))
+        #expect(json["kind"] as? String == draft.kind.rawValue)
+        #expect(json.values.allSatisfy { !($0 is NSNull) })
+    }
+
+    @Test func saveAndPlaylistPayloads() throws {
+        let id = UUID(), source = UUID(), handle = UUID()
+        let fromPost = try object(SaveParams(source: .post(source), id: id, inReminders: false))
+        #expect(Set(fromPost.keys) == ["p_post", "p_id", "p_in_reminders"])
+        let fromFavorite = try object(SaveParams(source: .favorite(friendID: source, handle: handle), id: id, inReminders: true))
+        #expect(Set(fromFavorite.keys) == ["p_friend", "p_handle", "p_id", "p_in_reminders"])
+        #expect(SaveParams(source: .catalog(1), id: id, inReminders: false).function == nil)
+        #expect(SaveParams(source: .playlistItem(playlistID: source, handle: handle), id: id, inReminders: false).function
+            == "save_from_playlist")
+
+        #expect(Set(try object(PlaylistInsert(id: id, title: "T", visibility: .onlyMe)).keys) == ["id", "title", "visibility"])
+        #expect(try object(PlaylistInsert(id: id, title: "T", visibility: .onlyMe))["visibility"] as? String == "private")
+        #expect(Set(try object(PlaylistItemInsert(playlistID: id, quoteID: source, position: 0)).keys)
+            == ["playlist_id", "quote_id", "position"])
+        let copy = try object(SavePlaylistCopyParams(playlist: id, title: nil))
+        #expect(Set(copy.keys) == ["p_playlist", "p_title"] && isNull(copy["p_title"]))
+        #expect(try object(PlaylistParam(playlist: id)) as NSDictionary == ["p_playlist": id.uuidString])
+        #expect(try object(FriendParam(friend: id)) as NSDictionary == ["p_friend": id.uuidString])
     }
 
     @Test func timestampsUsePostgresFormat() throws {
         let date = Date(timeIntervalSince1970: 1_792_380_398.25)
-        let json = try object(ShareSeenUpdate(seenAt: date))
-        let text = try #require(json["seen_at"] as? String)
+        let json = try object(LastReadUpdate(lastReadAt: date))
+        let text = try #require(json["last_read_at"] as? String)
         #expect(text.hasSuffix("Z"))
         #expect(Timestamp.date(from: text) == date)
     }

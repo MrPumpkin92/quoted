@@ -85,6 +85,7 @@
 		F25CF4568D1BA098B59A4B1C /* BackgroundTaskAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70665718DF9407777878DBBB /* BackgroundTaskAssertion.swift */; };
 		F54C4FC5BF231D277DF30384 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F555EAE5C2D57AD2FED7854D /* LibraryStore.swift */; };
 		FA9BB5C69C7E811DDB8ECD17 /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97174C5FEB930074B685C273 /* SafariView.swift */; };
+		FDC3E2ADAC5C5298C1774687 /* TermsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BB83D3563D09A04861F7896 /* TermsSheet.swift */; };
 		FF4A3752B0A742D4D75C3C79 /* StarterStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD57DFD856F12379E643B1FF /* StarterStore.swift */; };
 		FFBB51D0606C4424562CEF53 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7364C03C87AAC3B5478B993 /* WidgetKit.framework */; };
 /* End PBXBuildFile section */
@@ -140,6 +141,7 @@
 		3766AAD069F695ACEF3CFCF0 /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
 		3AA7BA6919FC5E53AE56E3F8 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		3B9BED29BF895AE1E89B7F37 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3BB83D3563D09A04861F7896 /* TermsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermsSheet.swift; sourceTree = "<group>"; };
 		413B9EE8FF01EEC879EC63A8 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		4662AB0AB66FE3AE62A830D0 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		4F0D45755F4540E67AB3C1A4 /* Route.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Route.swift; sourceTree = "<group>"; };
@@ -255,6 +257,7 @@
 				DE0D80293813543BF71ED295 /* FriendsView.swift */,
 				C6F782AEDBE2808A8323E740 /* ProfileView.swift */,
 				68FBA54276BAE996F4D38C9B /* SharedInboxView.swift */,
+				3BB83D3563D09A04861F7896 /* TermsSheet.swift */,
 			);
 			path = Friends;
 			sourceTree = "<group>";
@@ -752,6 +755,7 @@
 				3A8B7879875002630DB66FC8 /* StarterFlowView.swift in Sources */,
 				FF4A3752B0A742D4D75C3C79 /* StarterStore.swift in Sources */,
 				B9530FB5EEBAD8C1FC479954 /* StatusCard.swift in Sources */,
+				FDC3E2ADAC5C5298C1774687 /* TermsSheet.swift in Sources */,
 				E1B844FA9526AF9255C45E55 /* TextPageView.swift in Sources */,
 				1011DC071FFEF4B7C21D90B1 /* Theme.swift in Sources */,
 				54133DC7794739A98D905EFB /* Toast.swift in Sources */,

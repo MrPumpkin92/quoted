@@ -137,8 +137,8 @@ struct ValidationTests {
         let created = Date(timeIntervalSince1970: 0)
         let quote = Quote(body: "Q", format: [TextRun(start: 0, length: 1, underline: true)], author: "A", source: nil, createdAt: created)
         #expect(QuoteDraft(quote: quote) == QuoteDraft(body: "Q", format: quote.format, author: "A", source: ""))
-        let share = SharedQuote(id: Fixture.id(1), senderID: Fixture.id(2), recipientID: Fixture.id(3), body: "S", source: "Book", createdAt: created)
-        #expect(QuoteDraft(shared: share) == QuoteDraft(body: "S", author: "", source: "Book"))
+        let snapshot = QuoteSnapshot(body: "S", source: "Book", creatorUsername: "ada")
+        #expect(QuoteDraft(snapshot: snapshot) == QuoteDraft(body: "S", author: "", source: "Book"))
         let starter = StarterQuote(id: 1, body: "Know thyself.", author: "Socrates")
         #expect(QuoteDraft(starter: starter).author == "Socrates")
     }

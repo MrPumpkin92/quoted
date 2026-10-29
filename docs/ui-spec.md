@@ -124,7 +124,7 @@ Every quote says who brought its wording into Quoted and whether Quoted checked 
   - States: offline, the link row and location are left out when not cached. A profile push for a blocked or deleted person lands on "This profile isn't available". A reported post, message or playlist closes the sheet.
 - **Copy that travels with a quote.**
   - Save toast (`savedToast`): someone else's unchecked quote, "Saved to your library · Added by @alice"; anything else, "Saved to your library". Always with **Add to Reminders**, which toasts "Added to your reminders".
-  - Send footnote (`sendFootnote`): your own, "Your username stays with this quote."; someone else's, "Added by @alice stays with this quote.", plus " Sending also saves it to your library." when Send makes a copy (§11); catalog and unknown, none.
+  - Send footnote (`sendFootnote`): your own, "Your username stays with this quote."; someone else's, "Added by @alice stays with this quote.", plus " Sending also saves it to your library." when Send has to save a copy first (a friend favorite or a playlist item, §11); catalog and unknown, none.
   - Composer footnote: "Your username shows on the post." followed by the send footnote when there is one (§16).
   - Edit note (`editNote`): §7.
 - **Never shown** in widgets or notifications: no "Added by" text and no hollow seal (§13, §14). Reminders are private, and your Library must not read as a list of failures.
@@ -210,7 +210,7 @@ Removed: `.sharedInbox` ("Shared with you" is retired), `.account` and `.profile
 | `.widgetGuide`, `.reminderPicker`, `.safari(URL)` | As before | As before |
 
 - Removed: `.share(Quote)`. Its two halves are now `.send` and the **Share Image…** `ShareLink`, which needs no route.
-- Terms are never a route. The `.termsSheet()` modifier, driven by `SocialStore.requireTerms(then:)`, stacks over whatever asked, including a sheet (§22).
+- Terms are never a route. The `.termsSheet()` modifier, driven by `SocialStore.requireTerms(for:then:)`, stacks over whatever asked, including a sheet (§22).
 - The provenance sheet moves from a local `.sheet` in `QuoteDetailView` to the shell, so a link tapped under it is no longer lost.
 - Sheets that may hold typed text or a selection hold a deep link until they close: Add / Edit, the post composer, Send, New Message, Add to Playlist, New Playlist, Add Quotes, the catalog and Reminders pickers, the display-name sheet and the Terms sheet. A link closes the Provenance sheet, the widget guide and Safari.
 
@@ -467,7 +467,7 @@ One field, with grouped results across everything you can already reach. Search 
   - Under the card: "Your username is @alex." (`.footnote` `.secondary`; a long press offers Copy Username) and a borderless `ShareLink` "Share my username" (`square.and.arrow.up`, `UsernameInvite.text`). Add the App Store link once it exists.
   - Toasts: "Request sent to @maya", "No user named @x", "You're already friends with @maya", "@maya already asked you. Accept below." (also scrolls to Requests), and "Quoted keeps circles to 150 friends." (QR002).
 - **Requests**, shown only when there are any:
-  - Incoming: name, @handle, a bordered **Decline** and a bordered **Accept** in the accent tint. Accept is not filled: Add holds this screen's filled action.
+  - Incoming: name, @handle, a bordered **Decline** and a bordered **Accept** in the accent tint. Accept is not filled: Add holds this screen's filled action. From the tap until the server answers (the terms check included), Accept shows a spinner and ignores taps, and Decline is off.
   - Outgoing: "Requested" with **Cancel**.
   - At the default text size the buttons stay beside the person; a long name wraps to two lines instead. They move under the name only at larger sizes.
   - The `…` menu and context menu (and VoiceOver actions): Decline (incoming), Report @x…, Report and Block @x…, Block @x.
@@ -542,7 +542,7 @@ One field, with grouped results across everything you can already reach. Search 
   - The note: `TextField("Add a note (optional)", axis: .vertical)`, 1 to 4 lines, `.body`, in a Surface rounded rectangle (20) with a hairline; the counter "245/280" shows from 240. Hidden for playlists.
   - The footnote (`.footnote` `.secondary`, `sendFootnote`): your own quote "Your username stays with this quote."; someone else's "Added by @alice stays with this quote."; a catalog or unknown quote, none; a playlist "Each quote keeps who added it."
   - **Send** (`PrimaryButton`): "Send" (disabled with nothing selected), "Send to Maya" or "Send to 3 friends", loading while the server works. **The one filled action.**
-- **Someone else's quote** (a post, a message, a friend favorite or a playlist item). A checked one sends its catalog id. Any other is saved to your library first (not into Reminders), and the footnote adds " Sending also saves it to your library." Once the `messages` insert accepts `source_post_id` and `source_message_id` (record §3 change), nothing is saved and that sentence goes.
+- **Someone else's quote** (a post, a message, a friend favorite or a playlist item). A checked one sends its catalog id. A post or a message is forwarded as it is (`source_post_id` or `source_message_id`): nothing is saved, and the server copies what you can read, so a quote you can no longer see fails with "This quote is not available." A friend favorite or a playlist item has no forward source: it is saved to your library first (not into Reminders), and the footnote adds " Sending also saves it to your library."
 - **Sending.** Each friend gets one quote message in their 1:1 conversation, sent separately with its own client id. `.sensoryFeedback(.success)`.
   - All sent: the sheet closes with "Sent to Maya", "Sent to Maya and Jordan" or "Sent to 3 friends" and **Undo** for 5 s, which unsends them.
   - Some fail (unfriended, blocked, a closed conversation or a limit): the sheet closes with "Sent to Maya and Jordan. Couldn't send to @sam." and **Undo**, which unsends the delivered ones.
@@ -587,10 +587,10 @@ One field, with grouped results across everything you can already reach. Search 
 - UI tests reach Settings through the Profile tab and `profile.settings`.
 
 **Blocked users** (`BlockedUsersView`, `.blockedUsers`, from Settings › Privacy and the last row of Friends). Blocking no longer deletes anything.
-- Rows: `SocialPersonLabel` with a bordered **Unblock**. The context menu (and VoiceOver actions) also has Report @x….
+- Rows: `SocialPersonLabel` with a bordered **Unblock**. The context menu (and VoiceOver actions) also has Report @x…. Someone who blocked you back is still listed (the server no longer shows you their profile): a `person.slash` circle, "Blocked account" and "Their profile isn't available", with **Unblock** only.
 - Footer: "People you block can't find you by username, see your profile, posts, playlists or favorites, or message you. They aren't told. Unblocking doesn't make you friends again or reopen your conversation."
 - Empty: `ContentUnavailableView("No blocked users", systemImage: "hand.raised")` with "People you block can't find you by username or see anything you share. Block someone from the … menu on their profile or a conversation."
-- Unblock asks (here and on a profile): "Unblock @alice?" with "@alice can find you by username and send a friend request again. Your old conversation reopens only if you become friends again." Then the toast "Unblocked @alice".
+- Unblock asks (here and on a profile): "Unblock @alice?" with "@alice can find you by username and send a friend request again. Your old conversation reopens only if you become friends again." Then the toast "Unblocked @alice". For "Blocked account" (they blocked you too, and their block still keeps you apart): "Unblock this account?" with "You can find each other again only if neither of you blocks the other. Your old conversation reopens only if you become friends again." Then "Unblocked".
 - No filled action.
 
 ### 13. Widgets (`Margin-Widgets.png` + fixes)
@@ -767,7 +767,7 @@ A playlist is a titled, ordered list of quotes from your own library: titles of 
 - Opens from their profile and from a conversation's playlist card (**Open**).
 - Header: the title in `.title2` semibold; the owner as a tappable row (a 24-pt avatar, then "Maya Reyes · @maya" in `.subheadline` `.secondary`, pushing their profile; VoiceOver "Maya Reyes, @maya, opens profile"); "12 quotes".
 - The quotes in the owner's order: `QuoteText(.row)`, the `AttributionLine`, the card provenance line and a `SaveToLibraryButton(.capsule)`. A tap pushes `.quoteSnapshot(.playlistItem(…))`, paging in the owner's order.
-- Bottom bar: **Save a copy** (`PrimaryButton`). `save_playlist_copy` makes a playlist in your Playlists with the same title and audience Friends, with its quotes saved to your library (quotes you hold are skipped), each keeping its creator. On success: `.success`, the button becomes a disabled bordered "Saved" with `checkmark` for the rest of the visit, and the toast "Saved “Courage” to your playlists" with **Open**, which pushes your copy.
+- Bottom bar: **Save a copy** (`PrimaryButton`). `save_playlist_copy` makes a playlist in your Playlists with the same title and audience Only me (saving is private, like the rest of your library; you can switch it to Friends), with its quotes saved to your library (quotes you hold are skipped), each keeping its creator. On success: `.success`, the button becomes a disabled bordered "Saved" with `checkmark` for the rest of the visit, and the toast "Saved “Courage” to your playlists" with **Open**, which pushes your copy.
 - Toolbar `…`: View @maya's Profile, Report Playlist…, Report and Block @maya…. A report pops with "Thanks, we'll review it".
 - **States.** Loading: `DelayedProgressView`. No longer available (deleted, narrowed to Only me, unfriended, blocked or held): `ContentUnavailableView("This playlist is no longer available", systemImage: "rectangle.stack")` with "Copies you saved stay in your Playlists." and no bottom bar. Empty: "No quotes in this playlist yet." with no bottom bar. Items the server skips (held or filtered) simply aren't there. Error and offline: `MarginCardMessage` with **Try again**. Pull to refresh; it also refreshes on appear and on return to the foreground, with no polling.
 
@@ -875,7 +875,8 @@ A playlist is a titled, ordered list of quotes from your own library: titles of 
 - Type: `.title3` serif (the quote), `.body`, `.footnote` and `.caption`; regular and semibold only.
 
 ### 22. Terms sheet (first social action)
-- `SocialStore.requireTerms(then:)` checks `my_account().terms_version` against the current version before a friend request, accepting one, a post, a message or sent quote, and making a playlist visible to friends. Reading never needs terms.
+- `SocialStore.requireTerms(for:then:)` checks `my_account().terms_version` against the current version before a friend request, accepting one, a post, a message or sent quote, and making a playlist visible to friends. Reading never needs terms.
+- The control that asked shows its progress through the check (a server round trip unless the terms are cached as accepted), and its sheet can't close meanwhile. The check belongs to that screen or sheet: if it goes away before the server answers, nothing shows and nothing runs, and if it goes away while the Terms sheet waits, the write is dropped with it. A cancelled send never comes back as a Terms sheet over another screen.
 - Presented by the `.termsSheet()` modifier on the root and inside `SheetHost`, never as a `SheetRoute`. It stacks over the sheet that asked (Send, the composer, New Playlist) and never replaces it. Accept runs the pending action inside that sheet. **Not Now** (`.cancellationAction`) or a swipe down cancels the action and leaves that sheet and its typed text untouched.
 - A `NavigationStack` with a large title, detent `.large` and the drag indicator. It holds deep links.
   - Title "Community Terms", or "Updated Terms" after a version bump.

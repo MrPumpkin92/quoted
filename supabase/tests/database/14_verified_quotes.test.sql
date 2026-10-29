@@ -2,11 +2,16 @@
 -- starter quote has where-to-find-it details; quotes and shares get
 -- verified_starter_id only when body, author and source match a starter quote
 -- exactly; a client can never set it; editing the text clears it, formatting
--- does not; a shared verified quote stays verified.
+-- does not; a shared verified quote stays verified. Since
+-- 20261029090000_provenance_and_accounts the column is not writable by clients
+-- (42501), and a friend's copy is saved through save_from_favorite.
+-- Ported to 20261029090300_conversations_and_messages: shares became messages;
+-- a snapshot the server supplies (as the move of shares did) is verified
+-- against the catalog whatever verified_starter_id it carries. Removed: none.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(20);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -77,9 +82,16 @@ insert into public.profiles (id, username) values (tests.uid('a'), 'alice'), (te
 select tests.authenticate_as('a');
 insert into public.quotes (id, body, author, source)
   select tests.qid(1), body, author, source from tests.emerson;
--- A client claims verification for text that isn't a starter quote.
-insert into public.quotes (id, body, author, source, verified_starter_id)
-  values (tests.qid(2), 'Something I made up.', 'Ralph Waldo Emerson', 'Self-Reliance', 1);
+-- A client claims verification for text that isn't a starter quote: the
+-- column is not writable at all (20261029090000_provenance_and_accounts).
+select throws_ok(
+  $$ insert into public.quotes (id, body, author, source, verified_starter_id)
+     values (tests.qid(2), 'Something I made up.', 'Ralph Waldo Emerson', 'Self-Reliance', 1) $$,
+  '42501', null,
+  'a client cannot send verified_starter_id'
+);
+insert into public.quotes (id, body, author, source)
+  values (tests.qid(2), 'Something I made up.', 'Ralph Waldo Emerson', 'Self-Reliance');
 -- Right words, wrong attribution.
 insert into public.quotes (id, body, author, source)
   select tests.qid(3), body, 'Henry David Thoreau', source from tests.emerson;
@@ -89,7 +101,7 @@ insert into public.quotes (id, body, author, source)
 select tests.clear_authentication();
 
 select is(tests.verified(1), 1::smallint, 'an exact copy of a starter quote is verified');
-select is(tests.verified(2), null::smallint, 'a client cannot claim verification');
+select is(tests.verified(2), null::smallint, 'made-up words under a real author are not verified');
 select is(tests.verified(3), null::smallint, 'a different author is not verified');
 select is(tests.verified(4), null::smallint, 'a missing source is not verified');
 
@@ -114,7 +126,11 @@ select tests.clear_authentication();
 select is(tests.verified(1), null::smallint, 'editing the author clears verification');
 
 select tests.authenticate_as('a');
-update public.quotes set verified_starter_id = 5 where id = tests.qid(2);
+select throws_ok(
+  $$ update public.quotes set verified_starter_id = 5 where id = tests.qid(2) $$,
+  '42501', null,
+  'a client cannot update verified_starter_id'
+);
 update public.quotes set rotation_position = 0 where id = tests.qid(3);
 select tests.clear_authentication();
 select is(tests.verified(2), null::smallint, 'a client cannot set verification with an update');
@@ -128,31 +144,35 @@ select public.set_rotation(array[tests.qid(5)]);
 select tests.clear_authentication();
 select is(tests.verified(5), 1::smallint, 'set_rotation keeps verification');
 
--- Undo of a delete (restore through upsert) recomputes it.
-delete from public.quotes where id = tests.qid(5);
+-- Undo of a delete (a re-insert with the same id) recomputes it.
 select tests.authenticate_as('a');
-insert into public.quotes (id, body, author, source, verified_starter_id)
-  select tests.qid(5), body, author, source, null from tests.emerson
-  on conflict (id) do update set body = excluded.body, verified_starter_id = excluded.verified_starter_id;
+delete from public.quotes where id = tests.qid(5);
+insert into public.quotes (id, body, author, source)
+  select tests.qid(5), body, author, source from tests.emerson
+  on conflict (id) do update set body = excluded.body;
 select tests.clear_authentication();
 select is(tests.verified(5), 1::smallint, 'a restored quote is verified again');
 
--- ---- shares -------------------------------------------------------------------
-insert into public.shares (id, sender_id, recipient_id, body, author, source, verified_starter_id)
-  select tests.qid(31), tests.uid('a'), tests.uid('b'), body, author, source, null from tests.emerson;
-insert into public.shares (id, sender_id, recipient_id, body, author, source, verified_starter_id)
-  values (tests.qid(32), tests.uid('a'), tests.uid('b'), 'Not a starter quote.', 'Someone', null, 1);
-select is((select verified_starter_id from public.shares where id = tests.qid(31)), 1::smallint,
-  'a share of a verified quote is verified');
-select is((select verified_starter_id from public.shares where id = tests.qid(32)), null::smallint,
-  'a sender cannot claim verification for a share');
+-- ---- messages -----------------------------------------------------------------
+insert into public.conversations (id, user_a, user_b) values (tests.qid(30), tests.uid('a'), tests.uid('b'));
+insert into public.messages (id, conversation_id, sender_id, kind, body, author, source, verified_starter_id)
+  select tests.qid(31), tests.qid(30), tests.uid('a'), 'quote', body, author, source, null from tests.emerson;
+insert into public.messages (id, conversation_id, sender_id, kind, body, author, source, verified_starter_id)
+  values (tests.qid(32), tests.qid(30), tests.uid('a'), 'quote', 'Not a starter quote.', 'Someone', null, 1);
+select is((select verified_starter_id from public.messages where id = tests.qid(31)), 1::smallint,
+  'a message of a verified quote is verified');
+select is((select verified_starter_id from public.messages where id = tests.qid(32)), null::smallint,
+  'a sender cannot claim verification for a message');
 
--- The recipient saves the share: the copy is verified too.
+-- A friend saves a verified quote (direct origin 'shared' inserts are gone;
+-- this goes through save_from_favorite): the copy is verified too.
+insert into public.friendships (requester_id, addressee_id, status) values (tests.uid('a'), tests.uid('b'), 'accepted');
+update public.profiles set favorites_visibility = 'friends' where id = tests.uid('a');
+update public.quotes set is_favorite = true where id = tests.qid(5);
 select tests.authenticate_as('b');
-insert into public.quotes (id, body, author, source, origin)
-  select tests.qid(40), body, author, source, 'shared' from public.shares where id = tests.qid(31);
+select public.save_from_favorite(tests.uid('a'), (select f.id from public.friend_favorites(tests.uid('a')) f), tests.qid(40));
 select tests.clear_authentication();
-select is(tests.verified(40), 1::smallint, 'a saved share of a verified quote is verified');
+select is(tests.verified(40), 1::smallint, 'a saved copy of a verified quote is verified');
 
 -- Deleting a starter quote un-verifies its copies instead of failing.
 delete from public.starter_quotes where id = 1;

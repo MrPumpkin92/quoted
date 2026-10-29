@@ -2,7 +2,12 @@ import Foundation
 import QuotedCore
 import Supabase
 
-/// The signed-in user's library (`quotes`, owner only under RLS).
+/// The signed-in user's library (`quotes`, owner only under RLS), and saving other people's quotes
+/// into it through the server's save functions.
+///
+/// The server owns `origin` and provenance: a direct insert is your own words (manual or pasted, and
+/// you become the creator); catalog quotes come only from ``addCatalogQuotes(_:ids:inReminders:)`` and
+/// other people's words only from ``save(_:id:inReminders:)``, which keep their creator.
 public struct QuotesRepository: Sendable {
     let client: SupabaseClient
 
@@ -23,10 +28,11 @@ public struct QuotesRepository: Sendable {
         }
     }
 
-    /// Validates and saves a new quote with the given `id`. Pass `rotationPosition` to add it to the
-    /// Rotation at that position (see ``nextRotationPosition()``). A position another of your quotes
-    /// already holds moves to the end of the Rotation on the server (migration
-    /// `20261021100000_rotation_position_on_insert`); the returned quote has the final one.
+    /// Validates and saves a new quote of your own with the given `id` (you become its creator).
+    /// `origin` is `.manual` (typed) or `.pasted`; the server sets every other origin. Pass
+    /// `rotationPosition` to add it to the Rotation at that position (see ``nextRotationPosition()``).
+    /// A position another of your quotes already holds moves to the end of the Rotation on the server
+    /// (migration `20261021100000_rotation_position_on_insert`); the returned quote has the final one.
     ///
     /// Keep the same `id` when retrying a save whose answer was lost: if the first insert reached
     /// the server, the retry returns that quote instead of creating a second one.
@@ -37,6 +43,9 @@ public struct QuotesRepository: Sendable {
         rotationPosition: Int? = nil
     ) async throws -> Quote {
         _ = try client.requireUserID()
+        guard origin == .manual || origin == .pasted else {
+            throw QuotedError.server("origin \(origin.rawValue) is set by the server; use addCatalogQuotes or save")
+        }
         let validated = try validate(draft)
         let insert = QuoteInsert(validated, id: id, origin: origin, rotationPosition: rotationPosition.map { max(0, $0) })
         return try await mappingErrors(postgrest: Self.quoteLimitError) {
@@ -95,9 +104,14 @@ public struct QuotesRepository: Sendable {
         }
     }
 
-    /// Puts a deleted quote back with the same ID, content, origin and `rotationPosition` (Undo for
-    /// delete). Restoring a quote that still exists rewrites it with these values, so a retry is
-    /// harmless.
+    /// Puts a deleted quote back with the same ID, content, heart and `rotationPosition` (Undo for
+    /// delete). A plain insert, never an upsert: the server gives the row back its origin and
+    /// provenance from the one-day tombstone it kept, so "Added by" survives Undo. Restoring a quote
+    /// that still exists returns it as it is, so a retry is harmless: the retry of a manual quote
+    /// gets 23505, and the retry of a catalog or shared one 42501 (the first try used up its
+    /// tombstone, and without one the server refuses an origin it sets), and both read the quote back.
+    /// A catalog or shared quote whose tombstone is gone (over a day) fails with
+    /// ``QuotedError/server(_:)``.
     ///
     /// Timestamps are server-owned (migration `20261019060000_hardening`), so a quote that was really
     /// deleted comes back with new `createdAt` and `updatedAt` and sorts as the newest. The position
@@ -107,13 +121,16 @@ public struct QuotesRepository: Sendable {
         _ = try client.requireUserID()
         let validated = try validate(QuoteDraft(quote: quote))
         let row = QuoteRestoreRow(quote, content: validated)
-        return try await mappingErrors {
-            try await client.from(Table.quotes)
-                .upsert(row, onConflict: "id", returning: .representation)
-                .select(Columns.quote)
-                .single()
-                .execute()
-                .value
+        return try await mappingErrors(postgrest: Self.quoteLimitError) {
+            let restored = try await insertRecovering(ids: [quote.id], alsoAfterRefusal: true) {
+                try await client.from(Table.quotes)
+                    .insert(row, returning: .representation)
+                    .select(Columns.quote)
+                    .execute()
+                    .value
+            }
+            guard let first = restored.first else { throw QuotedError.server("The restored quote was not returned") }
+            return first
         }
     }
 
@@ -160,75 +177,75 @@ public struct QuotesRepository: Sendable {
         }
     }
 
-    /// Copies starter quotes into the library (origin `starter`) in one insert, in the given order.
-    /// With `addToRotation`, they join the end of the Rotation in that order.
+    /// Saves Quoted Catalog quotes to the library (origin `starter`, no creator: "Quoted Catalog"), in
+    /// the given order, through `public.add_catalog_quotes`. With `inReminders`, the server appends
+    /// them to the end of the Rotation in that order.
     ///
-    /// `ids` (one per starter, in order) are the new quotes' IDs; pass the same ones to retry after a
-    /// lost answer. Missing IDs are generated.
-    public func importStarter(_ starters: [StarterQuote], ids: [UUID] = [], addToRotation: Bool) async throws -> [Quote] {
+    /// `ids` (one per catalog id, in order) are the new quotes' IDs; pass the same ones to retry after
+    /// a lost answer and get the same quotes back. Missing IDs are generated. An unknown catalog id
+    /// fails with ``QuotedError/notFound``.
+    public func addCatalogQuotes(_ catalogIDs: [Int], ids: [UUID] = [], inReminders: Bool = false) async throws -> [Quote] {
         _ = try client.requireUserID()
-        guard !starters.isEmpty else { return [] }
-        let validated = try starters.map { try validate(QuoteDraft(starter: $0)) }
-        let quoteIDs = starters.indices.map { $0 < ids.count ? ids[$0] : UUID() }
-        let start = addToRotation ? try await nextRotationPosition() : 0
-        let inserts = validated.enumerated().map { offset, value in
-            QuoteInsert(value, id: quoteIDs[offset], origin: .starter, rotationPosition: addToRotation ? start + offset : nil)
-        }
+        guard !catalogIDs.isEmpty else { return [] }
+        let params = AddCatalogQuotesParams(
+            starterIDs: catalogIDs,
+            ids: catalogIDs.indices.map { $0 < ids.count ? ids[$0] : UUID() },
+            inReminders: inReminders
+        )
         return try await mappingErrors(postgrest: Self.quoteLimitError) {
-            let inserted = try await insertRecovering(ids: quoteIDs) {
-                try await client.from(Table.quotes)
-                    .insert(inserts, returning: .representation)
-                    .select(Columns.quote)
-                    .execute()
-                    .value
-            }
-            return addToRotation ? inserted.sorted(by: Self.rotationOrder) : inserted
+            try await client.rpc(RPC.addCatalogQuotes, params: params)
+                .select(Columns.quote)
+                .execute()
+                .value
         }
     }
 
-    /// Copies a received share into the library (origin `shared`), then marks the share saved.
+    /// Saves someone else's quote to your library (origin `shared`, keeping its creator and "edited
+    /// from", never the sender's name unless they added it), through the server function for its
+    /// source: `save_from_post`, `save_from_message`, `save_from_favorite`, `save_from_playlist`, or
+    /// `add_catalog_quotes` for a catalog quote. Saving is private: it needs no terms. With
+    /// `inReminders` it joins the end of the Rotation.
     ///
-    /// Marking is best effort: once the copy exists, a failure to stamp `saved_at` is not reported,
-    /// so a retry cannot create a duplicate. Pass the same `id` to retry after a lost answer.
-    public func saveShared(_ share: SharedQuote, id: UUID = UUID(), addToRotation: Bool) async throws -> Quote {
-        let me = try client.requireUserID()
-        guard share.recipientID == me else { throw QuotedError.notFound }
-        let validated = try validate(QuoteDraft(shared: share))
-        let position = addToRotation ? try await nextRotationPosition() : nil
-        let insert = QuoteInsert(validated, id: id, origin: .shared, rotationPosition: position)
-        let quote: Quote = try await mappingErrors(postgrest: Self.quoteLimitError) {
-            let inserted = try await insertRecovering(ids: [id]) {
-                try await client.from(Table.quotes)
-                    .insert(insert, returning: .representation)
-                    .select(Columns.quote)
-                    .execute()
-                    .value
-            }
-            guard let quote = inserted.first else { throw QuotedError.server("The saved quote was not returned") }
+    /// Pass the same `id` to retry after a lost answer. A playlist item whose text and author you
+    /// already hold returns that quote instead (its id may differ). Throws
+    /// ``QuotedError/unavailable(_:)`` when you can't see the source any more (deleted, unsent,
+    /// reported, blocked, unfriended).
+    @discardableResult
+    public func save(_ source: SnapshotRef, id: UUID = UUID(), inReminders: Bool = false) async throws -> Quote {
+        _ = try client.requireUserID()
+        let params = SaveParams(source: source, id: id, inReminders: inReminders)
+        guard let function = params.function else {
+            guard case .catalog(let catalogID) = source,
+                  let quote = try await addCatalogQuotes([catalogID], ids: [id], inReminders: inReminders).first
+            else { throw QuotedError.server("The saved quote was not returned") }
             return quote
         }
-        do {
-            try await client.from(Table.shares)
-                .update(ShareSavedUpdate(savedAt: Date()), returning: .minimal)
-                .eq("id", value: share.id)
-                .eq("recipient_id", value: me)
+        return try await mappingErrors(postgrest: Self.quoteLimitError) {
+            try await client.rpc(function, params: params)
+                .select(Columns.quote)
+                .single()
                 .execute()
-        } catch {
-            // Best effort; see the doc comment.
+                .value
         }
-        return quote
     }
 
     // MARK: Helpers
 
     /// Runs an insert of quotes with client-chosen `ids`. A unique violation can mean an earlier
     /// attempt with the same IDs reached the server and only its answer was lost: then every one of
-    /// `ids` is already a visible quote, and those rows are the result (in `ids` order). Any other
+    /// `ids` is already a visible quote, and those rows are the result (in `ids` order). With
+    /// `alsoAfterRefusal`, a 42501 is read back the same way (a BEFORE INSERT check that refuses the
+    /// retry before the primary key can; see ``PostgrestError/mayHideEarlierInsert``). Any other
     /// conflict (for example a Rotation position) is thrown as it came.
-    private func insertRecovering(ids: [UUID], _ insert: () async throws -> [Quote]) async throws -> [Quote] {
+    private func insertRecovering(
+        ids: [UUID],
+        alsoAfterRefusal: Bool = false,
+        _ insert: () async throws -> [Quote]
+    ) async throws -> [Quote] {
         do {
             return try await insert()
-        } catch let error as PostgrestError where error.code == "23505" {
+        } catch let error as PostgrestError
+            where error.code == "23505" || (alsoAfterRefusal && error.mayHideEarlierInsert) {
             let existing: [Quote] = try await client.from(Table.quotes)
                 .select(Columns.quote)
                 .in("id", values: ids)

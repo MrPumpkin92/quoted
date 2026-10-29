@@ -163,12 +163,15 @@ struct RouteDestination: View {
     }
 }
 
-/// The view for a presented `SheetRoute`, with its own toast host.
+/// The view for a presented `SheetRoute`, with its own toast host and Terms sheet (a send from the
+/// share sheet stacks the Terms sheet over it).
 struct SheetHost: View {
     let sheet: SheetRoute
 
     var body: some View {
         content
+            .termsSheet()
+            .environment(\.isInShellSheet, true)
             .toastHost()
     }
 

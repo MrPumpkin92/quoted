@@ -165,9 +165,9 @@ struct AccountView: View {
     // MARK: Profile
 
     /// Your profile: your favorites and the switch that shows them to friends. The detail line says
-    /// who can see them.
+    /// who can see them, once the account has loaded (no line before that, never a wrong one).
     private var profileRow: some View {
-        let shows = session.profile?.showsFavorites == true
+        let shows = session.showsFavorites
         return Button {
             if let profile = session.profile {
                 router.push(.profile(profile))
@@ -176,7 +176,7 @@ struct AccountView: View {
             AccountRowLabel(
                 title: "Your profile",
                 systemImage: "heart.text.square",
-                detail: shows ? "Friends can see your favorites" : "Your favorites are private",
+                detail: shows.map { $0 ? "Friends can see your favorites" : "Your favorites are private" },
                 accessory: .disclosure
             )
         }

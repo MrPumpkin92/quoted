@@ -6,7 +6,7 @@ public enum QuoteOrigin: String, Codable, Hashable, Sendable, CaseIterable {
     case manual
     /// Picked from the starter pack during onboarding.
     case starter
-    /// Saved from a quote a friend shared.
+    /// Saved from someone else's quote (a message, post, playlist or favorite) by a save function.
     case shared
     /// Brought back with the PasteButton (for example from a web search).
     case pasted
@@ -22,7 +22,11 @@ public enum QuoteOrigin: String, Codable, Hashable, Sendable, CaseIterable {
 ///
 /// Coding keys match the columns (`body_format`, `rotation_position`, `created_at`, `updated_at`), so
 /// PostgREST rows decode directly with ``QuotedJSON/makeDecoder()``. Decoding clamps `format` to
-/// `body`, and encoding writes explicit nulls for `author`, `source` and `rotation_position`.
+/// `body`, and encoding writes explicit nulls for `author`, `source` and `rotation_position`. Rows and
+/// caches written before a column existed decode with its default.
+///
+/// `origin`, `verifiedStarterID` and the provenance pairs (`creator_*`, `edited_from_*`) are
+/// server-owned: the repositories never send them.
 public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
     public var id: UUID
     /// Plain text, 1–2000 characters.
@@ -39,15 +43,28 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
     /// The starter quote whose wording, author and source this quote matches exactly, or nil. Set by
     /// the server only (trigger `quotes_set_verified`); editing the text clears it.
     public var verifiedStarterID: Int?
-    /// The owner's heart. Friends see favorites only when the owner shows them (`Profile.showsFavorites`).
+    /// The owner's heart. Friends see favorites only when the owner's `favorites_visibility` is friends.
     public var isFavorite: Bool
     /// When it became a favorite (server clock), or nil.
     public var favoritedAt: Date?
+    /// The account that brought this wording into Quoted ("Added by"), or nil when unknown, deleted or
+    /// a Quoted Catalog quote. Server-owned.
+    public var creatorID: UUID?
+    /// `creatorID`'s username. Server-owned.
+    public var creatorUsername: String?
+    /// The previous creator, when the creator changed someone else's wording ("Edited from"). Server-owned.
+    public var editedFromID: UUID?
+    /// `editedFromID`'s username. Server-owned.
+    public var editedFromUsername: String?
 
     /// Whether the quote is part of the Rotation.
     public var isInRotation: Bool { rotationPosition != nil }
     /// Whether the wording and attribution were checked against a public-domain source.
     public var isVerified: Bool { verifiedStarterID != nil }
+    /// Who added it and whether Quoted checked it.
+    public var provenance: Provenance {
+        Provenance(catalogID: verifiedStarterID, creatorUsername: creatorUsername, editedFromUsername: editedFromUsername)
+    }
 
     /// Creates a quote. `format` is normalized against `body`; `updatedAt` defaults to `createdAt`.
     public init(
@@ -62,7 +79,11 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
         updatedAt: Date? = nil,
         verifiedStarterID: Int? = nil,
         isFavorite: Bool = false,
-        favoritedAt: Date? = nil
+        favoritedAt: Date? = nil,
+        creatorID: UUID? = nil,
+        creatorUsername: String? = nil,
+        editedFromID: UUID? = nil,
+        editedFromUsername: String? = nil
     ) {
         self.id = id
         self.body = body
@@ -76,6 +97,10 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
         self.verifiedStarterID = verifiedStarterID
         self.isFavorite = isFavorite
         self.favoritedAt = isFavorite ? favoritedAt : nil
+        self.creatorID = creatorID
+        self.creatorUsername = creatorUsername
+        self.editedFromID = editedFromID
+        self.editedFromUsername = editedFromUsername
     }
 
     /// "author, source", or nil when neither is set.
@@ -99,6 +124,10 @@ extension Quote: Codable {
         case verifiedStarterID = "verified_starter_id"
         case isFavorite = "is_favorite"
         case favoritedAt = "favorited_at"
+        case creatorID = "creator_id"
+        case creatorUsername = "creator_username"
+        case editedFromID = "edited_from_id"
+        case editedFromUsername = "edited_from_username"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -115,6 +144,10 @@ extension Quote: Codable {
         verifiedStarterID = try container.decodeIfPresent(Int.self, forKey: .verifiedStarterID)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         favoritedAt = isFavorite ? try container.decodeIfPresent(Date.self, forKey: .favoritedAt) : nil
+        creatorID = try container.decodeIfPresent(UUID.self, forKey: .creatorID)
+        creatorUsername = try container.decodeIfPresent(String.self, forKey: .creatorUsername)
+        editedFromID = try container.decodeIfPresent(UUID.self, forKey: .editedFromID)
+        editedFromUsername = try container.decodeIfPresent(String.self, forKey: .editedFromUsername)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -131,5 +164,9 @@ extension Quote: Codable {
         try container.encode(verifiedStarterID, forKey: .verifiedStarterID)
         try container.encode(isFavorite, forKey: .isFavorite)
         try container.encode(favoritedAt, forKey: .favoritedAt)
+        try container.encode(creatorID, forKey: .creatorID)
+        try container.encode(creatorUsername, forKey: .creatorUsername)
+        try container.encode(editedFromID, forKey: .editedFromID)
+        try container.encode(editedFromUsername, forKey: .editedFromUsername)
     }
 }
