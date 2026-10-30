@@ -161,6 +161,8 @@ def cmd_generate(args):
     from . import sqlgen
     if args.action == "batch":
         return sqlgen.generate_batch(args.number, timestamp=args.timestamp)
+    if args.action == "repin":
+        return sqlgen.generate_repin(args.quote, args.reason, timestamp=args.timestamp)
     if args.action == "check":
         return sqlgen.check()
     return 2
@@ -211,8 +213,10 @@ def main(argv):
     ap.add_argument("--run", required=True)
     ap.set_defaults(fn=cmd_approve)
     g = sub.add_parser("generate")
-    g.add_argument("action", choices=["batch", "check"])
+    g.add_argument("action", choices=["batch", "repin", "check"])
     g.add_argument("number", nargs="?", type=int)
+    g.add_argument("--quote", type=int, action="append", help="repin: a catalog quote id (repeatable)")
+    g.add_argument("--reason", help="repin: why, for the migration and docs/catalog-sources.md")
     g.add_argument("--timestamp")
     g.set_defaults(fn=cmd_generate)
     sub.add_parser("sources-doc").set_defaults(fn=cmd_sources_doc)

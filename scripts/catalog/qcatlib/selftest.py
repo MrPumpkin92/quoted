@@ -4,6 +4,7 @@ gate (`acceptance`) runs on the corpus itself."""
 
 import json
 import os
+import re
 
 from . import config, corpus, match, normalize, pd, registry, render, sqlgen, starters as starters_mod, verify
 from .rejects import RejectList
@@ -53,6 +54,20 @@ def unit(failures):
     a, b = sqlgen.render_sql(snap), sqlgen.render_sql(snap)
     _check(failures, a == b and "$q1$It costs $q$ nothing.$q1$" in a and "update " not in a.lower().replace("-- ", ""),
            "render_sql is not deterministic or quotes unsafely")
+    # A re-pin sets only provenance, from the exact emitted values, and never the seal's key.
+    old = {c: snap["quotes"][0][c] for c in sqlgen.REPIN_QUOTE_COLS}
+    rp = {"meta": {"repin": "999", "ids": [61], "reason": "A scan-backed witness.", "generated_with": "0" * 40},
+          "works": [{"id": 1, "from": {c: snap["works"][0][c] for c in sqlgen.REPIN_WORK_COLS},
+                     "to": dict({c: snap["works"][0][c] for c in sqlgen.REPIN_WORK_COLS}, edition_year=1902, gutenberg_id=6)}],
+          "quotes": [{"id": 61, "from_ref": "pg5", "to_ref": "pg6", "from": old,
+                      "to": dict(old, checked_ebook_id=6, checked_start=40, checked_end=60)}]}
+    sql = sqlgen.render_repin_sql(rp)
+    sets = re.findall(r"(?ms)^set (.*?)^where", sql)
+    _check(failures, sql == sqlgen.render_repin_sql(rp) and len(sets) == 2
+           and not re.search(r"\b(body|author|source|citation|author_id|work_id|id) =", " ".join(sets))
+           and "checked_start = 40" in sets[1] and "checked_end = 60" in sets[1] and "source_url" not in sets[1]
+           and sql.count("is not distinct from") == 4 and not re.search(r"(?im)^\s*(insert|delete)\b", sql),
+           "render_repin_sql must set only the changed provenance, compare-and-set: %s" % sets)
     # A Disputed entry in other words holds a line found in the author's own work; the same words reject.
     who = {"name": "A", "slug": "a", "aliases": []}
     rl = RejectList([{"text": "Let us endeavor to live so that we die well", "kind": "disputed", "author": "A"}])
