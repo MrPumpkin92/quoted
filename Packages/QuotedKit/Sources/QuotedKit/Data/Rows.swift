@@ -15,7 +15,9 @@ enum Table {
     static let blocks = "blocks"
     static let shares = "shares"
     static let reports = "reports"
+    /// The live onboarding starters: a view of `catalog_quotes`, kept for builds up to 6.
     static let starterQuotes = "starter_quotes"
+    static let catalogQuotes = "catalog_quotes"
     static let events = "events"
 }
 
@@ -60,6 +62,9 @@ enum Columns {
     static let blockedProfile = "blocked_id, blocked:profiles!blocks_blocked_id_fkey(\(profile))"
 
     static let starterQuote = "id, body, body_format, author, source, sort_order, source_location, source_url"
+
+    /// What the app shows of a catalog quote. The provenance columns stay server-side.
+    static let catalogQuote = "id, body, body_format, author, source, source_location, source_url, speaker, themes, is_starter, sort_order, status"
 }
 
 // MARK: quotes

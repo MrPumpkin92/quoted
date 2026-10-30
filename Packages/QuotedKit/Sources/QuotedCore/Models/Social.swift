@@ -61,7 +61,7 @@ public struct FriendFavorite: Identifiable, Hashable, Sendable, RichTextContent 
     public var format: [TextRun]
     public var author: String?
     public var source: String?
-    /// Set when the wording and attribution match a starter quote (the verified seal).
+    /// Set when the wording and attribution match a catalog quote (the verified seal).
     public var verifiedStarterID: Int?
     public var favoritedAt: Date?
 
@@ -250,7 +250,7 @@ public struct SharedQuote: Identifiable, Hashable, Sendable, RichTextContent {
     public var createdAt: Date
     public var seenAt: Date?
     public var savedAt: Date?
-    /// The starter quote this share's wording, author and source match exactly, or nil. Set by the
+    /// The catalog quote this share's wording, author and source match exactly, or nil. Set by the
     /// server only (trigger `shares_set_verified`).
     public var verifiedStarterID: Int?
 
@@ -358,8 +358,9 @@ extension SharedQuote: Codable {
     }
 }
 
-/// One curated public-domain quote from `starter_quotes`. Every one was checked word for word against
-/// the public-domain text at `sourceURL` (docs/starter-pack-sources.md).
+/// One onboarding starter quote from `starter_quotes` (the live starters in `catalog_quotes`; see
+/// ``CatalogQuote``). Every one was checked word for word against the public-domain text at
+/// `sourceURL` (docs/starter-pack-sources.md).
 public struct StarterQuote: Identifiable, Hashable, Sendable, RichTextContent {
     public var id: Int
     public var body: String

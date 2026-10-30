@@ -108,6 +108,28 @@ struct DecodingTests {
         #expect(starters[0].attribution == "Ralph Waldo Emerson, Self-Reliance")
     }
 
+    @Test func catalogQuotes() throws {
+        let json = """
+        [{"id":1,"body":"Trust thyself.","body_format":[],"author":"Ralph Waldo Emerson","source":"Self-Reliance",
+          "source_location":"Essays: First Series (1841), 3rd paragraph","source_url":"https://www.gutenberg.org/ebooks/2944",
+          "speaker":null,"themes":["self","courage"],"is_starter":true,"sort_order":1,"status":"live"},
+         {"id":61,"body":"A thing of beauty is a joy for ever:","body_format":[{"start":2,"length":5,"italic":true}],
+          "author":"John Keats","source":"Endymion","source_location":"Book I, line 1",
+          "source_url":"https://www.gutenberg.org/ebooks/24280","speaker":null,"themes":["nature"],
+          "is_starter":false,"sort_order":null,"status":"retired"}]
+        """
+        let quotes = try decode([CatalogQuote].self, json)
+        #expect(quotes.map(\.id) == [1, 61])
+        #expect(quotes.map(\.isStarter) == [true, false])
+        #expect(quotes.map(\.sortOrder) == [1, nil])
+        #expect(quotes.map(\.themes) == [[.selfhood, .courage], [.nature]])
+        #expect(quotes.map(\.status) == [.live, .retired])
+        #expect(quotes.map(\.libraryOrigin) == [.starter, .catalog])
+        #expect(quotes[1].format == [TextRun(start: 2, length: 5, italic: true)])
+        #expect(quotes[0].sourceURL?.host() == "www.gutenberg.org")
+        #expect(CatalogQuote.sections(quotes).map(\.theme) == [.nature, .selfhood])
+    }
+
     @Test func profilesAndBlocks() throws {
         let profile = try decode(Profile?.self, #"{"id":"\#(Self.alice)","username":"alice","display_name":"Alice"}"#)
         #expect(profile?.username == "alice")

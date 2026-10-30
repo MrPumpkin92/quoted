@@ -3,7 +3,7 @@ import SwiftUI
 /// A guided empty state: a glyph, a title, a line of help, exactly one filled action and an optional
 /// quiet link below it.
 ///
-/// Example (Library): "Your library is empty" · Add your first quote · Pick from the starter pack.
+/// Example (Library): "Your library is empty" · Add your first quote · Browse verified quotes.
 struct EmptyStateView: View {
     private let systemImage: String?
     private let title: LocalizedStringKey
@@ -105,7 +105,7 @@ struct DelayedProgressView: View {
         message: "Save the lines you want to see again.",
         actionTitle: "Add your first quote",
         action: {},
-        secondaryTitle: "Pick from the starter pack",
+        secondaryTitle: "Browse verified quotes",
         secondaryAction: {}
     )
     .frame(maxHeight: .infinity)

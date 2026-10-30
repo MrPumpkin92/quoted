@@ -1,12 +1,12 @@
--- Verified quotes (supabase/migrations/20261024090000_verified_quotes.sql): every
--- starter quote has where-to-find-it details; quotes and shares get
--- verified_starter_id only when body, author and source match a starter quote
--- exactly; a client can never set it; editing the text clears it, formatting
--- does not; a shared verified quote stays verified.
+-- Verified quotes (supabase/migrations/20261024090000_verified_quotes.sql, widened to the catalog by
+-- 20261028120000_catalog_corpus.sql): every starter quote has where-to-find-it details; quotes and
+-- shares get verified_starter_id only when body, author and source match a catalog quote exactly; a
+-- client can never set it; editing the text clears it, formatting does not; a shared verified quote
+-- stays verified; withdrawing a catalog quote clears it. Non-starter rows: 16_catalog.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(19);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -47,7 +47,7 @@ begin
 end
 $$;
 
-create function tests.verified(n int) returns smallint language sql stable as $$
+create function tests.verified(n int) returns integer language sql stable as $$
   select verified_starter_id from public.quotes where id = tests.qid(n)
 $$;
 
@@ -88,37 +88,37 @@ insert into public.quotes (id, body, author, source)
   select tests.qid(4), body, author, null from tests.emerson;
 select tests.clear_authentication();
 
-select is(tests.verified(1), 1::smallint, 'an exact copy of a starter quote is verified');
-select is(tests.verified(2), null::smallint, 'a client cannot claim verification');
-select is(tests.verified(3), null::smallint, 'a different author is not verified');
-select is(tests.verified(4), null::smallint, 'a missing source is not verified');
+select is(tests.verified(1), 1::integer, 'an exact copy of a starter quote is verified');
+select is(tests.verified(2), null::integer, 'a client cannot claim verification');
+select is(tests.verified(3), null::integer, 'a different author is not verified');
+select is(tests.verified(4), null::integer, 'a missing source is not verified');
 
 select tests.authenticate_as('a');
 update public.quotes set body_format = '[{"start": 0, "length": 5, "bold": true}]' where id = tests.qid(1);
 select tests.clear_authentication();
-select is(tests.verified(1), 1::smallint, 'formatting keeps the quote verified');
+select is(tests.verified(1), 1::integer, 'formatting keeps the quote verified');
 
 select tests.authenticate_as('a');
 update public.quotes set body = body || ' Indeed.' where id = tests.qid(1);
 select tests.clear_authentication();
-select is(tests.verified(1), null::smallint, 'editing the wording clears verification');
+select is(tests.verified(1), null::integer, 'editing the wording clears verification');
 
 select tests.authenticate_as('a');
 update public.quotes q set body = e.body from tests.emerson e where q.id = tests.qid(1);
 select tests.clear_authentication();
-select is(tests.verified(1), 1::smallint, 'restoring the exact wording verifies it again');
+select is(tests.verified(1), 1::integer, 'restoring the exact wording verifies it again');
 
 select tests.authenticate_as('a');
 update public.quotes set author = 'R. W. Emerson' where id = tests.qid(1);
 select tests.clear_authentication();
-select is(tests.verified(1), null::smallint, 'editing the author clears verification');
+select is(tests.verified(1), null::integer, 'editing the author clears verification');
 
 select tests.authenticate_as('a');
 update public.quotes set verified_starter_id = 5 where id = tests.qid(2);
 update public.quotes set rotation_position = 0 where id = tests.qid(3);
 select tests.clear_authentication();
-select is(tests.verified(2), null::smallint, 'a client cannot set verification with an update');
-select is(tests.verified(3), null::smallint, 'an unrelated update changes nothing');
+select is(tests.verified(2), null::integer, 'a client cannot set verification with an update');
+select is(tests.verified(3), null::integer, 'an unrelated update changes nothing');
 
 -- Rotation writes don't touch the text, so they keep verification.
 select tests.authenticate_as('a');
@@ -126,7 +126,7 @@ insert into public.quotes (id, body, author, source, rotation_position)
   select tests.qid(5), body, author, source, null from tests.emerson;
 select public.set_rotation(array[tests.qid(5)]);
 select tests.clear_authentication();
-select is(tests.verified(5), 1::smallint, 'set_rotation keeps verification');
+select is(tests.verified(5), 1::integer, 'set_rotation keeps verification');
 
 -- Undo of a delete (restore through upsert) recomputes it.
 delete from public.quotes where id = tests.qid(5);
@@ -135,16 +135,16 @@ insert into public.quotes (id, body, author, source, verified_starter_id)
   select tests.qid(5), body, author, source, null from tests.emerson
   on conflict (id) do update set body = excluded.body, verified_starter_id = excluded.verified_starter_id;
 select tests.clear_authentication();
-select is(tests.verified(5), 1::smallint, 'a restored quote is verified again');
+select is(tests.verified(5), 1::integer, 'a restored quote is verified again');
 
 -- ---- shares -------------------------------------------------------------------
 insert into public.shares (id, sender_id, recipient_id, body, author, source, verified_starter_id)
   select tests.qid(31), tests.uid('a'), tests.uid('b'), body, author, source, null from tests.emerson;
 insert into public.shares (id, sender_id, recipient_id, body, author, source, verified_starter_id)
   values (tests.qid(32), tests.uid('a'), tests.uid('b'), 'Not a starter quote.', 'Someone', null, 1);
-select is((select verified_starter_id from public.shares where id = tests.qid(31)), 1::smallint,
+select is((select verified_starter_id from public.shares where id = tests.qid(31)), 1::integer,
   'a share of a verified quote is verified');
-select is((select verified_starter_id from public.shares where id = tests.qid(32)), null::smallint,
+select is((select verified_starter_id from public.shares where id = tests.qid(32)), null::integer,
   'a sender cannot claim verification for a share');
 
 -- The recipient saves the share: the copy is verified too.
@@ -152,11 +152,17 @@ select tests.authenticate_as('b');
 insert into public.quotes (id, body, author, source, origin)
   select tests.qid(40), body, author, source, 'shared' from public.shares where id = tests.qid(31);
 select tests.clear_authentication();
-select is(tests.verified(40), 1::smallint, 'a saved share of a verified quote is verified');
+select is(tests.verified(40), 1::integer, 'a saved share of a verified quote is verified');
 
--- Deleting a starter quote un-verifies its copies instead of failing.
-delete from public.starter_quotes where id = 1;
-select is(tests.verified(40), null::smallint, 'deleting a starter quote clears the copies');
+-- Catalog quotes are never deleted. Withdrawing one (its wording or credit was wrong) takes the seal
+-- off every copy, and a fresh copy afterwards stays unsealed.
+select private.catalog_withdraw(1, 'test withdrawal');
+select is(tests.verified(40), null::integer, 'withdrawing a catalog quote clears the copies');
+select tests.authenticate_as('a');
+insert into public.quotes (id, body, author, source)
+  select tests.qid(41), body, author, source from tests.emerson;
+select tests.clear_authentication();
+select is(tests.verified(41), null::integer, 'a new copy of a withdrawn quote is not verified');
 
 select * from finish();
 rollback;

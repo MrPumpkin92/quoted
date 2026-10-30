@@ -74,7 +74,7 @@ struct ComponentGallery: View {
                         title: "Your library is empty",
                         actionTitle: "Add your first quote",
                         action: {},
-                        secondaryTitle: "Pick from the starter pack",
+                        secondaryTitle: "Browse verified quotes",
                         secondaryAction: {}
                     )
                     .card()

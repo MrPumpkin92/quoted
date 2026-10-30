@@ -97,9 +97,9 @@ Deep links (`quoted://`):
 ### 5. Library (Home)
 - Large title "Library". A filled accent `+` in the toolbar opens a menu:
   - **New Quote** opens Add.
-  - **From the Starter Pack** opens the starter picker, with the quotes you already have dimmed. Its picks join your reminders.
+  - **Browse Verified Quotes** (`checkmark.seal`) opens the **Verified Quotes** sheet: every live quote in `catalog_quotes` (the starters and the later batches), in sections by theme in a fixed order (Courage, Calm, Time, Love, Nature, Purpose, Self). Each quote shows once, under its first theme. The top says "They'll show up in your widget and reminders." and, with the seal, "Every quote is checked word for word against its source."; the rows don't repeat the seal. Rows toggle a check circle; the quotes you already have are dimmed. The pinned button reads **Add N quotes**; the picks join your library and the end of your reminders, in list order, with "Added N quotes".
 
-  This is how people find more verified quotes after onboarding; the empty state used to be the only way in.
+  This is how people find more verified quotes after onboarding; the empty state used to be the only way in. Onboarding (§3) still offers only the starters.
 - **StatusCard** (shown when at least one quote is in reminders) pushes Reminders. It has a bell tile in a soft accent square and reads:
   - Normal: "**6 quotes in your reminders**" / "3× daily · Next at 8:00 PM".
   - Off states: "Reminders off · Turn on", or "Notifications off in Settings · Turn on", which opens `UIApplication.openNotificationSettingsURLString`.
@@ -112,13 +112,13 @@ Deep links (`quoted://`):
   - Leading swipe: Share and Favorite / Remove from favorites (pink fill). Trailing swipe: Delete (destructive) and Reminders (add or remove).
   - The context menu holds Share, Add to / Remove from reminders, Favorite / Remove from favorites, Edit and Delete.
 - Pull to refresh.
-- **Empty state:** "Your library is empty" with a filled **Add your first quote** button and a quiet "Pick from the starter pack" link (presents the starter picker). The StatusCard stays hidden. The toolbar `+` turns quiet (glass with an accent glyph) while the empty or load-failed state shows, so the screen keeps one filled action.
+- **Empty state:** "Your library is empty" with a filled **Add your first quote** button and a quiet "Browse verified quotes" link (presents Verified Quotes). The StatusCard stays hidden. The toolbar `+` turns quiet (glass with an accent glyph) while the empty or load-failed state shows, so the screen keeps one filled action.
 
 ### 6. Quote detail (graft from Daily)
 - The `QuoteCard` page fills the width: `Surface` and hairline, 32pt padding, the hero serif quote and the attribution.
 - A horizontal pager (`TabView` `.page` style) across the list it was opened from: the Library order, or the reminder order when opened from a deep link. For VoiceOver the "2 of 8" counter is adjustable ("Quote, 2 of 8": swipe up or down to change quotes) and each card has Next quote / Previous quote actions.
 - Below the card:
-  - For a verified quote, a bordered accent capsule **Verified quote** (`checkmark.seal.fill`) above Share. It opens a sheet: the seal and "Verified quote", one sentence on the check, a card with the work (serif italic), the author and where in the work, a **Read it on Project Gutenberg / Wikisource** row (in-app browser), and "Change the wording, author or source and the seal comes off."
+  - For a verified quote, a bordered accent capsule **Verified quote** (`checkmark.seal.fill`) above Share. It opens a sheet: the seal and "Verified quote", one sentence on the check, a card with the work (serif italic), the author, "Spoken by …" when a character speaks the line, and where in the work (looked up in `catalog_quotes` by the quote's seal id), a **Read it on Project Gutenberg / Wikisource** row (in-app browser), and "Change the wording, author or source and the seal comes off."
   - A primary **Share** button.
   - An "In reminders" `Toggle` with the caption "Shows up in widgets and reminders".
 - Toolbar: the favorite heart (`heart` / `heart.fill`; VoiceOver "Favorite", Selected while on), then Edit and a `…` menu with Delete (behind a confirmation).
@@ -157,7 +157,7 @@ Deep links (`quoted://`):
 - **Shuffle:** the order is random each cycle, so rows show no numbers and can't be reordered (no drag handles, no Move up/down actions). The section footer reads "Shown in random order. Choose In order to arrange them."
 - An "Add quotes" button opens `ReminderQuotePicker`, a multi-select of library quotes that aren't in reminders.
   - The button is never disabled.
-  - When every library quote is already in reminders (where onboarding leaves everyone), the picker says "Every quote is in your reminders" and offers **Browse the starter pack** (filled) and **Write your own** (quiet).
+  - When every library quote is already in reminders (where onboarding leaves everyone), the picker says "Every quote is in your reminders" and offers **Browse verified quotes** (filled, presents Verified Quotes) and **Write your own** (quiet).
 - Every change re-plans notifications and updates the widget snapshot right away.
 
 ### 9. Search (`Tab(role: .search)`, `Margin-Search.png`)

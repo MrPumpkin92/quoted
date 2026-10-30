@@ -1,29 +1,17 @@
-// The starter pack (docs/ui-spec.md §3) and, in onboarding, notification priming (§4).
+// The starter pack (docs/ui-spec.md §3) and notification priming (§4), in onboarding.
 //
-// RootView shows `StarterFlowView(mode: .onboarding)` while `SessionStore.phase == .needsStarter`: pick
-// quotes → import them → priming → `SessionStore.completeOnboarding()`. Skip completes onboarding
-// with an empty library. The shell presents `StarterFlowView(mode: .addMore)` as the `.starterPack`
-// sheet (Library's empty state): pick → import → dismiss.
+// RootView shows `StarterFlowView()` while `SessionStore.phase == .needsStarter`: pick quotes →
+// import them → priming → `SessionStore.completeOnboarding()`. Skip completes onboarding with an
+// empty library. It offers only the starters (`StarterStore`, `starter_quotes`); after onboarding,
+// Verified Quotes (`VerifiedQuotesView`) offers the whole catalog.
 
 import QuotedCore
 import SwiftUI
 
-/// Why the starter pack is showing.
-enum StarterFlowMode: Hashable, Sendable {
-    /// First run: pick quotes, then notification priming, then `completeOnboarding()`.
-    case onboarding
-    /// From Library's empty state: pick quotes, import them, dismiss.
-    case addMore
-}
-
 struct StarterFlowView: View {
-    let mode: StarterFlowMode
-
     @Environment(SessionStore.self) private var session
     @Environment(LibraryStore.self) private var library
     @Environment(ReminderStore.self) private var reminders
-    @Environment(ToastCenter.self) private var toasts
-    @Environment(\.dismiss) private var dismiss
 
     @State private var step: Step = .pick
     @State private var isImporting = false
@@ -35,21 +23,17 @@ struct StarterFlowView: View {
         case priming(sample: NotificationQuote)
     }
 
-    init(mode: StarterFlowMode) {
-        self.mode = mode
-    }
+    init() {}
 
     var body: some View {
         ZStack {
             switch step {
             case .pick:
                 NavigationStack {
-                    StarterPickerView(mode: mode, isImporting: isImporting) { picked in
+                    StarterPickerView(isImporting: isImporting) { picked in
                         importQuotes(picked)
                     } onSkip: {
                         session.completeOnboarding()
-                    } onClose: {
-                        dismiss()
                     }
                 }
                 .transition(.opacity)
@@ -67,7 +51,6 @@ struct StarterFlowView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: step)
-        .interactiveDismissDisabled(isImporting)
     }
 
     // MARK: Actions
@@ -83,21 +66,14 @@ struct StarterFlowView: View {
                 isImporting = false
                 return
             }
-            switch mode {
-            case .addMore:
-                isImporting = false
-                toasts.show(picked.count == 1 ? "Added 1 quote" : "Added \(picked.count) quotes", style: .success)
-                dismiss()
-            case .onboarding:
-                await reminders.refreshPermission()
-                isImporting = false
-                if reminders.permission == .notDetermined, let first = picked.first {
-                    step = .priming(sample: NotificationQuote(id: UUID(), body: first.body, author: first.author))
-                } else {
-                    // Already allowed or denied in Settings: the system prompt can't show again,
-                    // and the Library status card covers the denied state.
-                    session.completeOnboarding()
-                }
+            await reminders.refreshPermission()
+            isImporting = false
+            if reminders.permission == .notDetermined, let first = picked.first {
+                step = .priming(sample: NotificationQuote(id: UUID(), body: first.body, author: first.author))
+            } else {
+                // Already allowed or denied in Settings: the system prompt can't show again, and
+                // the Library status card covers the denied state.
+                session.completeOnboarding()
             }
         }
     }
@@ -118,11 +94,9 @@ struct StarterFlowView: View {
 /// "Pick a few to start": every starter quote as a tappable row with a check circle, and a
 /// "Continue with N quotes" button pinned to the bottom.
 private struct StarterPickerView: View {
-    let mode: StarterFlowMode
     let isImporting: Bool
     let onContinue: ([StarterQuote]) -> Void
     let onSkip: () -> Void
-    let onClose: () -> Void
 
     @Environment(StarterStore.self) private var starter
     @Environment(LibraryStore.self) private var library
@@ -155,20 +129,12 @@ private struct StarterPickerView: View {
         }
         .listStyle(.plain)
         .groundBackground()
-        .navigationTitle(mode == .onboarding ? "Pick a few to start" : "Starter pack")
+        .navigationTitle("Pick a few to start")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            switch mode {
-            case .onboarding:
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Skip", action: onSkip)
-                        .disabled(isImporting)
-                }
-            case .addMore:
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(role: .close, action: onClose)
-                        .disabled(isImporting)
-                }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Skip", action: onSkip)
+                    .disabled(isImporting)
             }
         }
         .safeAreaBar(edge: .bottom) {
@@ -208,7 +174,7 @@ private struct StarterPickerView: View {
             .listRowSeparator(.hidden)
         } else {
             ForEach(starter.quotes) { quote in
-                StarterRow(
+                SelectableQuoteRow(
                     quote: quote,
                     isSelected: picked.contains(quote.id),
                     isOwned: library.contains(starter: quote)
@@ -247,19 +213,10 @@ private struct StarterPickerView: View {
 
     private var continueTitle: LocalizedStringKey {
         let count = pickedQuotes.count
-        switch mode {
-        case .onboarding:
-            switch count {
-            case 0: return "Continue"
-            case 1: return "Continue with 1 quote"
-            default: return "Continue with \(count) quotes"
-            }
-        case .addMore:
-            switch count {
-            case 0: return "Add quotes"
-            case 1: return "Add 1 quote"
-            default: return "Add \(count) quotes"
-            }
+        switch count {
+        case 0: return "Continue"
+        case 1: return "Continue with 1 quote"
+        default: return "Continue with \(count) quotes"
         }
     }
 
@@ -269,44 +226,6 @@ private struct StarterPickerView: View {
         } else {
             picked.append(id)
         }
-    }
-}
-
-/// One starter quote: the serif excerpt and attribution, with a check circle on the right. The
-/// whole row toggles. A quote already in the library shows a dimmed check and can't be picked.
-private struct StarterRow: View {
-    let quote: StarterQuote
-    let isSelected: Bool
-    let isOwned: Bool
-    let onToggle: () -> Void
-
-    var body: some View {
-        Button(action: onToggle) {
-            HStack(alignment: .center, spacing: Theme.Spacing.m) {
-                QuoteRow(quote, inReminders: false, verified: false)
-                checkmark
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(isOwned)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityValue(isOwned ? Text("Already in your library") : Text(""))
-    }
-
-    private var checkmark: some View {
-        Image(systemName: isSelected || isOwned ? "checkmark.circle.fill" : "circle")
-            .font(.title2)
-            .foregroundStyle(checkStyle)
-            .frame(minWidth: Theme.Metrics.minTouchTarget, minHeight: Theme.Metrics.minTouchTarget)
-            .contentTransition(.symbolEffect(.replace))
-            .accessibilityHidden(true)
-    }
-
-    private var checkStyle: AnyShapeStyle {
-        if isOwned { return AnyShapeStyle(.tertiary) }
-        return isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary)
     }
 }
 
@@ -436,17 +355,12 @@ private struct SampleNotification: View {
 // MARK: - Previews
 
 #Preview("Starter pack, onboarding") {
-    StarterFlowView(mode: .onboarding)
+    StarterFlowView()
         .previewEnvironment(.preview(phase: .needsStarter, emptyLibrary: true))
 }
 
-#Preview("Starter pack, add more") {
-    StarterFlowView(mode: .addMore)
-        .previewEnvironment(.preview())
-}
-
 #Preview("Starter pack, dark, large type") {
-    StarterFlowView(mode: .onboarding)
+    StarterFlowView()
         .previewEnvironment(.preview(phase: .needsStarter, emptyLibrary: true))
         .preferredColorScheme(.dark)
         .dynamicTypeSize(.accessibility2)

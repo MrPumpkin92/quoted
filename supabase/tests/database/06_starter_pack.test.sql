@@ -1,6 +1,8 @@
--- Starter pack seed (supabase/migrations/20261019040100_starter_pack.sql):
+-- Starter pack seed (supabase/migrations/20261019040100_starter_pack.sql), read
+-- through the starter_quotes view of the live starters (20261028120000_catalog_corpus.sql):
 -- exactly 60 rows, readable by any signed-in user and by nobody without a
--- session. Sources: docs/starter-pack-sources.md
+-- session. Retiring a starter fails the count of 60 on purpose, so that change
+-- is deliberate. Sources: docs/starter-pack-sources.md
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
@@ -54,7 +56,7 @@ select tests.create_user();
 select is(
   (select count(*)::int from public.starter_quotes),
   60,
-  'the migration seeds exactly 60 starter quotes'
+  'exactly 60 live starter quotes'
 );
 
 select set_eq(

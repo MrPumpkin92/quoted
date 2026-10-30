@@ -4,12 +4,22 @@
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(20);
 
 select tables_are(
   'public',
-  array['profiles', 'quotes', 'friendships', 'blocks', 'shares', 'reports', 'starter_quotes', 'events'],
+  array['profiles', 'quotes', 'friendships', 'blocks', 'shares', 'reports',
+        'catalog_authors', 'catalog_works', 'catalog_quotes', 'events'],
   'public has exactly the MVP tables'
+);
+
+-- builds up to 6 read the starter pack through this view (20261028120000_catalog_corpus).
+select views_are('public', array['starter_quotes'], 'public has exactly one view, starter_quotes');
+
+select is(
+  (select reloptions from pg_class where oid = 'public.starter_quotes'::regclass),
+  array['security_invoker=true'],
+  'starter_quotes runs as the caller, so catalog_quotes RLS applies through it'
 );
 
 select is_empty(
@@ -44,6 +54,9 @@ select results_eq(
      group by table_name order by table_name $$,
   $$ values
        ('blocks', 'DELETE,INSERT,SELECT'),
+       ('catalog_authors', 'SELECT'),
+       ('catalog_quotes', 'SELECT'),
+       ('catalog_works', 'SELECT'),
        ('events', 'INSERT'),
        ('friendships', 'DELETE,INSERT,SELECT'),
        ('profiles', 'INSERT,SELECT,UPDATE'),
@@ -72,19 +85,23 @@ select results_eq(
   $$ values
        ('blocks', 'blocks_blocked_id_fkey', 'profiles', 'c'),
        ('blocks', 'blocks_blocker_id_fkey', 'profiles', 'c'),
+       ('catalog_quotes', 'catalog_quotes_author_id_fkey', 'catalog_authors', 'a'),
+       ('catalog_quotes', 'catalog_quotes_replaced_by_fkey', 'catalog_quotes', 'a'),
+       ('catalog_quotes', 'catalog_quotes_work_id_fkey', 'catalog_works', 'a'),
+       ('catalog_works', 'catalog_works_author_id_fkey', 'catalog_authors', 'a'),
        ('friendships', 'friendships_addressee_id_fkey', 'profiles', 'c'),
        ('friendships', 'friendships_requester_id_fkey', 'profiles', 'c'),
        ('profiles', 'profiles_id_fkey', 'auth.users', 'c'),
        ('quotes', 'quotes_owner_id_fkey', 'auth.users', 'c'),
-       ('quotes', 'quotes_verified_starter_id_fkey', 'starter_quotes', 'n'),
+       ('quotes', 'quotes_verified_starter_id_fkey', 'catalog_quotes', 'n'),
        ('reports', 'reports_reported_user_id_fkey', 'profiles', 'n'),
        ('reports', 'reports_reporter_id_fkey', 'profiles', 'n'),
        ('reports', 'reports_share_id_fkey', 'shares', 'n'),
        ('shares', 'shares_quote_id_fkey', 'quotes', 'n'),
        ('shares', 'shares_recipient_id_fkey', 'profiles', 'c'),
        ('shares', 'shares_sender_id_fkey', 'profiles', 'c'),
-       ('shares', 'shares_verified_starter_id_fkey', 'starter_quotes', 'n') $$,
-  'foreign keys have stable names, targets and delete actions (events has none; reports outlive both accounts)'
+       ('shares', 'shares_verified_starter_id_fkey', 'catalog_quotes', 'n') $$,
+  'foreign keys have stable names, targets and delete actions (events has none; reports outlive both accounts; catalog rows are never deleted)'
 );
 
 select is_empty(
@@ -163,15 +180,15 @@ select results_eq(
      where table_schema = 'public' and table_name = 'starter_quotes'
      order by ordinal_position $$,
   $$ values
-       ('id', 'smallint', 'NO', null::text),
-       ('body', 'text', 'NO', null),
-       ('body_format', 'jsonb', 'NO', '''[]''::jsonb'),
-       ('author', 'text', 'NO', null),
+       ('id', 'integer', 'YES', null::text),
+       ('body', 'text', 'YES', null),
+       ('body_format', 'jsonb', 'YES', null),
+       ('author', 'text', 'YES', null),
        ('source', 'text', 'YES', null),
-       ('sort_order', 'smallint', 'NO', null),
-       ('source_location', 'text', 'NO', null),
-       ('source_url', 'text', 'NO', null) $$,
-  'starter_quotes has the agreed columns'
+       ('sort_order', 'integer', 'YES', null),
+       ('source_location', 'text', 'YES', null),
+       ('source_url', 'text', 'YES', null) $$,
+  'the starter_quotes view keeps the columns builds 4-6 select (views report every column nullable; catalog_quotes'' own contract is in 16_catalog)'
 );
 
 select * from finish();

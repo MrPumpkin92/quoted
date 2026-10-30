@@ -160,19 +160,31 @@ public struct QuotesRepository: Sendable {
         }
     }
 
-    /// Copies starter quotes into the library (origin `starter`) in one insert, in the given order.
-    /// With `addToRotation`, they join the end of the Rotation in that order.
-    ///
-    /// `ids` (one per starter, in order) are the new quotes' IDs; pass the same ones to retry after a
-    /// lost answer. Missing IDs are generated.
+    /// Copies starter quotes into the library (origin `starter`); see
+    /// ``importCatalog(_:ids:addToRotation:)``.
     public func importStarter(_ starters: [StarterQuote], ids: [UUID] = [], addToRotation: Bool) async throws -> [Quote] {
+        try await importCatalog(starters.map(CatalogQuote.init(starter:)), ids: ids, addToRotation: addToRotation)
+    }
+
+    /// Copies catalog quotes into the library in one insert, in the given order. Each records origin
+    /// `starter` when it is a starter and `catalog` otherwise (``CatalogQuote/libraryOrigin``). With
+    /// `addToRotation`, they join the end of the Rotation in that order.
+    ///
+    /// `ids` (one per quote, in order) are the new quotes' IDs; pass the same ones to retry after a
+    /// lost answer. Missing IDs are generated.
+    public func importCatalog(_ quotes: [CatalogQuote], ids: [UUID] = [], addToRotation: Bool) async throws -> [Quote] {
         _ = try client.requireUserID()
-        guard !starters.isEmpty else { return [] }
-        let validated = try starters.map { try validate(QuoteDraft(starter: $0)) }
-        let quoteIDs = starters.indices.map { $0 < ids.count ? ids[$0] : UUID() }
+        guard !quotes.isEmpty else { return [] }
+        let validated = try quotes.map { try validate(QuoteDraft(catalog: $0)) }
+        let quoteIDs = quotes.indices.map { $0 < ids.count ? ids[$0] : UUID() }
         let start = addToRotation ? try await nextRotationPosition() : 0
         let inserts = validated.enumerated().map { offset, value in
-            QuoteInsert(value, id: quoteIDs[offset], origin: .starter, rotationPosition: addToRotation ? start + offset : nil)
+            QuoteInsert(
+                value,
+                id: quoteIDs[offset],
+                origin: quotes[offset].libraryOrigin,
+                rotationPosition: addToRotation ? start + offset : nil
+            )
         }
         return try await mappingErrors(postgrest: Self.quoteLimitError) {
             let inserted = try await insertRecovering(ids: quoteIDs) {

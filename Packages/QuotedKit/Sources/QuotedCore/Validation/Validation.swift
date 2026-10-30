@@ -149,6 +149,11 @@ public struct QuoteDraft: Hashable, Sendable, RichTextContent {
         self.init(body: starter.body, format: starter.format, author: starter.author ?? "", source: starter.source ?? "")
     }
 
+    /// A draft for copying a catalog quote (from Verified Quotes) into the library.
+    public init(catalog: CatalogQuote) {
+        self.init(body: catalog.body, format: catalog.format, author: catalog.author ?? "", source: catalog.source ?? "")
+    }
+
     /// A draft for copying a friend's favorite (from their profile) into the library.
     public init(favorite: FriendFavorite) {
         self.init(body: favorite.body, format: favorite.format, author: favorite.author ?? "", source: favorite.source ?? "")

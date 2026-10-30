@@ -22,6 +22,10 @@ extension StarterQuote: QuoteContent {
     /// Every starter quote was checked word for word against its source.
     var isVerified: Bool { true }
 }
+extension CatalogQuote: QuoteContent {
+    /// Checked word for word against its source, unless it was withdrawn.
+    var isVerified: Bool { status != .withdrawn }
+}
 extension SnapshotQuote: QuoteContent {}
 extension FriendFavorite: QuoteContent {}
 

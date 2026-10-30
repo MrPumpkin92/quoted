@@ -22,6 +22,7 @@ public final class Backend: Sendable {
     public let quotes: QuotesRepository
     public let social: SocialRepository
     public let starter: StarterRepository
+    public let catalog: CatalogRepository
     public let events: EventsRepository
     public let account: AccountService
 
@@ -74,6 +75,7 @@ public final class Backend: Sendable {
         quotes = QuotesRepository(client: client)
         social = SocialRepository(client: client)
         starter = StarterRepository(client: client)
+        catalog = CatalogRepository(client: client)
         events = EventsRepository(client: client)
         account = AccountService(client: client, auth: auth)
     }

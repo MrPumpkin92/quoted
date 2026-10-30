@@ -94,6 +94,7 @@ final class SessionStore {
     @ObservationIgnored private let social: SocialStore
     @ObservationIgnored private let reminders: ReminderStore
     @ObservationIgnored private let starter: StarterStore
+    @ObservationIgnored private let catalog: CatalogStore
     @ObservationIgnored private let recentSearches: RecentSearches
     @ObservationIgnored private let router: Router
     @ObservationIgnored private let toasts: ToastCenter
@@ -131,6 +132,7 @@ final class SessionStore {
         social: SocialStore,
         reminders: ReminderStore,
         starter: StarterStore,
+        catalog: CatalogStore,
         recentSearches: RecentSearches,
         router: Router,
         toasts: ToastCenter,
@@ -143,6 +145,7 @@ final class SessionStore {
         self.social = social
         self.reminders = reminders
         self.starter = starter
+        self.catalog = catalog
         self.recentSearches = recentSearches
         self.router = router
         self.toasts = toasts
@@ -760,6 +763,7 @@ final class SessionStore {
         library.reset()
         social.reset()
         starter.reset()
+        catalog.reset()
         recentSearches.clear()
         router.reset()
         if let endedUserID {

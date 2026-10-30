@@ -2,7 +2,7 @@
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(29);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -205,7 +205,12 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.quotes (body, origin) values ('x', 'scraped') $$,
   '23514', null,
-  'origin must be manual, starter, shared or pasted'
+  'origin must be manual, starter, shared, pasted or catalog'
+);
+
+select lives_ok(
+  $$ insert into public.quotes (body, origin) values ('From the catalog', 'catalog') $$,
+  'a quote added from the catalog has origin catalog'
 );
 
 select throws_ok(

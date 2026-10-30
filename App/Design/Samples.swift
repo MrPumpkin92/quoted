@@ -109,6 +109,30 @@ enum Samples {
             )
         }
 
+    /// The verified catalog for Verified Quotes: the sample starters with themes, then two quotes from
+    /// a later batch (one spoken by a character).
+    static let catalog: [CatalogQuote] = {
+        let themes: [[CatalogTheme]] = [[.courage], [.nature, .purpose], [.selfhood, .courage], [.courage], [.time, .purpose], [.selfhood]]
+        let starters = zip(Samples.starters, themes).map { starter, themes in
+            var quote = CatalogQuote(starter: starter)
+            quote.themes = themes
+            return quote
+        }
+        return starters + [
+            CatalogQuote(
+                id: 61, body: "A thing of beauty is a joy for ever:", author: "John Keats", source: "Endymion",
+                sourceLocation: "Book I, line 1", sourceURL: URL(string: "https://www.gutenberg.org/ebooks/24280"),
+                themes: [.nature, .love]
+            ),
+            CatalogQuote(
+                id: 62, body: "There is nothing either good or bad, but thinking makes it so.",
+                author: "William Shakespeare", source: "Hamlet",
+                sourceLocation: "Act 2, Scene 2", sourceURL: URL(string: "https://www.gutenberg.org/ebooks/1524"),
+                speaker: "Hamlet", themes: [.calm, .selfhood]
+            ),
+        ]
+    }()
+
     /// Where two sample starters are in their works (ids as in `starters`).
     private static let sourceLocations = [1: "1831 edition, Chapter 20", 3: "Essays: First Series (1841), 3rd paragraph"]
 

@@ -155,11 +155,14 @@ select throws_ok(
 
 select tests.clear_authentication();
 
+-- A row that is valid in every other way, so only the body_format check can refuse it.
 select throws_ok(
-  $$ insert into public.starter_quotes (id, body, body_format, author, sort_order, source_location, source_url)
-     values (32767, 'x', '[{"start":0,"length":1,"junk":1}]', 'y', 32767, 'Chapter 1', 'https://example.org/text') $$,
-  '23514', null,
-  'starter_quotes validate body_format the same way'
+  $$ insert into public.catalog_quotes (id, body, body_format, author, source, sort_order, source_location, source_url,
+                                       is_starter, themes)
+     values (32767, 'x', '[{"start":0,"length":1,"junk":1}]', 'y', 'z', 32767, 'Chapter 1', 'https://example.org/text',
+             true, array['calm']) $$,
+  '23514', 'new row for relation "catalog_quotes" violates check constraint "catalog_quotes_body_format_valid"',
+  'catalog_quotes validate body_format the same way'
 );
 
 -- ---- text that is only whitespace -----------------------------------------

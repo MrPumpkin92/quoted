@@ -1,8 +1,9 @@
--- starter_quotes (read-only), events (insert-only, anonymous) and anon (no access at all).
+-- The catalog and its starter_quotes view (read-only), events (insert-only, anonymous) and anon
+-- (no access at all).
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(26);
+select plan(35);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -55,9 +56,11 @@ $$;
 select tests.create_user('a');
 select tests.create_user('b');
 insert into public.profiles (id, username) values (tests.uid('a'), 'alice'), (tests.uid('b'), 'bob');
--- An id/sort_order far from the real starter pack so the test never collides with it.
-insert into public.starter_quotes (id, body, author, source, sort_order, source_location, source_url)
-values (32767, 'Test starter quote', 'Test Author', null, 32767, 'Chapter 1', 'https://example.org/text');
+-- An id/sort_order far from the real starter pack so the test never collides with it. Starters may
+-- leave author_id, work_id and provenance empty until their provenance migration (M2).
+insert into public.catalog_quotes (id, body, author, source, sort_order, source_location, source_url, is_starter, themes)
+values (32767, 'Test starter quote', 'Test Author', 'Test Work', 32767, 'Chapter 1', 'https://example.org/text',
+        true, array['calm']);
 -- events are anonymous, so this test's rows are the ones above the current max id.
 create table tests.baseline as select coalesce(max(id), 0) as max_event_id from public.events;
 insert into public.events (name) values ('web_search_tap');
@@ -75,6 +78,42 @@ select throws_ok(
   $$ insert into public.starter_quotes (id, body, author, sort_order) values (32766, 'x', 'y', 32766) $$,
   '42501', null,
   'clients cannot add starter quotes'
+);
+
+select throws_ok(
+  $$ insert into public.catalog_quotes (id, body, author, source, source_location, source_url, themes)
+     values (32766, 'x', 'y', 'z', 'Chapter 1', 'https://example.org/text', array['calm']) $$,
+  '42501', null,
+  'clients cannot add catalog quotes'
+);
+
+select throws_ok(
+  $$ update public.catalog_quotes set body = 'edited' where id = 32767 $$,
+  '42501', null,
+  'clients cannot edit catalog quotes'
+);
+
+select throws_ok(
+  $$ delete from public.catalog_quotes where id = 32767 $$,
+  '42501', null,
+  'clients cannot delete catalog quotes'
+);
+
+select lives_ok(
+  $$ select id, died_year from public.catalog_authors $$,
+  'authenticated users can read catalog authors'
+);
+
+select throws_ok(
+  $$ insert into public.catalog_authors (id, slug, name, died_year) values (32767, 'test', 'Test', 1900) $$,
+  '42501', null,
+  'clients cannot add catalog authors'
+);
+
+select throws_ok(
+  $$ insert into public.catalog_works (id, author_id, citation, edition_year) values (32767, 1, 'Test', 1900) $$,
+  '42501', null,
+  'clients cannot add catalog works'
 );
 
 select throws_ok(
@@ -144,6 +183,9 @@ select throws_ok($$ select 1 from public.blocks $$, '42501', null, 'anon cannot 
 select throws_ok($$ select 1 from public.shares $$, '42501', null, 'anon cannot read shares');
 select throws_ok($$ select 1 from public.reports $$, '42501', null, 'anon cannot read reports');
 select throws_ok($$ select 1 from public.starter_quotes $$, '42501', null, 'anon cannot read starter quotes');
+select throws_ok($$ select 1 from public.catalog_quotes $$, '42501', null, 'anon cannot read catalog quotes');
+select throws_ok($$ select 1 from public.catalog_authors $$, '42501', null, 'anon cannot read catalog authors');
+select throws_ok($$ select 1 from public.catalog_works $$, '42501', null, 'anon cannot read catalog works');
 select throws_ok($$ select 1 from public.events $$, '42501', null, 'anon cannot read events');
 
 select throws_ok(

@@ -236,6 +236,14 @@ struct LocalStackTests {
     private func starter(_ alice: TestUser) async throws {
         let starters = try await alice.backend.starter.fetchAll()
         #expect(starters.map(\.sortOrder) == starters.map(\.sortOrder).sorted())
+        // The live catalog holds every live starter; one row also reads by id.
+        let live = try await alice.backend.catalog.fetchLive()
+        #expect(Set(starters.map(\.id)).isSubset(of: Set(live.filter(\.isStarter).map(\.id))))
+        #expect(live.allSatisfy { $0.status == .live && !$0.themes.isEmpty })
+        if let first = starters.first {
+            let row = try await alice.backend.catalog.quote(id: first.id)
+            #expect(row?.body == first.body)
+        }
         guard starters.count >= 2 else {
             print("[LocalStack] starter_quotes has \(starters.count) rows; skipped importStarter (seed migration not applied?)")
             return

@@ -1,0 +1,21 @@
+{"author": "Oscar Wilde", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 1, "text": "Be yourself; everyone else is already taken."}
+{"author": "Mark Twain", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 2, "text": "Twenty years from now you will be more disappointed by the things that you didn't do…"}
+{"author": "Mark Twain", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 3, "text": "The secret of getting ahead is getting started."}
+{"author": "Ralph Waldo Emerson", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 4, "text": "What lies behind us and what lies ahead of us are tiny matters compared to what lies within us."}
+{"author": "Henry David Thoreau", "expect_any_of": ["NEAR_MISS", "NOT_FOUND", "FOUND_ELSEWHERE", "CITED_WORK_MISSING"], "n": 5, "text": "Go confidently in the direction of your dreams! Live the life you've imagined."}
+{"author": "George Eliot", "expect_any_of": ["NEAR_MISS", "NOT_FOUND", "FOUND_ELSEWHERE", "CITED_WORK_MISSING"], "n": 6, "text": "It is never too late to be what you might have been."}
+{"author": "Frances Hodgson Burnett", "expect_any_of": ["NEAR_MISS", "NOT_FOUND", "FOUND_ELSEWHERE", "CITED_WORK_MISSING"], "n": 7, "text": "If you look the right way, you can see that the whole world is a garden."}
+{"author": "Ida B. Wells", "expect_any_of": ["NEAR_MISS", "NOT_FOUND", "FOUND_ELSEWHERE", "CITED_WORK_MISSING"], "n": 8, "text": "The way to right wrongs is to turn the light of truth upon them."}
+{"author": "Johann Wolfgang von Goethe", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 9, "text": "Whatever you can do, or dream you can, begin it. Boldness has genius, power, and magic in it."}
+{"author": "Aristotle", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 10, "text": "We are what we repeatedly do. Excellence, then, is not an act, but a habit."}
+{"author": "Plato", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 11, "text": "Be kind, for everyone you meet is fighting a hard battle."}
+{"author": "Socrates", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 12, "text": "The secret of change is to focus all of your energy, not on fighting the old, but on building the new."}
+{"author": "Seneca", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 13, "text": "Luck is what happens when preparation meets opportunity."}
+{"author": "Abraham Lincoln", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 14, "text": "In the end, it's not the years in your life that count. It's the life in your years."}
+{"author": "Benjamin Franklin", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 15, "text": "Tell me and I forget. Teach me and I remember. Involve me and I learn."}
+{"author": "Mahatma Gandhi", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 16, "text": "Be the change you wish to see in the world."}
+{"author": "Confucius", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 17, "text": "The journey of a thousand miles begins with a single step."}
+{"author": "Lao Tzu", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 18, "text": "Give a man a fish and you feed him for a day…"}
+{"author": "The Buddha", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 19, "text": "There is no way to happiness; happiness is the way."}
+{"author": "Kalidasa", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 20, "text": "Look to this day, for it is life…"}
+{"author": "Chief Seattle", "expect_any_of": ["REJECT_MISATTRIBUTED"], "n": 21, "text": "Humankind has not woven the web of life…"}

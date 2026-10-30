@@ -19,6 +19,15 @@ struct RequestTests {
         """
     }
 
+    /// A `catalog_quotes` row as `Columns.catalogQuote` selects it.
+    static func catalogJSON(_ id: Int, starter: Bool = false, status: String = "live") -> String {
+        """
+        {"id":\(id),"body":"Quote \(id)","body_format":[],"author":"Author \(id)","source":"Work \(id)",
+         "source_location":"Chapter 1","source_url":"https://www.gutenberg.org/ebooks/\(id)","speaker":null,
+         "themes":["courage"],"is_starter":\(starter),"sort_order":\(starter ? String(id) : "null"),"status":"\(status)"}
+        """
+    }
+
     static func shareJSON(_ id: UUID, sent: Bool = false) -> String {
         let other = #"{"id":"\#(friend)","username":"bob","display_name":null}"#
         return """
@@ -34,6 +43,8 @@ struct RequestTests {
         await #expect(throws: QuotedError.notSignedIn) { try await backend.quotes.fetchMine() }
         await #expect(throws: QuotedError.notSignedIn) { try await backend.social.inbox() }
         await #expect(throws: QuotedError.notSignedIn) { try await backend.account.deleteAccount() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.catalog.fetchLive() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.catalog.quote(id: 1) }
         #expect(await backend.events.logWebSearchTapAndWait() == false)
         #expect(server.requests.isEmpty)
     }
@@ -290,6 +301,90 @@ struct RequestTests {
         #expect(rows.map { $0["rotation_position"] as? Int } == [5, 6])
         #expect(rows.map { $0["origin"] as? String } == ["starter", "starter"])
         #expect(rows.map { $0["author"] as? String } == ["A", "B"])
+    }
+
+    @Test func importCatalogRecordsStarterOrCatalogOrigin() async throws {
+        let server = StubServer { request in
+            guard request.path == "/rest/v1/quotes" else { return .notFound(request) }
+            if request.method == "GET" { return .json(200, "[]") }
+            return .json(201, "[\(Self.quoteJSON(UUID(), position: 0, origin: "starter")),\(Self.quoteJSON(UUID(), position: 1, origin: "catalog"))]")
+        }
+        let backend = try await server.makeSignedInBackend()
+        let ids = [UUID(), UUID()]
+        let picked = [
+            CatalogQuote(id: 4, body: " Starter ", author: "A", source: "W", isStarter: true, sortOrder: 4),
+            CatalogQuote(id: 61, body: "Batch", author: "B", source: "V", speaker: "Hamlet", themes: [.calm]),
+        ]
+        let imported = try await backend.quotes.importCatalog(picked, ids: ids, addToRotation: true)
+        #expect(imported.map(\.origin) == [.starter, .catalog])
+
+        let post = try #require(server.requests(table: "quotes").last)
+        #expect(post.method == "POST")
+        let rows = try #require(post.json as? [[String: Any]])
+        #expect(rows.map { $0["id"] as? String } == ids.map(\.uuidString))
+        #expect(rows.map { $0["origin"] as? String } == ["starter", "catalog"])
+        #expect(rows.map { $0["rotation_position"] as? Int } == [0, 1])
+        #expect(rows.map { $0["body"] as? String } == ["Starter", "Batch"])
+        #expect(rows.map { $0["source"] as? String } == ["W", "V"])
+        // Only quote columns travel: nothing about the catalog row itself.
+        #expect(rows.allSatisfy { $0["speaker"] == nil && $0["themes"] == nil && $0["verified_starter_id"] == nil })
+    }
+
+    @Test func fetchLiveReadsLiveCatalogRowsInPages() async throws {
+        let ids = Array(1...1_203)
+        let server = StubServer { request in
+            guard request.path == "/rest/v1/catalog_quotes" else { return .notFound(request) }
+            let offset = Int(request.query["offset"] ?? "") ?? 0
+            let limit = Int(request.query["limit"] ?? "") ?? 0
+            let rows = ids.dropFirst(offset).prefix(limit).map { Self.catalogJSON($0, starter: $0 <= 60) }
+            return .page(Array(rows), offset: offset, total: ids.count)
+        }
+        let backend = try await server.makeSignedInBackend()
+        let live = try await backend.catalog.fetchLive()
+        #expect(live.map(\.id) == ids)
+        #expect(live.filter(\.isStarter).count == 60)
+
+        let requests = server.requests(table: "catalog_quotes")
+        #expect(requests.map { $0.query["offset"] } == ["0", "500", "1000"])
+        let first = try #require(requests.first)
+        #expect(first.method == "GET")
+        #expect(first.query["status"] == "eq.live")
+        #expect(first.query["order"] == "id.asc.nullslast")
+        #expect(first.query["select"] == Columns.catalogQuote.replacingOccurrences(of: " ", with: ""))
+        #expect(first.query["limit"] == "\(Paging.pageSize)")
+        #expect(first.header("Prefer")?.contains("count=exact") == true)
+    }
+
+    @Test func fetchLiveStopsAtAShortPageWithoutACount() async throws {
+        let server = StubServer { request in
+            let offset = Int(request.query["offset"] ?? "") ?? 0
+            let rows = (offset + 1...offset + (offset == 0 ? 500 : 7)).map { Self.catalogJSON($0) }
+            return .json(200, "[\(rows.joined(separator: ","))]")
+        }
+        let backend = try await server.makeSignedInBackend()
+        #expect(try await backend.catalog.fetchLive().count == 507)
+        #expect(server.requests(table: "catalog_quotes").map { $0.query["offset"] } == ["0", "500"])
+    }
+
+    @Test func catalogQuoteByIDAsksForOneRowOfAnyStatus() async throws {
+        let server = StubServer { request in
+            guard request.path == "/rest/v1/catalog_quotes" else { return .notFound(request) }
+            if request.query["id"] == "eq.62" {
+                return .json(200, Self.catalogJSON(62, status: "withdrawn"))
+            }
+            return .json(406, #"{"code":"PGRST116","details":"The result contains 0 rows","hint":null,"message":"Cannot coerce the result to a single JSON object"}"#)
+        }
+        let backend = try await server.makeSignedInBackend()
+        let quote = try #require(try await backend.catalog.quote(id: 62))
+        #expect(quote.status == .withdrawn)
+        #expect(quote.sourceLocation == "Chapter 1")
+        #expect(try await backend.catalog.quote(id: 9_999) == nil)
+
+        let request = try #require(server.requests(table: "catalog_quotes").first)
+        #expect(request.method == "GET")
+        #expect(request.query["status"] == nil)
+        #expect(request.query["select"] == Columns.catalogQuote.replacingOccurrences(of: " ", with: ""))
+        #expect(request.header("Accept") == "application/vnd.pgrst.object+json")
     }
 
     @Test func saveSharedCopiesThenStampsSavedAt() async throws {
