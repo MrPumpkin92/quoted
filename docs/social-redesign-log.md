@@ -24,7 +24,7 @@ Branch `social-redesign`, started 2026-10-28. One commit per stage. Nothing is p
 |---|---|---|
 | 0. Research, council, baseline | done | Stage 0 commit |
 | 1. Data model and endpoint security | done | Stage 1 commit |
-| 2. Nav shell (Feed, Library, Inbox, Profile, Search) | | |
+| 2. Nav shell (Feed, Library, Inbox, Profile, Search) | done | Stage 2 commit |
 | 3. Quote view fit and created-by label | | |
 | 4. Feed and Library | | |
 | 5. Inbox | | |
@@ -110,3 +110,67 @@ For you:
 - **Docker memory.** Four Supabase stacks share a 4 GB Docker VM. It runs out of memory and requests time out. Raising the limit in Docker Desktop (Settings > Resources) to 8 GB fixes it.
 
 Known, for later stages: text and playlist messages have no screen until the Inbox (Stage 5). The Terms sheet's footnote overlaps the faded last row at the bottom (Stage 7).
+
+**2026-10-30, main's verified catalog merged in; Stages 0 to 1 are on main.** Main had gained the verified catalog (`catalog_quotes`, batches 001 and 002, the quote 88 re-pin, Verified Quotes). It conflicted with the redesign in 14 files and in the database, so it was merged into this branch first. Then pull request #1 merged the branch into main (merge commit `820af10`). Nothing was deployed.
+- **Database:** the redesign migrations now point at `catalog_quotes` with integer ids, and any live catalog quote can be added, sent or posted by id. With shares gone, the catalog's reseal and withdraw functions now recheck quote messages and posts too. A copy that loses its seal gets back only its own sender's or author's credit.
+- **Origin:** adding a catalog quote now goes through the server (`add_catalog_quotes`) instead of the app writing its origin.
+- **Migration names:** the migrations were renamed to sort after the catalog's (see Migration order above).
+- **Review:** three reviewers (catalog, security, contract) found 5 problems, and all 5 are fixed.
+- **Tests:** 27 pgTAP files, 1,490 tests pass on a fresh reset, including the new `24_catalog_social`; the catalog's selftest and generate check pass; and 133 data-layer and 168 core Swift tests pass. The live-server Swift tests pass one at a time; run together, some time out on the VM's memory.
+
+**2026-10-29, Stage 2: the nav shell.**
+- **Tabs:** Feed, Library, Inbox, Profile, and Search at the bottom right. Each tab keeps its own back stack. The app opens on Library until friends' posts exist (Stage 4), then on the Feed once a friend has posted.
+- **Feed (for now):** the "Checked against the source" page. It shows one quote a day from the whole live verified catalog (not only the 60 starters), sized to fit the screen, and "Quoted Catalog" opens how it was checked. The card menu has Save to Library and Send. The line under it depends on how many friends you have; with none, the main button is Add a friend.
+- **Inbox:** the quotes friends sent you (moved from "Shared with you", which is gone), friend requests, and a Friends button. Its badge is the app's only badge.
+- **Profile:** your header (long-press copies your username) and a gear that opens Settings (today's Account screen, renamed).
+- **Friends** now opens from the Inbox. It lost its Account and "Shared with you" rows and gained Blocked Users.
+- **Notifications:** the app icon is never badged, and the background "new quote" alerts are gone (badges only, as you chose). `quoted://inbox` opens the Inbox, and tapping an old alert goes there too.
+
+Two review rounds. In the first, three reviewers found 19 problems: 10 were confirmed and 9 fixed, and the legal pages are left for you (below). In the second, three reviewers found 13: 8 were confirmed and all 8 fixed. Fixed problems included:
+- on iOS 27 the Feed and Profile showed a search field that searched nothing;
+- on iOS 26.5, opening the Inbox link or a reminder while typing in Search left a blank screen;
+- going back to Search after Close could show the old results under an empty field;
+- VoiceOver lost Next quote and Previous quote on the quote screen;
+- when friends failed to load, the Feed told someone who has friends to add one.
+
+**On the catalog (2026-10-30).** Stage 2 was written before main's catalog arrived, so it was moved onto the merged branch and adapted:
+- **Quote of the day:** the Feed's quote now comes from the live catalog in id order. Each device remembers the day's pick, so a new batch or a retired quote doesn't change it mid-day. A withdrawn pick is replaced.
+- **Reloads:** on a new day the Feed reloads the catalog and keeps the earlier quote until the reload answers, so the quote never swaps while you look at it. A Save or Send that fails because a quote was retired reloads it too.
+- **Save and Send:** both go through the server's catalog add, and both stay disabled until the library has loaded. Send uses your checked copy of the quote. If you only have a look-alike you typed, Send saves a checked copy first (the toast says "Saved a checked copy").
+- **Onboarding:** after a failed Continue, the starter list reloads, so a starter retired since the list loaded drops out.
+- **Catalog adds:** the retry rule now always adds a new copy after you edited the old one. A retried add that overlaps the first one reads back the saved quote instead of showing an error.
+
+Two review rounds on this. The first found 16 problems (12 once duplicates were merged), all fixed. The second found 8 small ones: 7 are fixed, and the eighth only in part (below).
+
+Tests:
+- 133 data-layer and 178 core Swift tests pass. The clean build has no warnings in our code.
+- UI tests against the local server:
+  - The friends and Inbox test passes on iOS 26.5 and 27.0, and sign-in passes on 26.5.
+  - The full happy path passes on 26.5. On 27.0 one run walked every screen through Settings, then the test's own server read-back hit a database statement timeout.
+  - The other 27.0 runs stopped at different steps. Each step had passed on 26.5, and each stop was a request the stalled Docker VM didn't answer in time.
+  - One 27.0 run crashed inside Apple's Liquid Glass drawing, with none of our code on the crashing thread. Watch for it on a device.
+- Checked in the simulator on iOS 26.5 and 27.0: the Feed with and without friends, the Inbox, Profile, Settings, Friends, Search and the deep links.
+
+My calls:
+- **Search placement.** Search is a field on its own tab, on iOS 26 and 27 alike, and Close goes back to the tab you were on. Stage 1 split the placement by OS, which on iOS 27 left a dead field on every tab.
+- **Interim badge.** Until conversations have a screen (Stage 5), the badge counts friend requests plus friends whose sent quote you haven't seen, so opening the Inbox always clears it.
+- **Send from the Feed saves first.** Sending the Feed's quote puts it in your library first (with a toast), because the send sheet needs a library quote until Stages 4 and 5.
+- **Search's Inbox results** switch to the Inbox tab for now. In Stage 5 they open the conversation.
+- **Quote of the day** changes after midnight the next time the Feed appears or the app comes back, never while you are looking at it.
+- **"Blocked Users"** is now Title Case everywhere, as the spec's casing rule asks. Settings' other rows follow in Stage 6.
+
+For you:
+- **Legal pages** still name screens that are gone. "Shared with you" is now the Inbox, and "Account >" is now Profile > Settings:
+  - `App/Resources/Legal/terms.md` lines 33, 35 and 41;
+  - `community-guidelines.md` lines 29 and 31;
+  - `privacy.md` lines 43, 49 and 61.
+
+  Legal wording is your call. Stage 6 rebuilds Settings, so you may want to wait for it.
+- **Deploy order and Docker memory:** unchanged from Stage 1b.
+
+Known, for later stages:
+- **Send from the Feed with a look-alike:** if your library holds an unchecked copy of the Feed's quote, Send adds a second, checked one. The Send sheet will send the catalog quote itself in Stage 5.
+- Profile > Settings > Your profile shows your header a second time, until Stage 6 rebuilds Profile and Settings.
+- The quote screen still shows the tab bar; the spec hides it there (Stage 3).
+- A toast shown while you type in Search covers the field. At accessibility sizes, Friends cuts off "Your username: @…" (both Stage 7).
+- **A delete that times out:** if the server deletes a quote but its answer comes after the app gave up waiting, the app keeps the quote on screen and Undo does nothing on the server. The next refresh then removes it. The UI tests hit this once on the stalled local server. The code is older than the redesign (Stage 7).

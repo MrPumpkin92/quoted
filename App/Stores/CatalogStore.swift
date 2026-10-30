@@ -3,9 +3,11 @@ import Observation
 import QuotedCore
 import QuotedKit
 
-/// The verified catalog (`catalog_quotes`): every live quote for Verified Quotes, loaded once per
-/// session (and again after a failed add, which may mean a quote was retired since), and any catalog
-/// quote by id for the Verified sheet, kept per session.
+/// The verified catalog (`catalog_quotes`): every live quote for Verified Quotes and the empty Feed's
+/// quote of the day, loaded once per session and kept in memory only (no offline cache), and reloaded
+/// after a failed add in Verified Quotes or the Feed (which may mean a quote was retired since) and
+/// when the Feed shows on a day after the one it loaded (`loadedDay`); and any catalog quote by id for
+/// the Verified sheet, kept per session.
 /// Inject with `@Environment(CatalogStore.self)`.
 ///
 /// Onboarding doesn't use it: it offers only the starters, through `StarterStore`.
@@ -16,6 +18,9 @@ final class CatalogStore {
     private(set) var quotes: [CatalogQuote] = []
     /// True once a load succeeded this session (an empty catalog then means none, not loading).
     private(set) var hasLoaded = false
+    /// The day (`CatalogQuote.dayNumber(of:)`) the last successful load answered, so the Feed knows a
+    /// catalog from an earlier day may hold a quote retired since. Nil until a load succeeds.
+    private(set) var loadedDay: Int?
     /// True while loading.
     private(set) var isLoading = false
     /// The last load error (show it inline with a retry), cleared by the next success.
@@ -42,6 +47,7 @@ final class CatalogStore {
         do {
             quotes = try await backend.catalog.fetchLive()
             hasLoaded = true
+            loadedDay = CatalogQuote.dayNumber(of: .now)
             lastError = nil
         } catch is CancellationError {
             return
@@ -75,6 +81,7 @@ final class CatalogStore {
     func reset() {
         quotes = []
         hasLoaded = false
+        loadedDay = nil
         isLoading = false
         lastError = nil
         lookedUp = [:]
@@ -84,5 +91,6 @@ final class CatalogStore {
     func seedPreview(quotes: [CatalogQuote]) {
         self.quotes = quotes
         hasLoaded = true
+        loadedDay = CatalogQuote.dayNumber(of: .now)
     }
 }

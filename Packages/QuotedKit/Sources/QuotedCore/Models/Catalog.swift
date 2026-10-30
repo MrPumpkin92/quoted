@@ -223,3 +223,54 @@ extension CatalogQuote {
         return sections
     }
 }
+
+// MARK: Quote of the day
+
+/// The catalog quote the empty Feed showed on one day (docs/ui-spec.md §15), kept on the device so
+/// a catalog that changes during the day (a new batch, a retirement) doesn't move the day's quote.
+public struct CatalogDayPick: Codable, Hashable, Sendable {
+    /// `CatalogQuote.dayNumber(of:calendar:)` of the day.
+    public var day: Int
+    /// The `catalog_quotes.id` shown that day.
+    public var catalogID: Int
+
+    public init(day: Int, catalogID: Int) {
+        self.day = day
+        self.catalogID = catalogID
+    }
+}
+
+extension CatalogQuote {
+    /// The catalog quote the empty Feed shows on `date` (docs/ui-spec.md §15): the live quotes in
+    /// `catalog`, in id order (ids are dense and never reused), at the whole days since 2001-01-01 in
+    /// `calendar` (its time zone decides when a day starts), modulo their count. Nil when none is
+    /// live. Pass the time the Feed appeared, so the quote never changes while it is on screen.
+    public static func ofTheDay(from catalog: [CatalogQuote], on date: Date, calendar: Calendar = .current) -> CatalogQuote? {
+        ofTheDay(from: catalog, day: dayNumber(of: date, calendar: calendar))
+    }
+
+    /// The catalog quote the empty Feed shows on `day` (a `dayNumber(of:calendar:)`): `pick`'s quote
+    /// when it was picked for that day and is still live in `catalog`, so a change in the live count
+    /// during the day doesn't move it; otherwise the live quotes in id order at `day` modulo their
+    /// count. Nil when none is live.
+    public static func ofTheDay(from catalog: [CatalogQuote], day: Int, keeping pick: CatalogDayPick? = nil) -> CatalogQuote? {
+        let live = catalog.filter { $0.status == .live }.sorted { $0.id < $1.id }
+        guard !live.isEmpty else { return nil }
+        if let pick, pick.day == day, let kept = live.first(where: { $0.id == pick.catalogID }) {
+            return kept
+        }
+        let count = live.count
+        let index = ((day % count) + count) % count
+        return live[index]
+    }
+
+    /// The whole days from 2001-01-01 to `date`, each day starting at midnight in `calendar`'s time
+    /// zone. Negative before 2001.
+    public static func dayNumber(of date: Date, calendar: Calendar = .current) -> Int {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        guard let epoch = gregorian.date(from: DateComponents(year: 2001, month: 1, day: 1)) else { return 0 }
+        let start = calendar.startOfDay(for: epoch)
+        return calendar.dateComponents([.day], from: start, to: calendar.startOfDay(for: date)).day ?? 0
+    }
+}

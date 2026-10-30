@@ -261,7 +261,8 @@ struct ShareQuoteSheet: View {
     // MARK: No friends yet
 
     /// With no friends, sharing the image is the action: one filled "Share image", the text as a row
-    /// under it, and a quiet way to Friends (which closes the sheet).
+    /// under it, and a quiet Add a friend, which closes the sheet and pushes Friends on the current
+    /// tab with the username field focused.
     private var noFriendsContent: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.group) {
             imageShareLink {
@@ -278,10 +279,10 @@ struct ShareQuoteSheet: View {
                     // Presented by the shell or by the full-screen quote, which closes too.
                     dismiss()
                     router.spotlight = nil
-                    router.select(.friends)
+                    router.push(.friends(.add))
                 } label: {
                     // The 44-pt target is in the label: a frame outside a Button adds no hit area.
-                    Text("Go to Friends")
+                    Text("Add a friend")
                         .font(.footnote.weight(.semibold))
                         .frame(minHeight: Theme.Metrics.minTouchTarget)
                         .contentShape(Rectangle())

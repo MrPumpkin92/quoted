@@ -27,7 +27,7 @@ struct ComponentGallery: View {
                         HStack(spacing: Theme.Spacing.s) {
                             AvatarStack(profiles: [Samples.maya, Samples.jordan])
                             VStack(alignment: .leading) {
-                                Text("2 shared with you").font(.headline)
+                                Text("2 friend requests").font(.headline)
                                 Text("From Maya and Jordan").font(.subheadline).foregroundStyle(.secondary)
                             }
                         }

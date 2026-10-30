@@ -5,20 +5,27 @@ import QuotedCore
 /// App navigation state: the selected tab, one typed path per tab, the presented sheet and the
 /// search text. Inject with `@Environment(Router.self)`.
 ///
-/// Push with `router.push(.reminders)`, present with `router.present(.addQuote)`, dismiss your own
-/// sheet with `@Environment(\.dismiss)` (or `router.dismissSheet()`). Deep links go through
+/// Push with `router.push(.reminders)` (links push onto the current tab's stack; only deep links, the
+/// spotlight's "Open in Library", toast actions and Search's received quotes (`showInbox()`) switch
+/// tabs), present with `router.present(.addQuote)`, dismiss your own sheet with
+/// `@Environment(\.dismiss)` (or `router.dismissSheet()`). The launch tab is chosen once per session,
+/// before the tabs first draw (`selectLaunchTab(opensOnFeed:)`). Deep links go through
 /// `AppModel.open(_:)`, which calls `open(_:reminderQuoteIDs:)` once the user is signed in. A quote
-/// link opens the full-screen `spotlight`. A link never closes a sheet that may hold unsaved input:
-/// it waits in `pendingLink` and opens when the sheet is dismissed.
+/// link opens the full-screen `spotlight`. A link never closes a sheet that may hold unsaved input: it
+/// waits in `pendingLink` and opens when the sheet is dismissed.
 @Observable
 @MainActor
 final class Router {
     /// The selected tab. Setting it through `select(_:)` pops to root when the tab is re-tapped.
     var selectedTab: AppTab = .library
+    /// The Feed tab's stack.
+    var feedPath: [Route] = []
     /// The Library tab's stack.
     var libraryPath: [Route] = []
-    /// The Friends tab's stack.
-    var friendsPath: [Route] = []
+    /// The Inbox tab's stack.
+    var inboxPath: [Route] = []
+    /// The Profile tab's stack.
+    var profilePath: [Route] = []
     /// The Search tab's stack.
     var searchPath: [Route] = []
     /// The presented sheet, if any. Setting a different value swaps the sheet.
@@ -26,11 +33,13 @@ final class Router {
     /// The quote shown full screen after a reminder or widget tap, if any. The shell presents it over
     /// the tabs with `fullScreenCover(item:)`.
     var spotlight: QuoteSpotlight?
-    /// How many sheets the shell doesn't present (the spotlight's Share, Account's display name) are
-    /// up and may hold unsaved input. While any is, links wait (`View.holdsDeepLinks()`).
+    /// How many sheets the shell doesn't present are up that may hold unsaved input (the spotlight's
+    /// Share, Settings' display name, the Terms sheet) or that the full-screen quote can't be presented
+    /// over (the Verified sheet from the Feed or a quote's detail). While any is, links wait
+    /// (`View.holdsDeepLinks()`).
     private(set) var linkHolds = 0
-    /// The search field's text. `MainTabView` binds it to `.searchable` on the TabView; `SearchView`
-    /// reads it (and must not add its own `.searchable`).
+    /// The search field's text. `MainTabView` binds it to `.searchable` on the search tab's stack;
+    /// `SearchView` reads it (and must not add its own `.searchable`).
     var searchText: String = ""
     /// Whether the search field is active (focused). Bound to `.searchable(isPresented:)`.
     var isSearchPresented: Bool = false
@@ -38,8 +47,20 @@ final class Router {
     /// A deep link waiting to open: it arrived before the user reached the main tabs (applied when they
     /// do), or while a sheet that may hold unsaved input was up (applied when it is dismissed).
     private(set) var pendingLink: DeepLink?
+    /// Whether this session's launch tab was chosen (`selectLaunchTab(opensOnFeed:)`).
+    private var hasSelectedLaunchTab = false
 
     // MARK: Tabs
+
+    /// Chooses the tab the main tabs open on, once per session (docs/ui-spec.md, Launch tab): Feed
+    /// when `opensOnFeed` (the cached Feed's first page has a post by someone else), otherwise
+    /// Library. Call it before the tabs first draw, so they never appear on one tab and jump to the
+    /// other. Later calls do nothing until `reset()`.
+    func selectLaunchTab(opensOnFeed: Bool) {
+        guard !hasSelectedLaunchTab else { return }
+        hasSelectedLaunchTab = true
+        selectedTab = opensOnFeed ? .feed : .library
+    }
 
     /// Selects a tab. Re-selecting the current tab pops it to its root, like every iOS tab bar.
     func select(_ tab: AppTab) {
@@ -55,8 +76,10 @@ final class Router {
     /// The path of a tab.
     func path(for tab: AppTab) -> [Route] {
         switch tab {
+        case .feed: feedPath
         case .library: libraryPath
-        case .friends: friendsPath
+        case .inbox: inboxPath
+        case .profile: profilePath
         case .search: searchPath
         }
     }
@@ -64,8 +87,10 @@ final class Router {
     /// Replaces the path of a tab.
     func setPath(_ routes: [Route], for tab: AppTab) {
         switch tab {
+        case .feed: feedPath = routes
         case .library: libraryPath = routes
-        case .friends: friendsPath = routes
+        case .inbox: inboxPath = routes
+        case .profile: profilePath = routes
         case .search: searchPath = routes
         }
     }
@@ -100,6 +125,16 @@ final class Router {
         setPath([], for: tab ?? selectedTab)
     }
 
+    /// Closes the spotlight and shows the Inbox at its root (`quoted://inbox`, and Search's received
+    /// quotes until conversations have their own screen). An active search is left as it is, text and
+    /// focus, for the next visit to Search: ending it in the same update as the tab change leaves
+    /// iOS 26 on a blank screen instead of the Inbox.
+    func showInbox() {
+        spotlight = nil
+        selectedTab = .inbox
+        inboxPath = []
+    }
+
     // MARK: Sheets
 
     /// Presents a sheet, replacing any sheet on screen.
@@ -124,8 +159,10 @@ final class Router {
     // MARK: Deep links
 
     /// Routes a deep link: `quote/<id>` shows that quote full screen (`spotlight`) over whatever is on
-    /// screen; `rotation` closes the spotlight, selects Library and shows Reminders. `auth-callback`
-    /// is handled by `SessionStore`, not here.
+    /// screen; `rotation` closes the spotlight, selects Library and shows Reminders; `inbox` closes the
+    /// spotlight and shows the Inbox at its root. `auth-callback` is handled by `SessionStore`, not
+    /// here. Like `showInbox()`, `rotation` leaves an active search alone: ending it with the switch
+    /// leaves iOS 26 on Library without Reminders.
     ///
     /// A sheet that may hold unsaved input (Add, Edit, Share, the reminder picker, Verified Quotes;
     /// see `SheetRoute.mayHoldUnsavedInput`), or any sheet marked `holdsDeepLinks()`, is never closed
@@ -136,7 +173,7 @@ final class Router {
     @discardableResult
     func open(_ link: DeepLink, reminderQuoteIDs: [UUID]) -> Bool {
         switch link {
-        case .quote, .rotation:
+        case .quote, .rotation, .inbox:
             if let sheet, sheet.mayHoldUnsavedInput {
                 pendingLink = link
                 return false
@@ -163,6 +200,10 @@ final class Router {
             spotlight = nil
             selectedTab = .library
             libraryPath = [.reminders]
+        case .inbox:
+            sheet = nil
+            pendingLink = nil
+            showInbox()
         case .authCallback:
             break
         }
@@ -178,7 +219,8 @@ final class Router {
         libraryPath = [.quote(id: id, contextIDs: context)]
     }
 
-    /// A sheet that may hold unsaved input appeared: links wait until `releaseLinkHold`.
+    /// A sheet that may hold unsaved input, or that the full-screen quote can't be presented over,
+    /// appeared: links wait until `releaseLinkHold`.
     func holdLinks() {
         linkHolds += 1
     }
@@ -212,12 +254,16 @@ final class Router {
 
     // MARK: Reset
 
-    /// Back to a fresh Library tab with nothing presented (sign-out).
+    /// Back to a fresh Library tab with nothing presented (sign-out). The next session chooses its
+    /// launch tab again.
     func reset() {
         selectedTab = .library
+        feedPath = []
         libraryPath = []
-        friendsPath = []
+        inboxPath = []
+        profilePath = []
         searchPath = []
+        hasSelectedLaunchTab = false
         sheet = nil
         spotlight = nil
         linkHolds = 0

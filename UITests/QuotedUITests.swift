@@ -1,8 +1,13 @@
 // The happy-path smoke flow against the LOCAL Supabase stack (scheme "Quoted Local", Debug-Local).
-// Besides onboarding, Add, detail, share sheet, Reminders, Search, Friends and Account, it checks that
-// Undo puts a quote back in its reminder place (after "Remove from reminders" and after Delete, also
-// on the server) and that "Search the web" opens the Safari app. The seeded-account flow below adds
-// the inbox (save, delete + Undo), a friend request, and deep links that must not discard a draft.
+// Besides onboarding, Add, detail, share sheet, Reminders, Search, the five tabs, Friends (pushed from
+// the Inbox) and Settings (pushed from Profile), it checks that Undo puts a quote back in its reminder
+// place (after "Remove from reminders" and after Delete, also on the server) and that "Search the web"
+// opens the in-app browser. The seeded-account flow below adds the Inbox (a received quote, Save),
+// Friends from the Inbox, a friend request when one is waiting, and deep links: they must not discard
+// a draft, and `quoted://inbox` shows the Inbox at its root.
+//
+// Tabs are found by their ids (`tab.feed`, `tab.library`, `tab.inbox`, `tab.profile`, `tab.search`)
+// or their titles; the Inbox's Friends button is `inbox.friends` and Profile's gear `profile.settings`.
 //
 // The app has no sign-in screen. Every test launches it with `-UITestReset`, which clears any
 // session, App Group data and preferences a previous run left behind, so the happy path starts on
@@ -224,7 +229,7 @@ final class QuotedUITests: XCTestCase {
         try waitFor(element(in: app, labelContaining: "2\u{00D7} daily"))
 
         // 10. Search: "courage" lists the web row last.
-        app.tabBars.buttons["Search"].tap()
+        tab(in: app, "Search").tap()
         let searchField = app.searchFields.firstMatch
         try waitFor(searchField)
         snapshot("13-search-empty")
@@ -234,36 +239,63 @@ final class QuotedUITests: XCTestCase {
         snapshot("14-search-courage")
         // The keyboard's Search key remembers the term; closing the search brings the tab bar back.
         searchField.typeText("\n")
-        let friendsTab = app.tabBars.buttons["Friends"]
-        if !friendsTab.waitForExistence(timeout: 2) {
+        let inboxTab = tab(in: app, "Inbox")
+        if !inboxTab.waitForExistence(timeout: 2) {
             for label in ["Close", "Cancel"] where app.buttons[label].exists {
                 app.buttons[label].firstMatch.tap()
                 break
             }
         }
-        try waitFor(element(in: app, labelContaining: "courage"))
+        // Close (iOS 26 and 27) also leaves the search tab for the previously selected one, with the
+        // field cleared; Recent is on Search.
+        let recent = element(in: app, labelContaining: "courage")
+        if !recent.waitForExistence(timeout: 3) {
+            tab(in: app, "Search").tap()
+        }
+        try waitFor(recent)
         snapshot("14b-search-recent")
 
-        // 11. Friends, then Account. While Search is selected, iOS 26 folds the other tabs into one
-        // button (the last tab, Library); it expands them again.
-        if !friendsTab.waitForExistence(timeout: 2) {
-            let folded = app.tabBars.buttons["Library"].exists ? app.tabBars.buttons["Library"] : app.tabBars.buttons.firstMatch
-            folded.tap()
+        // 11. The Inbox, Friends from its toolbar, then Profile and Settings from its gear. While Search
+        // is selected, iOS folds the other tabs into one button for the previously selected tab (here
+        // Library). Selecting Search focuses its field, and the keyboard then covers that button, so
+        // close the search the way a person would (Close returns to Library and expands the tabs).
+        if !inboxTab.waitForExistence(timeout: 2) {
+            let close = app.buttons["Close"]
+            if close.exists {
+                close.tap()
+            } else {
+                let library = tab(in: app, "Library")
+                let folded = library.exists ? library : app.tabBars.buttons.firstMatch
+                folded.tap()
+            }
         }
-        try waitFor(friendsTab)
-        friendsTab.tap()
+        try waitFor(inboxTab)
+        inboxTab.tap()
+        try waitFor(app.navigationBars["Inbox"])
+        // A new account has no friends: the empty Inbox offers Add a friend.
+        try waitFor(element(in: app, labelContaining: "No messages yet"), timeout: 15)
+        snapshot("15-inbox")
+        app.buttons["inbox.friends"].tap()
         try waitFor(app.navigationBars["Friends"])
-        snapshot("15-friends")
-        element(in: app, labelContaining: "Account and settings").tap()
-        try waitFor(app.navigationBars["Account"])
+        snapshot("15b-friends")
+        tab(in: app, "Feed").tap()
+        try waitFor(app.navigationBars["Feed"])
+        try waitFor(element(in: app, labelContaining: "Checked against the source"), timeout: 20)
+        snapshot("15c-feed")
+        tab(in: app, "Profile").tap()
+        try waitFor(app.navigationBars["Profile"])
         try waitFor(element(in: app, labelContaining: "@\(username)"))
-        snapshot("16-account")
-        // The bottom of Account: Delete account and the anonymous-account footer, and no Sign out.
+        snapshot("16-profile")
+        app.buttons["profile.settings"].tap()
+        try waitFor(app.navigationBars["Settings"])
+        try waitFor(element(in: app, labelContaining: "@\(username)"))
+        snapshot("16a-settings")
+        // The bottom of Settings: Delete account and the anonymous-account line, and no Sign out.
+        try waitFor(element(in: app, labelContaining: "This account lives on this iPhone"))
         app.swipeUp()
-        try waitFor(element(in: app, labelContaining: "Your account belongs to this iPhone"))
         try waitFor(app.buttons["Delete account"])
         XCTAssertFalse(app.buttons["Sign out"].exists, "An anonymous account should have no Sign out")
-        snapshot("16b-account-bottom")
+        snapshot("16b-settings-bottom")
 
         // The server kept the bold run: "Trust thyself" is UTF-16 0..<13. Both Undos reached the
         // server too: four quotes, with Hope back at reminder position 1 and Beware (deleted, then
@@ -286,7 +318,7 @@ final class QuotedUITests: XCTestCase {
         XCTAssertEqual(saved.first { $0.body.hasPrefix("Beware; for I am fearless") }?.rotationPosition, 2)
 
         // 12. "Search the web" opens Google in the in-app browser, and Close returns to Search.
-        app.tabBars.buttons["Search"].tap()
+        tab(in: app, "Search").tap()
         try waitFor(searchField)
         searchField.tap()
         searchField.typeText("kindness")
@@ -301,17 +333,19 @@ final class QuotedUITests: XCTestCase {
         XCTAssertTrue(webRow.waitForExistence(timeout: 10), "Closing the browser should return to Search")
     }
 
-    /// Friends, the shared inbox and deep links on an account seeded by scripts/seed-local-friend.sh.
-    /// Skipped unless the runner gets the account (xcodebuild passes `TEST_RUNNER_`-prefixed variables):
+    /// Friends, the Inbox and deep links on an account seeded by scripts/seed-local-friend.sh (or any
+    /// local account a friend sent a quote). Skipped unless the runner gets the account (xcodebuild
+    /// passes `TEST_RUNNER_`-prefixed variables):
     ///
     ///     TEST_RUNNER_QUOTED_QA_EMAIL=... TEST_RUNNER_QUOTED_QA_PASSWORD=... \
     ///     TEST_RUNNER_QUOTED_QA_QUOTE_ID=<a quote in reminders> xcodebuild test ... \
     ///       -only-testing:QuotedUITests/QuotedUITests/testFriendsInboxAndDeepLinks
     ///
-    /// The app signs in to the account through its DEBUG sign-in hook (`launchSignedIn`).
-    /// Expects one unseen share (seeded with `--accept`) and one incoming request (`--no-share`).
-    /// With `TEST_RUNNER_QUOTED_QA_DELETE=1` it ends by deleting the account from Account, after which
-    /// the app returns to Welcome.
+    /// The app signs in to the account through its DEBUG sign-in hook (`launchSignedIn`). Expects a
+    /// quote from a friend in the Inbox: by default the one the seed script sends, or the quote that
+    /// starts with `TEST_RUNNER_QUOTED_QA_SHARE_START`. When an incoming request waits (seeded with
+    /// `--no-share`), it accepts it in Friends. With `TEST_RUNNER_QUOTED_QA_DELETE=1` it ends by
+    /// deleting the account from Settings, after which the app returns to Welcome.
     @MainActor
     func testFriendsInboxAndDeepLinks() throws {
         let environment = ProcessInfo.processInfo.environment
@@ -319,7 +353,12 @@ final class QuotedUITests: XCTestCase {
             throw XCTSkip("Set TEST_RUNNER_QUOTED_QA_EMAIL and TEST_RUNNER_QUOTED_QA_PASSWORD to run the seeded-account QA flow.")
         }
         do {
-            try runFriendsInboxAndDeepLinks(email: email, password: password, quoteID: environment["QUOTED_QA_QUOTE_ID"])
+            try runFriendsInboxAndDeepLinks(
+                email: email,
+                password: password,
+                quoteID: environment["QUOTED_QA_QUOTE_ID"],
+                shareStart: environment["QUOTED_QA_SHARE_START"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.seededShareStart
+            )
         } catch is StepFailed {
             return
         } catch {
@@ -342,50 +381,83 @@ final class QuotedUITests: XCTestCase {
     }
 
     @MainActor
-    private func runFriendsInboxAndDeepLinks(email: String, password: String, quoteID: String?) throws {
-        // Library: the unseen share shows as "1 shared with you".
+    private func runFriendsInboxAndDeepLinks(email: String, password: String, quoteID: String?, shareStart: String) throws {
+        // Launch opens on Library (no cached Feed yet), with all five tabs.
         let app = try launchSignedIn(email: email, password: password)
-        let sharedRow = element(in: app, labelContaining: "shared with you")
-        try waitFor(sharedRow, timeout: 15)
-        snapshot("qa-01-library-shared-row")
+        let tabNames = ["Feed", "Library", "Inbox", "Profile", "Search"]
+        for name in tabNames {
+            XCTAssertTrue(tab(in: app, name).waitForExistence(timeout: 5), "The \(name) tab should be in the tab bar")
+        }
+        let inboxTab = tab(in: app, "Inbox")
+        // The badge counts unread conversations and requests; a quote opened in an earlier run is read.
+        let badge = (inboxTab.value as? String) ?? ""
+        XCTContext.runActivity(named: "Inbox badge: \(badge.isEmpty ? "none" : badge)") { _ in }
+        snapshot("qa-01-library-tabs")
 
-        // The inbox: save the shared quote.
-        sharedRow.tap()
-        try waitFor(app.navigationBars["Shared with you"])
+        // The Inbox: the quote a friend sent, saved to the library unless an earlier run did.
+        inboxTab.tap()
+        try waitFor(app.navigationBars["Inbox"])
+        // iOS 26.5 and 27.0 set the tab bar ids only when the tab bar next updates (here, the tab
+        // switch), not when the tabs first draw.
+        for name in tabNames {
+            let id = "tab.\(name.lowercased())"
+            XCTAssertTrue(app.tabBars.buttons[id].waitForExistence(timeout: 5), "The \(name) tab should have the id \(id)")
+        }
+        try waitFor(element(in: app, labelContaining: shareStart), timeout: 20)
         snapshot("qa-02-inbox")
         let save = app.buttons["Save to your library"].firstMatch
-        try waitFor(save)
-        save.tap()
-        try waitFor(element(in: app, labelContaining: "Saved to your library"))
-        snapshot("qa-03-inbox-saved")
-
-        // The quote is a message now: it stays in the inbox (only its sender can unsend it).
-        try waitFor(element(in: app, labelContaining: Self.seededShareStart))
-        tapBack(in: app, from: "Shared with you")
-        try waitFor(app.navigationBars["Library"])
-
-        // Friends: accept the incoming request.
-        app.tabBars.buttons["Friends"].tap()
-        try waitFor(app.navigationBars["Friends"])
-        let accept = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Accept request from")).firstMatch
-        try waitFor(accept, timeout: 15)
-        snapshot("qa-04-friends-request")
-        accept.tap()
-        // The first social write asks for the Community Terms (docs/ui-spec.md §22) unless the account
-        // already accepted them.
-        let acceptTerms = app.buttons["Accept"]
-        if acceptTerms.waitForExistence(timeout: 5) {
-            snapshot("qa-04b-terms-sheet")
-            acceptTerms.tap()
+        if save.waitForExistence(timeout: 3) {
+            save.tap()
+            try waitFor(element(in: app, labelContaining: "Saved to your library"))
+            snapshot("qa-03-inbox-saved")
+        } else {
+            try waitFor(element(in: app, labelContaining: "Saved to your library"))
         }
-        try waitFor(app.staticTexts["Friends"])
-        XCTAssertTrue(accept.waitForNonExistence(timeout: 10), "The request should leave Requests once accepted")
-        snapshot("qa-05-friends-accepted")
+        // The quote is a message: it stays in the Inbox (only its sender can unsend it), and opening
+        // the Inbox cleared it from the badge.
+        try waitFor(element(in: app, labelContaining: shareStart))
+        XCTAssertTrue(
+            (inboxTab.value as? String).map { !$0.contains("conversation") } ?? true,
+            "Opening the Inbox should clear its conversations from the badge"
+        )
+
+        // Friends, from the Inbox's toolbar. Accept a waiting request, if any.
+        app.buttons["inbox.friends"].tap()
+        try waitFor(app.navigationBars["Friends"])
+        try waitFor(element(in: app, labelContaining: "Blocked Users"))
+        snapshot("qa-04-friends")
+        let accept = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Accept request from")).firstMatch
+        if accept.waitForExistence(timeout: 5) {
+            // Wait on this request's own button: with several waiting, the BEGINSWITH match moves on
+            // to the next one.
+            let accepted = app.buttons[accept.label]
+            accept.tap()
+            // The first social write asks for the Community Terms (docs/ui-spec.md §22) unless the
+            // account already accepted them.
+            let acceptTerms = app.buttons["Accept"]
+            if acceptTerms.waitForExistence(timeout: 5) {
+                snapshot("qa-04b-terms-sheet")
+                acceptTerms.tap()
+            }
+            XCTAssertTrue(accepted.waitForNonExistence(timeout: 10), "The request should leave Requests once accepted")
+            snapshot("qa-05-friends-accepted")
+        } else {
+            XCTContext.runActivity(named: "No incoming request to accept") { _ in }
+        }
 
         // Deep links are opened through the system (like a notification or widget tap);
         // `app.open(_:)` would relaunch with `-UITestReset` and start over with a new session.
+        // `quoted://inbox` from another tab selects the Inbox and pops it to its root (Friends is
+        // still pushed on the Inbox stack here).
+        tab(in: app, "Library").tap()
+        try waitFor(app.navigationBars["Library"])
+        try openLink("quoted://inbox", in: app)
+        try waitFor(app.navigationBars["Inbox"], timeout: 15)
+        XCTAssertFalse(app.navigationBars["Friends"].exists, "quoted://inbox should pop the Inbox to its root")
+        snapshot("qa-05b-deeplink-inbox")
+
         // A link never discards a draft: with text typed in Add it waits until the sheet closes.
-        app.tabBars.buttons["Library"].tap()
+        tab(in: app, "Library").tap()
         try waitFor(app.navigationBars["Library"])
         try openNewQuote(in: app)
         let editor = app.textViews["Quote"]
@@ -394,25 +466,21 @@ final class QuotedUITests: XCTestCase {
             editor.tap()
         }
         editor.typeText("A draft the link must keep")
-        if let url = URL(string: "quoted://rotation") {
-            XCUIDevice.shared.system.open(url)
-            confirmOpenInApp()
-        }
+        try openLink("quoted://rotation", in: app)
         XCTAssertFalse(app.navigationBars["Reminders"].waitForExistence(timeout: 3), "The link must wait for the Add sheet")
         try waitFor(app.navigationBars["New quote"])
         XCTAssertTrue((editor.value as? String)?.contains("A draft the link must keep") == true, "The draft must survive the link")
-        snapshot("qa-05b-deeplink-kept-draft")
+        snapshot("qa-05c-deeplink-kept-draft")
         app.navigationBars["New quote"].buttons["Cancel"].tap()
         let discard = app.buttons["Discard"]
         try waitFor(discard)
         discard.tap()
         try waitFor(app.navigationBars["Reminders"], timeout: 15)
-        snapshot("qa-05c-deeplink-after-discard")
+        snapshot("qa-05d-deeplink-after-discard")
 
         // A quote opens full screen (QuoteSpotlightView); Open in Library shows its detail. Then Reminders.
-        if let quoteID, let url = URL(string: "quoted://quote/\(quoteID)") {
-            XCUIDevice.shared.system.open(url)
-            confirmOpenInApp()
+        if let quoteID {
+            try openLink("quoted://quote/\(quoteID)", in: app)
             let openInLibrary = app.buttons["Open in Library"]
             try waitFor(openInLibrary, timeout: 15)
             snapshot("qa-06-deeplink-quote")
@@ -420,23 +488,20 @@ final class QuotedUITests: XCTestCase {
             try waitFor(app.navigationBars["Quote"], timeout: 15)
             snapshot("qa-06b-deeplink-quote-detail")
         }
-        if let url = URL(string: "quoted://rotation") {
-            XCUIDevice.shared.system.open(url)
-            confirmOpenInApp()
-            try waitFor(app.navigationBars["Reminders"], timeout: 15)
-            snapshot("qa-07-deeplink-reminders")
-        }
+        try openLink("quoted://rotation", in: app)
+        try waitFor(app.navigationBars["Reminders"], timeout: 15)
+        snapshot("qa-07-deeplink-reminders")
 
-        // Optionally delete the account from Account (TEST_RUNNER_QUOTED_QA_DELETE=1).
+        // Optionally delete the account from Settings (TEST_RUNNER_QUOTED_QA_DELETE=1).
         guard ProcessInfo.processInfo.environment["QUOTED_QA_DELETE"] == "1" else { return }
-        app.tabBars.buttons["Friends"].tap()
-        try waitFor(app.navigationBars["Friends"])
-        element(in: app, labelContaining: "Account and settings").tap()
-        try waitFor(app.navigationBars["Account"])
+        tab(in: app, "Profile").tap()
+        try waitFor(app.navigationBars["Profile"])
+        app.buttons["profile.settings"].tap()
+        try waitFor(app.navigationBars["Settings"])
         app.swipeUp()
         let delete = app.buttons["Delete account"]
         try waitFor(delete)
-        snapshot("qa-08-account-bottom")
+        snapshot("qa-08-settings-bottom")
         delete.tap()
         let confirm = app.alerts.buttons["Delete Account"]
         try waitFor(confirm)
@@ -462,6 +527,17 @@ final class QuotedUITests: XCTestCase {
         return app
     }
 
+    /// Opens a `quoted://` link through the system, as a notification or widget tap would.
+    @MainActor
+    private func openLink(_ text: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) throws {
+        guard let url = URL(string: text) else {
+            XCTFail("Bad link \(text)", file: file, line: line)
+            throw StepFailed()
+        }
+        XCUIDevice.shared.system.open(url)
+        confirmOpenInApp()
+    }
+
     /// iOS may ask "Open in “Quoted”?" before handing a URL to the app.
     @MainActor
     private func confirmOpenInApp() {
@@ -473,6 +549,14 @@ final class QuotedUITests: XCTestCase {
     }
 
     // MARK: Helpers
+
+    /// The tab bar button for the tab titled `title` ("Inbox"), by its id (`tab.inbox`) or its title.
+    @MainActor
+    private func tab(in app: XCUIApplication, _ title: String) -> XCUIElement {
+        app.tabBars.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR label == %@", "tab.\(title.lowercased())", title
+        )).firstMatch
+    }
 
     /// A full-screen screenshot attachment (it includes system alerts), kept even when the test passes.
     @MainActor

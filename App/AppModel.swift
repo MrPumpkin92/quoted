@@ -103,17 +103,19 @@ final class AppModel {
         UNUserNotificationCenter.current().delegate = notificationDelegate
     }
 
-    /// Starts following the auth session. Idempotent; RootView calls it on appear.
+    /// Starts following the auth session, and on the first launch of this build removes the inbox
+    /// alerts earlier builds posted. Idempotent; RootView calls it on appear.
     func start() {
         guard sideEffects, !started else { return }
         started = true
         session.start()
+        Task { await InboxAlerts.retireDeliveredAlerts() }
     }
 
     // MARK: Deep links
 
-    /// `.onOpenURL`: `auth-callback` completes sign-in; `quote/<id>` and `rotation` route (or wait
-    /// until the user is signed in and onboarded).
+    /// `.onOpenURL`: `auth-callback` completes sign-in; `quote/<id>`, `rotation` and `inbox` route (or
+    /// wait until the user is signed in and onboarded).
     func handle(url: URL) async {
         guard let link = DeepLink.parse(url) else {
             Logger.app.info("Ignored URL \(url.absoluteString, privacy: .private)")
@@ -138,10 +140,12 @@ final class AppModel {
 
     // MARK: Scene phase
 
-    /// The app came to the foreground: refresh (if stale), re-read permission and replan. Before the
+    /// The app came to the foreground: clear the app icon badge (in every phase), refresh the library
+    /// (if stale) and the social data (for the Inbox badge), re-read permission and replan. Before the
     /// main tabs, retries a failed launch.
     func sceneDidBecomeActive() async {
         guard sideEffects else { return }
+        Task { await InboxAlerts.clearAppIconBadge() }
         guard session.phase == .ready else {
             // Back in the foreground with a failed launch on screen: try again now.
             await session.retryLaunchIfFailed()
@@ -153,12 +157,7 @@ final class AppModel {
         let library = self.library
         let social = self.social
         Task { await library.refreshIfStale() }
-        Task {
-            await social.refreshIfStale()
-            // Seen here: a later background alert must not announce them again.
-            InboxAlerts().markSeenInApp(quotes: social.unseenQuotes, requests: social.incomingRequests)
-            await InboxAlerts.setBadge(social.badgeCount)
-        }
+        Task { await social.refresh() }
     }
 
     /// The app went to the background: commit pending deferred toasts and schedule the next refresh.
@@ -175,7 +174,7 @@ final class AppModel {
     }
 
     /// The `BGAppRefreshTask` handler: refresh the library if signed in, then replan reminders and the
-    /// widget, and schedule the next run.
+    /// widget, and schedule the next run. Social data waits for the app: there are no inbox alerts.
     func performBackgroundRefresh() async {
         guard sideEffects else { return }
         BackgroundRefresh.schedule()
@@ -188,13 +187,6 @@ final class AppModel {
         await touchActivityIfDue()
         if await library.refresh() {
             await reminders.replan().value
-        }
-        // New quotes from friends and friend requests: one best-effort alert, and the icon badge (no push).
-        if await social.refresh() {
-            await InboxAlerts().alertNew(
-                quotes: social.unseenQuotes, requests: social.incomingRequests, permission: reminders.permission
-            )
-            await InboxAlerts.setBadge(social.badgeCount)
         }
         Logger.app.info("Background refresh finished")
     }

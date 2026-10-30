@@ -26,11 +26,20 @@ struct DeepLinkTests {
         #expect(DeepLink.parse(URL(string: "quoted://rotation/")!) == .rotation)
     }
 
+    @Test func parsesInbox() throws {
+        #expect(DeepLink.parse(URL(string: "quoted://inbox")!) == .inbox)
+        #expect(DeepLink.parse(URL(string: "QUOTED://Inbox/")!) == .inbox)
+        #expect(DeepLink(url: URL(string: "quoted://inbox")!) == .inbox)
+        #expect(DeepLink.parse(URL(string: "quoted://inbox/extra")!) == nil)
+        #expect(DeepLink.parse(URL(string: "https://inbox")!) == nil)
+    }
+
     @Test("Rejects unknown links", arguments: [
         "quoted://quote/not-a-uuid",
         "quoted://quote",
         "quoted://quote/8f0c5b8e-3f5e-4c1a-9a51-0d8c1c7e2b11/extra",
         "quoted://rotation/extra",
+        "quoted://inbox/8f0c5b8e-3f5e-4c1a-9a51-0d8c1c7e2b11",
         "quoted://settings",
         "https://quote/8f0c5b8e-3f5e-4c1a-9a51-0d8c1c7e2b11",
         "quoted:quote",
@@ -44,8 +53,9 @@ struct DeepLinkTests {
     @Test func buildsURLs() {
         #expect(DeepLink.url(for: .quote(id)).absoluteString == "quoted://quote/8f0c5b8e-3f5e-4c1a-9a51-0d8c1c7e2b11")
         #expect(DeepLink.url(for: .rotation).absoluteString == "quoted://rotation")
+        #expect(DeepLink.url(for: .inbox).absoluteString == "quoted://inbox")
         #expect(DeepLink.authCallbackURL.absoluteString == "quoted://auth-callback")
-        for link in [DeepLink.quote(id), .rotation, .authCallback(DeepLink.authCallbackURL)] {
+        for link in [DeepLink.quote(id), .rotation, .inbox, .authCallback(DeepLink.authCallbackURL)] {
             #expect(DeepLink.parse(link.url) == link)
         }
     }

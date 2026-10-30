@@ -9,13 +9,13 @@ import SwiftUI
 ///   `public.profile_view`: favorites are private unless the friend shows them to friends
 ///   (`favorites_visibility`); then only accepted friends get them, and the page says so otherwise.
 ///   Saving one goes through `save_from_favorite`, which keeps who added it.
-/// - **Your own profile** (Account > Your profile): the switch that shows your favorites to friends,
+/// - **Your own profile** (Settings > Your profile): the switch that shows your favorites to friends,
 ///   and your favorites, which open the quote's detail.
 ///
 /// A friend's profile has a `…` menu with Report and Block (App Store Guideline 1.2: what a friend
 /// shows you can be reported, and its author blocked, from where you see it).
 ///
-/// Cards follow the Friends tab (Margin cards). Pull to refresh.
+/// Cards follow Friends (Margin cards). Pull to refresh.
 struct ProfileView: View {
     let profile: Profile
     /// A page to show without loading (previews only).

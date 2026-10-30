@@ -31,6 +31,7 @@
 		3DADF8CEC77131398B9AE82A /* ComponentGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B122AF96067C8FF5EE71F32C /* ComponentGallery.swift */; };
 		53FCEC353EC8C778FBFB5C6C /* QuotedWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83F848D8F8AECFB24790F0B5 /* QuotedWidgets.swift */; };
 		54133DC7794739A98D905EFB /* Toast.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FDC9298777E5C339EE524ED /* Toast.swift */; };
+		5801A9FB52925BAB86E01793 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1ED8934BB6E140E02DE9887 /* FeedView.swift */; };
 		5CC133B8B93D7742CED107F6 /* QuoteText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B3BE091B08E82F78939B05D /* QuoteText.swift */; };
 		5D1C0A1FC5CE2DD296861C59 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2CDBC65A4ED9252E0C44C7 /* Log.swift */; };
 		5FD1FA0B827766FB27734EE5 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB2D595723EA920ED530E86 /* EmptyStateView.swift */; };
@@ -41,14 +42,15 @@
 		69B688835EA5A92710A3D5BB /* AttributionLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F8A7C347AD3FDCDD97AC65D /* AttributionLine.swift */; };
 		6FF3D0CC197A6814DF056045 /* VerifiedQuotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FDC3E52B4E8F67FB1970C2 /* VerifiedQuotesView.swift */; };
 		779AA626DDB3509DA9FF4106 /* BackgroundRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6554296FA90D24E72CF576 /* BackgroundRefresh.swift */; };
+		7B6E6CA6C949C2F52A686467 /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39DBF021E4ACD521FBB343FD /* InboxView.swift */; };
 		7D7682504BCA273CCEBA7CC7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A15926E21CFA4A5293A0C79F /* Assets.xcassets */; };
 		7DF9A0B36797AA294112F3CE /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75DE9E1A58F1F8EC37B14249 /* MainTabView.swift */; };
 		7E9393F5D5F0E2FB62453C34 /* QuoteSpotlightView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7AD5C5C802748C6700C3009 /* QuoteSpotlightView.swift */; };
+		868FDF08C2EF4B59F4FFCFEE /* SharedQuoteCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D5A6258CE61AB9C7AC8898B /* SharedQuoteCard.swift */; };
 		86A7259221C733F7BBA92342 /* ShareQuoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE10962298587AD169C3CA8A /* ShareQuoteSheet.swift */; };
 		87830A848F7720E2783761FA /* terms.md in Resources */ = {isa = PBXBuildFile; fileRef = A7717710C53778F9DEC3EE08 /* terms.md */; };
 		8AF2B69424AC9A5E0517ED60 /* CatalogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8025AF97ADC35FABD0E59055 /* CatalogStore.swift */; };
 		8FDB3E230D16B0D0AA72773C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 875617E190882BE960A03323 /* AppModel.swift */; };
-		9690BC68E423BDF88E0566E0 /* SharedInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68FBA54276BAE996F4D38C9B /* SharedInboxView.swift */; };
 		96D9A5A6C9F13A9A2C287461 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC9C061F41B5C39EC60D030 /* WelcomeView.swift */; };
 		9E90FC511FEC7582B4DD5161 /* QuotedApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 527ADD921E142F05717A3A15 /* QuotedApp.swift */; };
 		A24F2991088EE15421114012 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74977D7BC88E5E3840CD796A /* SessionStore.swift */; };
@@ -80,6 +82,7 @@
 		E007CF2187929B283C462822 /* InlineErrorColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A03D9054B5B1AAA7503623 /* InlineErrorColor.swift */; };
 		E195443E2344BFCB54C659BF /* AddEditQuoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2D413167345685AC19F3510 /* AddEditQuoteView.swift */; };
 		E1B844FA9526AF9255C45E55 /* TextPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77718D195FE431086FF4F540 /* TextPageView.swift */; };
+		E2B5BA852364DB48AA1BE033 /* MyProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABB77ECD8F984D4AA4E386F /* MyProfileView.swift */; };
 		E5E6AB774107349CB1FA286B /* AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE0E7418B11687696354033 /* AppInfo.swift */; };
 		E8221BCD59034C561CEC076C /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 269B2438C41F14F44C21BA7E /* Haptics.swift */; };
 		E8AB78DCDE00D375F1B38D37 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6F782AEDBE2808A8323E740 /* ProfileView.swift */; };
@@ -142,7 +145,9 @@
 		347458512D4DE932C9BCEF8D /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		355DDF85AF39E6BE3EA2A99C /* Router.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Router.swift; sourceTree = "<group>"; };
 		3766AAD069F695ACEF3CFCF0 /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
+		39DBF021E4ACD521FBB343FD /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
 		3AA7BA6919FC5E53AE56E3F8 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+		3ABB77ECD8F984D4AA4E386F /* MyProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyProfileView.swift; sourceTree = "<group>"; };
 		3B9BED29BF895AE1E89B7F37 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3BB83D3563D09A04861F7896 /* TermsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermsSheet.swift; sourceTree = "<group>"; };
 		413B9EE8FF01EEC879EC63A8 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
@@ -153,9 +158,9 @@
 		53490C3B87814EBF00C5F2AF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		5B3BE091B08E82F78939B05D /* QuoteText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteText.swift; sourceTree = "<group>"; };
 		5C946B657EC3DDD19D4532A4 /* SharedRelease.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = SharedRelease.xcconfig; sourceTree = "<group>"; };
+		5D5A6258CE61AB9C7AC8898B /* SharedQuoteCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedQuoteCard.swift; sourceTree = "<group>"; };
 		5FDC9298777E5C339EE524ED /* Toast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Toast.swift; sourceTree = "<group>"; };
 		63F649B6012672CA6DB6F523 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
-		68FBA54276BAE996F4D38C9B /* SharedInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedInboxView.swift; sourceTree = "<group>"; };
 		6D5937C39F08F75228521D0D /* BlockedUsersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedUsersView.swift; sourceTree = "<group>"; };
 		6DEA1A604CB4FAEC402156DD /* AuthFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowView.swift; sourceTree = "<group>"; };
 		70665718DF9407777878DBBB /* BackgroundTaskAssertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskAssertion.swift; sourceTree = "<group>"; };
@@ -212,6 +217,7 @@
 		DE0D80293813543BF71ED295 /* FriendsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
 		DF64C9F4710813F225EAAD4F /* project.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = project.yml; sourceTree = "<group>"; };
 		E0046521CEA1EC97980F9671 /* PrimaryButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimaryButton.swift; sourceTree = "<group>"; };
+		E1ED8934BB6E140E02DE9887 /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
 		E2D413167345685AC19F3510 /* AddEditQuoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEditQuoteView.swift; sourceTree = "<group>"; };
 		E54C45D4D401CABB23AACE9D /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 		E5E855658504DA9FAEB852DC /* QuotedWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = QuotedWidgets.entitlements; sourceTree = "<group>"; };
@@ -262,7 +268,7 @@
 			children = (
 				DE0D80293813543BF71ED295 /* FriendsView.swift */,
 				C6F782AEDBE2808A8323E740 /* ProfileView.swift */,
-				68FBA54276BAE996F4D38C9B /* SharedInboxView.swift */,
+				5D5A6258CE61AB9C7AC8898B /* SharedQuoteCard.swift */,
 				3BB83D3563D09A04861F7896 /* TermsSheet.swift */,
 			);
 			path = Friends;
@@ -305,6 +311,14 @@
 				CA704C43BA42D9983255DD5A /* QuotedWidgets.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		58D750C1BCC74E1F771C67C9 /* Feed */ = {
+			isa = PBXGroup;
+			children = (
+				E1ED8934BB6E140E02DE9887 /* FeedView.swift */,
+			);
+			path = Feed;
 			sourceTree = "<group>";
 		};
 		5CBCF93D139AB200CBF98752 /* Resources */ = {
@@ -435,6 +449,22 @@
 			path = Design;
 			sourceTree = "<group>";
 		};
+		93FCF1783EBAAD2130C12812 /* Inbox */ = {
+			isa = PBXGroup;
+			children = (
+				39DBF021E4ACD521FBB343FD /* InboxView.swift */,
+			);
+			path = Inbox;
+			sourceTree = "<group>";
+		};
+		96C9A77F37E8AD9106ED71A3 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				3ABB77ECD8F984D4AA4E386F /* MyProfileView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
 		985A6753778C01373AE143D2 /* Config */ = {
 			isa = PBXGroup;
 			children = (
@@ -488,9 +518,12 @@
 			children = (
 				67895FCDD2532F142EC349A9 /* Account */,
 				09BA6991FBDEB1860CB7F7E7 /* Auth */,
+				58D750C1BCC74E1F771C67C9 /* Feed */,
 				188EA092A4E645A5683A5E8D /* Friends */,
+				93FCF1783EBAAD2130C12812 /* Inbox */,
 				5D76E7812492882BA8E10467 /* Library */,
 				676718843C09E4602607001A /* Onboarding */,
+				96C9A77F37E8AD9106ED71A3 /* Profile */,
 				88C0B5308C92958B80531710 /* Quote */,
 				D6FD8E28EEFDFFBED4026F6C /* Reminders */,
 				81ED69349B3935998BEA6A32 /* Search */,
@@ -729,14 +762,17 @@
 				5FD1FA0B827766FB27734EE5 /* EmptyStateView.swift in Sources */,
 				CCFA6D1B4A2EDB63374002B8 /* ErrorMessages.swift in Sources */,
 				1CEE800E3B5A737D2907D80B /* FavoriteButton.swift in Sources */,
+				5801A9FB52925BAB86E01793 /* FeedView.swift in Sources */,
 				DAD74971F220D16D3F43DD69 /* FriendsView.swift in Sources */,
 				E8221BCD59034C561CEC076C /* Haptics.swift in Sources */,
 				B31E91C14005E4EF9B9AF8B0 /* InboxAlerts.swift in Sources */,
+				7B6E6CA6C949C2F52A686467 /* InboxView.swift in Sources */,
 				E007CF2187929B283C462822 /* InlineErrorColor.swift in Sources */,
 				F54C4FC5BF231D277DF30384 /* LibraryStore.swift in Sources */,
 				23D2A3F2DF12BDD06D41BD92 /* LibraryView.swift in Sources */,
 				5D1C0A1FC5CE2DD296861C59 /* Log.swift in Sources */,
 				7DF9A0B36797AA294112F3CE /* MainTabView.swift in Sources */,
+				E2B5BA852364DB48AA1BE033 /* MyProfileView.swift in Sources */,
 				D067AB632DBCBDE69615D033 /* NewPasswordView.swift in Sources */,
 				CCE3C32876C25CD904337BB6 /* NotificationScheduler.swift in Sources */,
 				C4904A06E5CFE3AF514DBED5 /* OnboardingComponents.swift in Sources */,
@@ -761,7 +797,7 @@
 				67DCA0BBD7DCCEDE6A41FB9F /* SelectableQuoteRow.swift in Sources */,
 				A24F2991088EE15421114012 /* SessionStore.swift in Sources */,
 				86A7259221C733F7BBA92342 /* ShareQuoteSheet.swift in Sources */,
-				9690BC68E423BDF88E0566E0 /* SharedInboxView.swift in Sources */,
+				868FDF08C2EF4B59F4FFCFEE /* SharedQuoteCard.swift in Sources */,
 				09FC5E6A03EAEDE7C9273789 /* SocialStore.swift in Sources */,
 				3A8B7879875002630DB66FC8 /* StarterFlowView.swift in Sources */,
 				FF4A3752B0A742D4D75C3C79 /* StarterStore.swift in Sources */,

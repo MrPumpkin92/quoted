@@ -2,9 +2,9 @@ import QuotedCore
 import QuotedKit
 import SwiftUI
 
-/// The Library tab root (docs/ui-spec.md §5): the reminders status card, a one-time widget tip, the
-/// "shared with you" row, a count header and the quote list. A filled "+" opens a menu: New Quote, or
-/// Browse Verified Quotes (the verified catalog, with the quotes already here dimmed).
+/// The Library tab root (docs/ui-spec.md §5): the reminders status card, a one-time widget tip, a
+/// count header and the quote list. What friends send lives in the Inbox. A filled "+" opens a menu:
+/// New Quote, or Browse Verified Quotes (the verified catalog, with the quotes already here dimmed).
 ///
 /// Rows open the detail pager across the Library order. Leading swipe shares or hearts; trailing swipe
 /// deletes (with Undo) or adds to / removes from reminders (Undo puts it back in its old place); the
@@ -138,10 +138,6 @@ struct LibraryView: View {
                         .headerCardRow()
                         .transition(.opacity)
                 }
-                if showsSharedRow {
-                    sharedRow
-                        .headerCardRow()
-                }
                 if hasFavorites {
                     favoritesFilter
                 }
@@ -248,9 +244,6 @@ struct LibraryView: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(spacing: Theme.Spacing.group) {
-                    if showsSharedRow {
-                        sharedRow
-                    }
                     EmptyStateView(
                         systemImage: "text.quote",
                         title: "Your library is empty",
@@ -285,8 +278,6 @@ struct LibraryView: View {
     private var showsWidgetTip: Bool {
         widgetInstalled == false && !preferences.widgetTipDismissed && !library.isEmpty
     }
-
-    private var showsSharedRow: Bool { social.unseenCount > 0 }
 
     private var widgetTip: some View {
         let tileLayout = IconTile.layout(for: dynamicTypeSize)
@@ -327,40 +318,6 @@ struct LibraryView: View {
         }
         .padding(.vertical, -Theme.Spacing.xxs)
         .card()
-    }
-
-    private var sharedRow: some View {
-        // Avatars above the text at accessibility sizes, like the status card's tile.
-        let layout = IconTile.layout(for: dynamicTypeSize)
-        return Button {
-            router.push(.sharedInbox)
-        } label: {
-            HStack(spacing: Theme.Spacing.s) {
-                layout {
-                    AvatarStack(profiles: social.unseenSenders, size: 32)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(social.unseenCount == 1 ? "1 shared with you" : "\(social.unseenCount) shared with you")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        if let summary = social.unseenSummary {
-                            Text(summary)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-            }
-            .card()
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Opens quotes your friends sent")
     }
 
     private var countHeader: some View {
@@ -457,7 +414,7 @@ enum ReminderMembership {
 }
 
 private extension View {
-    /// A card (status, tip, shared) as a borderless row on Ground.
+    /// A card (status, tip) as a borderless row on Ground.
     func headerCardRow() -> some View {
         self
             .listRowInsets(EdgeInsets(

@@ -2,19 +2,22 @@ import QuotedCore
 import SwiftUI
 import UIKit
 
-/// The Friends tab root (docs/ui-spec.md §10).
+/// Friends (docs/ui-spec.md §10), pushed on the current stack: from the Inbox's Friends button
+/// (`.list`), its requests row (`.requests`, scrolled to Requests) and every "Add a friend" (`.add`,
+/// the username field focused).
 ///
-/// Top to bottom: your profile row (→ Account; press and hold to copy or share your username), "Add a
-/// friend" (the username field, then "Your username: @alex" with Copy and Share), Requests (incoming:
-/// Decline / Accept; outgoing: Requested / Cancel; each with a "…" menu: Report, Block, and Decline
-/// for incoming), "N shared with you" (one row that opens the inbox) and Friends (a "…" menu and
-/// trailing swipes: Remove, Block, Report). The "…" holds everything about a person, here and on shared
-/// quotes. Report and Block are also VoiceOver actions on each person. Opening the tab marks the
-/// quotes friends sent as seen (their conversations read). Sending a request and accepting one wait
-/// for the Terms of Use (`SocialStore.requireTerms(for:then:)`): Add and Accept show progress through
-/// the check, and a check still waiting when the screen goes away ends without a word. MainTabView
-/// puts `FriendsView()` at the root of the Friends tab's NavigationStack.
+/// Top to bottom: "Add a friend" (the username field, then "Your username: @alex" with Copy and
+/// Share), Requests (incoming: Decline / Accept; outgoing: Requested / Cancel; each with a "…" menu:
+/// Report, Block, and Decline for incoming), Friends (a "…" menu and trailing swipes: Remove, Block,
+/// Report) and, always last, Blocked Users. The "…" holds everything about a person, here and on
+/// shared quotes. Report and Block are also VoiceOver actions on each person. Sending a request and
+/// accepting one wait for the Terms of Use (`SocialStore.requireTerms(for:then:)`): Add and Accept
+/// show progress through the check, and a check still waiting when the screen goes away ends without
+/// a word.
 struct FriendsView: View {
+    /// Where the screen opens: the top, Requests, or the username field.
+    let entry: FriendsEntry
+
     @Environment(SocialStore.self) private var social
     @Environment(SessionStore.self) private var session
     @Environment(Router.self) private var router
@@ -29,59 +32,65 @@ struct FriendsView: View {
     /// This screen, as the owner of its terms checks (`SocialStore.requireTerms(for:then:)`).
     @State private var termsOwner = UUID()
     @FocusState private var isUsernameFocused: Bool
-    @State private var isVisible = false
+    /// Whether `entry` was applied (once per push: coming back from a profile changes nothing).
+    @State private var didApplyEntry = false
     @State private var confirmation: SocialConfirmation?
     private var separatorInset = SocialSeparatorInset()
 
-    init() {}
+    /// The Requests header's scroll ID.
+    private static let requestsID = "friends.requests"
+
+    init(entry: FriendsEntry = .list) {
+        self.entry = entry
+    }
 
     var body: some View {
-        List {
-            profileRow
-            addFriendSection
-            requestsSection
-            sharedSection
-            friendsSection
+        ScrollViewReader { proxy in
+            List {
+                addFriendSection
+                requestsSection
+                friendsSection
+                blockedUsersRow
+            }
+            .marginCardList()
+            .task {
+                await applyEntry(proxy)
+            }
         }
-        .marginCardList()
         .navigationTitle("Friends")
+        .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             await social.refresh(userInitiated: true)
         }
         .task {
             await social.refreshIfStale()
         }
-        .onAppear {
-            isVisible = true
-            markSharesSeen()
+        .task {
+            await social.loadBlocked(toastOnFailure: false)
         }
         .onDisappear {
-            isVisible = false
             // A request or accept still waiting for the terms check would otherwise show the Terms
             // sheet over whatever is on screen by then.
             social.dropTermsChecks(for: termsOwner)
         }
-        .onChange(of: social.unseenCount) {
-            // New shares that arrive while the tab is on screen count as seen too.
-            if isVisible { markSharesSeen() }
-        }
     }
 
-    // MARK: Profile
-
-    private var profileRow: some View {
-        NavigationLink(value: Route.account) {
-            ProfileSummaryRow(profile: session.profile, email: session.email)
+    /// `.requests` scrolls to Requests (when there are any); `.add` focuses the username field.
+    private func applyEntry(_ proxy: ScrollViewProxy) async {
+        guard !didApplyEntry else { return }
+        didApplyEntry = true
+        switch entry {
+        case .list:
+            break
+        case .requests:
+            // After the first layout, so the row exists to scroll to.
+            await Task.yield()
+            guard !(social.incomingRequests.isEmpty && social.outgoingRequests.isEmpty) else { return }
+            withAnimation { proxy.scrollTo(Self.requestsID, anchor: .top) }
+        case .add:
+            await Task.yield()
+            isUsernameFocused = true
         }
-        .contextMenu {
-            if let handle = session.profile?.handle {
-                Button("Copy Username", systemImage: "doc.on.doc") { copy(handle) }
-                ShareLink(item: UsernameInvite.text(handle)) {
-                    Label("Share Username", systemImage: "square.and.arrow.up")
-                }
-            }
-        }
-        .marginCardRow(.single, outerSpacing: Theme.Spacing.xs)
     }
 
     // MARK: Add a friend
@@ -205,6 +214,7 @@ struct FriendsView: View {
         let requests = social.incomingRequests + social.outgoingRequests
         if !requests.isEmpty {
             MarginSectionHeader("Requests")
+                .id(Self.requestsID)
             ForEach(Array(requests.enumerated()), id: \.element.id) { index, request in
                 FriendRequestRow(
                     request: request,
@@ -237,39 +247,6 @@ struct FriendsView: View {
                     await social.block(request.profile)
                 }
             }
-        }
-    }
-
-    // MARK: Shared with you
-
-    /// One row, like Library's: who sent quotes and how many, opening the inbox. The cards with Save,
-    /// Report and Block live only in the inbox, so they behave the same everywhere.
-    @ViewBuilder
-    private var sharedSection: some View {
-        if social.inbox.isEmpty {
-            if social.hasLoaded {
-                MarginSectionHeader("Shared with you")
-                MarginCardMessage(
-                    systemImage: "tray",
-                    title: "Nothing shared yet",
-                    message: Text("Quotes your friends send you show up here.")
-                )
-                .marginCardRow(.single)
-            }
-        } else {
-            MarginSectionHeader("Shared with you")
-            Button {
-                router.push(.sharedInbox)
-            } label: {
-                SharedSummaryRow(
-                    count: social.inbox.count,
-                    senders: social.inboxSenders,
-                    summary: social.inboxSummary
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Opens quotes your friends sent")
-            .marginCardRow(.single)
         }
     }
 
@@ -388,6 +365,25 @@ struct FriendsView: View {
         }
     }
 
+    // MARK: Blocked users
+
+    /// Always the last card: Blocked Users with the count ("2" or "None") once it has loaded.
+    private var blockedUsersRow: some View {
+        Button {
+            router.push(.blockedUsers)
+        } label: {
+            AccountRowLabel(
+                title: "Blocked Users",
+                systemImage: "hand.raised",
+                value: social.hasLoadedBlocked
+                    ? (social.blockedUsers.isEmpty ? "None" : "\(social.blockedUsers.count)")
+                    : nil,
+                accessory: .disclosure
+            )
+        }
+        .marginCardRow(.single, outerSpacing: Theme.Spacing.l)
+    }
+
     /// "Add a friend" (focuses the field) and "Share your username", side by side or stacked.
     @ViewBuilder
     private var emptyStateActions: some View {
@@ -412,11 +408,6 @@ struct FriendsView: View {
     }
 
     // MARK: Actions
-
-    private func markSharesSeen() {
-        guard social.unseenCount > 0 else { return }
-        Task { await social.markInboxSeen() }
-    }
 
     /// Accepts (after the Terms sheet, if the terms aren't accepted yet), and once the server agrees
     /// says so: the new friend lands in the list further down. The row shows progress from the tap
@@ -512,128 +503,6 @@ struct YourUsernameLine: View {
 }
 
 // MARK: Rows
-
-/// Your own profile at the top of Friends: avatar, name, @handle and "Account". At accessibility sizes
-/// the avatar (decorative, and only an initial) is left out and the rest stacks, so the first screen
-/// isn't all your own identity.
-private struct ProfileSummaryRow: View {
-    let profile: Profile?
-    let email: String?
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                    names
-                    settingsLabel
-                }
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: Theme.Spacing.s) {
-                        avatar
-                        names
-                        Spacer(minLength: Theme.Spacing.xs)
-                        settingsLabel
-                    }
-                    HStack(alignment: .top, spacing: Theme.Spacing.s) {
-                        avatar
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                            names
-                            settingsLabel
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.vertical, Theme.Spacing.xxs)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText)
-        .accessibilityHint("Opens your account. Press and hold to copy or share your username.")
-    }
-
-    @ViewBuilder
-    private var avatar: some View {
-        if let profile {
-            AvatarCircle(profile: profile, size: 48)
-        } else {
-            Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-        }
-    }
-
-    private var names: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(profile?.displayName ?? "Your account")
-                .font(.headline)
-                .foregroundStyle(.primary)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-        }
-    }
-
-    private var settingsLabel: some View {
-        Text("Account")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-    }
-
-    private var subtitle: String? {
-        profile?.handle ?? email
-    }
-
-    private var accessibilityText: String {
-        [profile?.displayName ?? "Your account", subtitle, "Account"]
-            .compactMap(\.self)
-            .joined(separator: ", ")
-    }
-}
-
-/// "3 shared with you · From Rosa and Maya", with the senders' avatars and a chevron (the same row
-/// Library shows for unseen shares).
-private struct SharedSummaryRow: View {
-    let count: Int
-    let senders: [Profile]
-    let summary: String?
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        // Avatars above the text at accessibility sizes, like the status card's tile.
-        let layout = IconTile.layout(for: dynamicTypeSize)
-        HStack(spacing: Theme.Spacing.s) {
-            layout {
-                AvatarStack(profiles: senders, size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(count == 1 ? "1 shared with you" : "\(count) shared with you")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    if let summary {
-                        Text(summary)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-        }
-        .padding(.vertical, Theme.Spacing.xxs)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-    }
-}
 
 /// A friend: the person, which opens their profile, and a "…" menu (View Profile, Remove Friend,
 /// Report, Block). The row's swipe actions and context menu, and the person's VoiceOver actions, offer
@@ -856,6 +725,11 @@ private struct FriendRequestRow: View {
         .previewEnvironment()
 }
 
+#Preview("Friends, requests") {
+    NavigationStack { FriendsView(entry: .requests) }
+        .previewEnvironment()
+}
+
 #Preview("Friends empty") {
     let model = AppModel.preview()
     model.social.seedPreview(friendships: [], conversations: [], messages: [], me: Samples.alex.id)
@@ -874,7 +748,7 @@ private struct FriendRequestRow: View {
 
 // Grouped Margin cards inside a plain `List`.
 //
-// Friends, the shared inbox, Account and Blocked users need per-row swipe actions and context menus,
+// Friends, the Inbox, Settings and Blocked users need per-row swipe actions and context menus,
 // which only `List` rows get, but the Margin look is a Surface card with a hairline outline on Ground.
 // Each row draws its own slice of the card (`MarginCardRowBackground`): rows in a run join into one
 // card, and a single row is a whole card.
@@ -1145,8 +1019,8 @@ extension MarginCardMessage where Actions == EmptyView {
             SocialPersonLabel(profile: profile)
                 .marginCardRow(MarginCardPosition(index: index, count: 3), separatorInset: 68)
         }
-        MarginSectionHeader("Shared with you")
-        MarginCardMessage(systemImage: "tray", title: "Nothing shared yet", message: Text("Quotes your friends send show up here."))
+        MarginSectionHeader("Requests")
+        MarginCardMessage(systemImage: "person.2", title: "No friends yet", message: Text("Add someone by their exact username, or share yours."))
             .marginCardRow(.single)
     }
     .marginCardList()

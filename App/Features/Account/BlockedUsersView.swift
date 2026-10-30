@@ -26,7 +26,7 @@ struct BlockedUsersView: View {
             onUnblock: { unblockTarget = $0 },
             onReport: { reportTarget = $0 }
         )
-        .navigationTitle("Blocked users")
+        .navigationTitle("Blocked Users")
         .refreshable {
             loadFailed = !(await social.loadBlocked())
         }
@@ -221,7 +221,7 @@ private struct UnavailablePersonLabel: View {
             isLoading: false,
             onUnblock: { _ in }
         )
-            .navigationTitle("Blocked users")
+            .navigationTitle("Blocked Users")
     }
     .previewEnvironment()
 }
@@ -229,7 +229,7 @@ private struct UnavailablePersonLabel: View {
 #Preview("Blocked users empty") {
     NavigationStack {
         BlockedUsersContent(users: [], isLoading: false, onUnblock: { _ in })
-            .navigationTitle("Blocked users")
+            .navigationTitle("Blocked Users")
     }
     .previewEnvironment()
 }

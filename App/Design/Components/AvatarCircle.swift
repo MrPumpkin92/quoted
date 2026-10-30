@@ -46,7 +46,7 @@ struct AvatarCircle: View {
     }
 }
 
-/// Up to three overlapping avatars, each ringed in `Surface` (the "2 shared with you" row).
+/// Up to three overlapping avatars, each ringed in `Surface` (the Inbox's requests row).
 struct AvatarStack: View {
     private let profiles: [Profile]
     private let size: CGFloat

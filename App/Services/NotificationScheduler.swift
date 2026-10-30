@@ -64,10 +64,11 @@ struct NotificationScheduler: Sendable {
         return NotificationPermission(settings.authorizationStatus)
     }
 
-    /// Shows the system prompt (only the first time) and returns the resulting permission.
+    /// Shows the system prompt (only the first time) and returns the resulting permission. No `.badge`:
+    /// the app icon is never badged.
     func requestAuthorization() async -> NotificationPermission {
         do {
-            _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
         } catch {
             Logger.reminders.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -199,7 +200,8 @@ struct NotificationScheduler: Sendable {
     }
 }
 
-/// Shows reminders as banners while the app is open and routes taps to the quote.
+/// Shows reminders as banners while the app is open and routes taps to the quote. A tap on an inbox
+/// alert an earlier build posted opens the Inbox (`quoted://inbox`).
 ///
 /// Set as `UNUserNotificationCenter.current().delegate` at launch (QuotedApp). The center holds its
 /// delegate weakly, so `AppModel` keeps this object alive.
@@ -212,7 +214,8 @@ struct NotificationScheduler: Sendable {
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
     private let open: @MainActor @Sendable (DeepLink) -> Void
 
-    /// - Parameter open: Called on the main actor with `quoted://quote/<id>` when a reminder is tapped.
+    /// - Parameter open: Called on the main actor with `quoted://quote/<id>` when a reminder is tapped,
+    ///   `quoted://rotation` for the nudge, and `quoted://inbox` for an old inbox alert.
     init(open: @escaping @MainActor @Sendable (DeepLink) -> Void) {
         self.open = open
     }
@@ -234,9 +237,14 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Se
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let link = response.actionIdentifier == UNNotificationDefaultActionIdentifier
-            ? NotificationScheduler.deepLink(fromUserInfo: response.notification.request.content.userInfo)
-            : nil
+        let request = response.notification.request
+        let link: DeepLink? = if response.actionIdentifier != UNNotificationDefaultActionIdentifier {
+            nil
+        } else if InboxAlerts.isInboxAlert(identifier: request.identifier, threadIdentifier: request.content.threadIdentifier) {
+            .inbox
+        } else {
+            NotificationScheduler.deepLink(fromUserInfo: request.content.userInfo)
+        }
         // The SDK block isn't Sendable; it is called exactly once, on the main actor.
         nonisolated(unsafe) let completion = completionHandler
         Task { @MainActor [open] in

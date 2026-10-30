@@ -4,7 +4,8 @@ import SwiftUI
 /// quiet link below it.
 ///
 /// Example (Library): "Your library is empty" · Add your first quote · Browse verified quotes.
-struct EmptyStateView: View {
+/// When the quiet link isn't a plain button (a `ShareLink`), pass it as `accessory`.
+struct EmptyStateView<Accessory: View>: View {
     private let systemImage: String?
     private let title: LocalizedStringKey
     private let message: LocalizedStringKey?
@@ -12,6 +13,7 @@ struct EmptyStateView: View {
     private let action: (() -> Void)?
     private let secondaryTitle: LocalizedStringKey?
     private let secondaryAction: (() -> Void)?
+    private let accessory: Accessory
 
     /// - Parameters:
     ///   - systemImage: An optional SF Symbol above the title.
@@ -21,6 +23,8 @@ struct EmptyStateView: View {
     ///   - action: The filled button's action.
     ///   - secondaryTitle: An optional quiet text button below.
     ///   - secondaryAction: The quiet button's action.
+    ///   - accessory: A quiet control below the filled button, in place of the quiet button. Style it
+    ///     like one with `.emptyStateLink()` and `.buttonStyle(.borderless)`.
     init(
         systemImage: String? = nil,
         title: LocalizedStringKey,
@@ -28,7 +32,8 @@ struct EmptyStateView: View {
         actionTitle: LocalizedStringKey? = nil,
         action: (() -> Void)? = nil,
         secondaryTitle: LocalizedStringKey? = nil,
-        secondaryAction: (() -> Void)? = nil
+        secondaryAction: (() -> Void)? = nil,
+        @ViewBuilder accessory: () -> Accessory
     ) {
         self.systemImage = systemImage
         self.title = title
@@ -37,6 +42,7 @@ struct EmptyStateView: View {
         self.action = action
         self.secondaryTitle = secondaryTitle
         self.secondaryAction = secondaryAction
+        self.accessory = accessory()
     }
 
     var body: some View {
@@ -66,17 +72,54 @@ struct EmptyStateView: View {
                 Button(action: secondaryAction) {
                     // The 44-pt target is in the label: a frame outside a Button adds no hit area.
                     Text(secondaryTitle)
-                        .font(.body)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, Theme.Spacing.xs)
-                        .frame(minWidth: Theme.Metrics.minTouchTarget, minHeight: Theme.Metrics.minTouchTarget)
-                        .contentShape(Rectangle())
+                        .emptyStateLink()
                 }
+                // Explicit, so it keeps the accent (and its own tap) inside a List row too.
+                .buttonStyle(.borderless)
             }
+            accessory
         }
         .padding(.horizontal, Theme.Spacing.l)
         .padding(.vertical, Theme.Spacing.xxl)
         .frame(maxWidth: .infinity)
+    }
+}
+
+extension EmptyStateView where Accessory == EmptyView {
+    /// An empty state with at most a filled button and a quiet button (see the main initializer).
+    init(
+        systemImage: String? = nil,
+        title: LocalizedStringKey,
+        message: LocalizedStringKey? = nil,
+        actionTitle: LocalizedStringKey? = nil,
+        action: (() -> Void)? = nil,
+        secondaryTitle: LocalizedStringKey? = nil,
+        secondaryAction: (() -> Void)? = nil
+    ) {
+        self.init(
+            systemImage: systemImage,
+            title: title,
+            message: message,
+            actionTitle: actionTitle,
+            action: action,
+            secondaryTitle: secondaryTitle,
+            secondaryAction: secondaryAction
+        ) {
+            EmptyView()
+        }
+    }
+}
+
+extension View {
+    /// The label of an empty state's quiet link: `.body`, centred, with the 44-pt target in the label
+    /// (a frame outside a Button adds no hit area).
+    func emptyStateLink() -> some View {
+        self
+            .font(.body)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, Theme.Spacing.xs)
+            .frame(minWidth: Theme.Metrics.minTouchTarget, minHeight: Theme.Metrics.minTouchTarget)
+            .contentShape(Rectangle())
     }
 }
 

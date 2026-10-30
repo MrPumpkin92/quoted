@@ -1,14 +1,28 @@
 import Foundation
 import QuotedCore
 
-/// The three tabs of `MainTabView`.
+/// The tabs of `MainTabView`, in order (docs/ui-spec.md, App structure).
 enum AppTab: Hashable, Sendable, CaseIterable {
+    /// "Feed" (text.quote).
+    case feed
     /// "Library" (books.vertical).
     case library
-    /// "Friends" (person.2), badged with incoming requests + unseen shares.
-    case friends
+    /// "Inbox" (tray), the only badged tab: incoming requests plus unread conversations.
+    case inbox
+    /// "Profile" (person.crop.circle): your profile, with Settings behind the gear.
+    case profile
     /// The search tab (`Tab(role: .search)`).
     case search
+}
+
+/// Where Friends opens (`Route.friends`).
+enum FriendsEntry: Hashable, Sendable {
+    /// The top of the screen (the Inbox's Friends button).
+    case list
+    /// Scrolled to Requests (the Inbox's requests row).
+    case requests
+    /// The username field focused ("Add a friend").
+    case add
 }
 
 /// A screen pushed onto a tab's `NavigationStack`. The shell maps every case to its view
@@ -19,13 +33,15 @@ enum Route: Hashable, Sendable {
     case quote(id: UUID, contextIDs: [UUID])
     /// `RemindersView()`: reminder settings and the reorderable reminder list.
     case reminders
-    /// `SharedInboxView()`: every quote shared with you.
-    case sharedInbox
     /// `ProfileView(profile:)`: a friend's favorites (when they show them), or your own with the
-    /// switch that shows them to friends.
+    /// switch that shows them to friends. Stage 6 replaces it with `.profile(ProfileRef)`.
     case profile(Profile)
-    /// `AccountView()`: profile, notifications, legal, sign out, delete account.
-    case account
+    /// `FriendsView(entry:)`: add by username, requests, friends and Blocked Users. Pushed from the
+    /// Inbox, and by "Add a friend" on the current stack.
+    case friends(FriendsEntry)
+    /// `AccountView()`, titled Settings: account, reminders, blocked users, legal, delete account.
+    /// Pushed only by the Profile tab root's gear.
+    case settings
     /// `BlockedUsersView()`.
     case blockedUsers
     /// `TextPageView(page:)`: a bundled legal page.

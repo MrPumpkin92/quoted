@@ -5,9 +5,11 @@ import QuotedCore
 /// Small device-local flags, kept in the App Group `UserDefaults` suite (falling back to `.standard`).
 ///
 /// - Per user: whether onboarding (the starter pack) is done, the cached profile that lets a
-///   signed-in launch go straight to the library while offline, and the cached account (favorites
-///   visibility and the accepted Terms of Use version) so Account and the Terms check read offline.
-/// - Per device: whether the Library widget tip was dismissed.
+///   signed-in launch go straight to the library while offline, the cached account (favorites
+///   visibility and the accepted Terms of Use version) so Settings and the Terms check read offline,
+///   and whether the next launch opens on Feed.
+/// - Per device: whether the Library widget tip was dismissed, and the empty Feed's quote for the
+///   day it last showed.
 ///
 /// Inject with `@Environment(AppPreferences.self)`.
 @Observable
@@ -23,6 +25,20 @@ final class AppPreferences {
         didSet { defaults.set(widgetTipDismissed, forKey: Keys.widgetTipDismissed) }
     }
 
+    /// The catalog quote the empty Feed showed on the day it last appeared, so a catalog that changes
+    /// during the day (a new batch, a retirement) doesn't move it (`CatalogQuote.ofTheDay`). Setting it
+    /// persists.
+    var feedDayPick: CatalogDayPick? {
+        didSet {
+            guard feedDayPick != oldValue else { return }
+            if let data = feedDayPick.flatMap({ try? QuotedJSON.makeEncoder().encode($0) }) {
+                defaults.set(data, forKey: Keys.feedDayPick)
+            } else {
+                defaults.removeObject(forKey: Keys.feedDayPick)
+            }
+        }
+    }
+
     /// Whether this install's last session was an anonymous account the user did not leave (Sign out
     /// and Delete account clear it). When that session is found gone, `SessionStore` says why the new
     /// account is empty. Kept per install, so a reinstall never shows that notice.
@@ -36,6 +52,7 @@ final class AppPreferences {
         self.defaults = store
         self.installDefaults = installDefaults
         widgetTipDismissed = store.bool(forKey: Keys.widgetTipDismissed)
+        feedDayPick = store.data(forKey: Keys.feedDayPick).flatMap { try? QuotedJSON.makeDecoder().decode(CatalogDayPick.self, from: $0) }
     }
 
     // MARK: Onboarding
@@ -84,6 +101,21 @@ final class AppPreferences {
         defaults.set(data, forKey: Keys.account(account.id))
     }
 
+    // MARK: Launch tab
+
+    /// Whether `userID`'s next launch opens on Feed rather than Library (docs/ui-spec.md, Launch tab):
+    /// the cached Feed's first page has a post by someone else. False until a Feed refresh records it
+    /// (`setOpensOnFeed(_:userID:)`), so a new install or account opens on Library.
+    func opensOnFeed(userID: UUID) -> Bool {
+        defaults.bool(forKey: Keys.opensOnFeed(userID))
+    }
+
+    /// Records, after a Feed refresh, whether `userID`'s next launch opens on Feed. It never moves the
+    /// user mid-session; `Router.selectLaunchTab(opensOnFeed:)` reads it once per session.
+    func setOpensOnFeed(_ opensOnFeed: Bool, userID: UUID) {
+        defaults.set(opensOnFeed, forKey: Keys.opensOnFeed(userID))
+    }
+
     // MARK: Wipe
 
     /// Removes everything stored for `userID` (sign-out keeps the onboarding flag; account deletion
@@ -91,6 +123,8 @@ final class AppPreferences {
     func removeUserData(userID: UUID, includingOnboarding: Bool) {
         defaults.removeObject(forKey: Keys.profile(userID))
         defaults.removeObject(forKey: Keys.account(userID))
+        // The Feed cache goes with the App Group, so the next launch opens on Library.
+        defaults.removeObject(forKey: Keys.opensOnFeed(userID))
         if includingOnboarding {
             defaults.removeObject(forKey: Keys.onboarding(userID))
         }
@@ -99,8 +133,10 @@ final class AppPreferences {
     private enum Keys {
         static let widgetTipDismissed = "quoted.widgetTipDismissed"
         static let hadAnonymousSession = "quoted.hadAnonymousSession"
+        static let feedDayPick = "quoted.feedDayPick"
         static func onboarding(_ id: UUID) -> String { "quoted.onboardingComplete.\(id.uuidString.lowercased())" }
         static func profile(_ id: UUID) -> String { "quoted.profile.\(id.uuidString.lowercased())" }
         static func account(_ id: UUID) -> String { "quoted.account.\(id.uuidString.lowercased())" }
+        static func opensOnFeed(_ id: UUID) -> String { "quoted.opensOnFeed.\(id.uuidString.lowercased())" }
     }
 }

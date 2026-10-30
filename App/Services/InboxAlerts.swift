@@ -1,118 +1,57 @@
 import Foundation
 import OSLog
-import QuotedCore
 import UserNotifications
 
-/// Best-effort alerts for new quotes from friends (received quote messages) and friend requests, and
-/// the app icon badge. There is no push:
-/// background refresh (`AppModel.performBackgroundRefresh`) posts at most one alert when it finds
-/// items no earlier alert covered, so they can arrive late or not at all.
+/// What is left of the inbox alerts and the app icon badge (docs/ui-spec.md, Badges).
 ///
-/// Alerts never show quote text. A friend request never names its sender, so a stranger's name
-/// doesn't reach the Lock Screen; a quote names the friend who sent it. Delivered at once, they
-/// use none of the pending-request slots the reminders need.
-struct InboxAlerts: Sendable {
-    /// Requests and quotes an alert already covered, so each item alerts once (by friendship and
-    /// message ID; a share moved to a message kept its ID).
-    static let alertedKey = "quoted.inboxAlertedIDs"
-    /// IDs kept in ``alertedKey`` (the newest ones).
-    static let alertedLimit = 500
+/// Builds before the social redesign posted one best-effort alert from background refresh for new
+/// quotes from friends and friend requests (thread ``threadIdentifier``, identifiers starting
+/// ``identifierPrefix``) and badged the app icon. This build posts none: the Inbox tab's badge is the
+/// only signal, and the app icon is never badged. It clears the icon badge when the main tabs appear,
+/// on every return to the foreground and at sign-out; removes the old alerts still in Notification
+/// Center on the first launch of this build; and a tap on an old alert opens `quoted://inbox`
+/// (`NotificationDelegate`).
+enum InboxAlerts {
     static let identifierPrefix = "inbox-"
     static let threadIdentifier = "inbox"
+    /// Where earlier builds kept the requests and quotes an alert already covered.
+    static let legacyAlertedKey = "quoted.inboxAlertedIDs"
+    /// Set once this build has removed the old alerts.
+    static let retiredKey = "quoted.inboxAlertsRetired"
 
-    /// Posts one alert for the quotes and requests no earlier alert covered, when notifications are
-    /// allowed. Returns whether it posted.
-    @discardableResult
-    func alertNew(
-        quotes shares: [InboxQuote],
-        requests: [Connection],
-        permission: NotificationPermission,
-        defaults: UserDefaults = .standard
-    ) async -> Bool {
-        let (newShares, newRequests) = Self.uncovered(shares: shares, requests: requests, defaults: defaults)
-        guard !newShares.isEmpty || !newRequests.isEmpty else { return false }
-        // Covered even without permission: allowing notifications later must not replay old items.
-        Self.cover(shares: newShares, requests: newRequests, defaults: defaults)
-        guard permission == .authorized else { return false }
+    /// Whether a delivered notification is an inbox alert from an earlier build.
+    static func isInboxAlert(identifier: String, threadIdentifier: String) -> Bool {
+        threadIdentifier == Self.threadIdentifier || identifier.hasPrefix(identifierPrefix)
+    }
 
-        let content = UNMutableNotificationContent()
-        content.body = Self.text(shares: newShares, requests: newRequests.count)
-        content.sound = .default
-        content.threadIdentifier = Self.threadIdentifier
-        let request = UNNotificationRequest(
-            identifier: "\(Self.identifierPrefix)\(Int(Date().timeIntervalSince1970))",
-            content: content,
-            trigger: nil
-        )
+    /// Clears the app icon badge, which earlier builds set and this one never does.
+    static func clearAppIconBadge() async {
         do {
-            try await UNUserNotificationCenter.current().add(request)
-            return true
+            try await UNUserNotificationCenter.current().setBadgeCount(0)
         } catch {
-            Logger.social.error("Posting the inbox alert failed: \(error.localizedDescription, privacy: .public)")
-            return false
+            Logger.social.debug("Clearing the badge failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    /// Marks items as covered without alerting: the user saw them in the app (foreground refresh).
-    func markSeenInApp(quotes shares: [InboxQuote], requests: [Connection], defaults: UserDefaults = .standard) {
-        let (newShares, newRequests) = Self.uncovered(shares: shares, requests: requests, defaults: defaults)
-        Self.cover(shares: newShares, requests: newRequests, defaults: defaults)
-    }
-
-    private static func uncovered(
-        shares: [InboxQuote],
-        requests: [Connection],
-        defaults: UserDefaults
-    ) -> ([InboxQuote], [Connection]) {
-        let alerted = Set(defaults.stringArray(forKey: alertedKey) ?? [])
-        return (
-            shares.filter { !alerted.contains($0.id.uuidString) },
-            requests.filter { !alerted.contains($0.id.uuidString) }
-        )
-    }
-
-    private static func cover(shares: [InboxQuote], requests: [Connection], defaults: UserDefaults) {
-        let ids = (shares.map(\.id) + requests.map(\.id)).map(\.uuidString)
-        guard !ids.isEmpty else { return }
-        let previous = defaults.stringArray(forKey: alertedKey) ?? []
-        defaults.set(Array((previous + ids).suffix(alertedLimit)), forKey: alertedKey)
-    }
-
-    /// Sets the app icon badge (shown only if the user allowed badges).
-    static func setBadge(_ count: Int) async {
-        do {
-            try await UNUserNotificationCenter.current().setBadgeCount(max(0, count))
-        } catch {
-            Logger.social.debug("Setting the badge failed: \(error.localizedDescription, privacy: .public)")
+    /// On the first launch of this build: removes the inbox alerts earlier builds left in
+    /// Notification Center and forgets what they covered. Later launches do nothing.
+    static func retireDeliveredAlerts(defaults: UserDefaults = .standard) async {
+        guard !defaults.bool(forKey: retiredKey) else { return }
+        let center = UNUserNotificationCenter.current()
+        let ids = await center.deliveredNotifications()
+            .filter { isInboxAlert(identifier: $0.request.identifier, threadIdentifier: $0.request.content.threadIdentifier) }
+            .map(\.request.identifier)
+        if !ids.isEmpty {
+            center.removeDeliveredNotifications(withIdentifiers: ids)
+            Logger.social.info("Removed \(ids.count, privacy: .public) inbox alerts from an earlier build")
         }
+        defaults.removeObject(forKey: legacyAlertedKey)
+        defaults.set(true, forKey: retiredKey)
     }
 
-    /// Clears the badge and what earlier alerts covered (sign-out, account deletion).
+    /// Clears the app icon badge and what earlier alerts covered (sign-out, account deletion).
     static func reset(defaults: UserDefaults = .standard) async {
-        defaults.removeObject(forKey: alertedKey)
-        await setBadge(0)
-    }
-
-    /// "Maya sent you a quote." / "You have 3 new quotes from friends." plus "You have a new friend
-    /// request." / "You have 2 new friend requests."
-    static func text(shares: [InboxQuote], requests: Int) -> String {
-        var parts: [String] = []
-        let senders = Set(shares.map(\.senderID))
-        if shares.count == 1 || senders.count == 1, let first = shares.first {
-            let name = first.sender.map { Self.firstName($0.displayName) } ?? "A friend"
-            parts.append(shares.count == 1 ? "\(name) sent you a quote." : "\(name) sent you \(shares.count) quotes.")
-        } else if !shares.isEmpty {
-            parts.append("You have \(shares.count) new quotes from friends.")
-        }
-        if requests == 1 {
-            parts.append("You have a new friend request.")
-        } else if requests > 1 {
-            parts.append("You have \(requests) new friend requests.")
-        }
-        return parts.joined(separator: " ")
-    }
-
-    private static func firstName(_ name: String) -> String {
-        name.split(separator: " ").first.map(String.init) ?? name
+        defaults.removeObject(forKey: legacyAlertedKey)
+        await clearAppIconBadge()
     }
 }

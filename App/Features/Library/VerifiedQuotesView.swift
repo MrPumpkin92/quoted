@@ -185,7 +185,7 @@ struct VerifiedQuotesView: View {
         isImporting = true
         Task {
             let imported = await library.importCatalog(quotes)
-            guard imported else {
+            guard imported != nil else {
                 // The server adds only live catalog quotes and fails the whole add for one retired
                 // since the list loaded (23503). Reload before the next tap: a retired pick leaves the
                 // list, and `pickedQuotes` stops counting it.
