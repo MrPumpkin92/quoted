@@ -127,7 +127,7 @@ final class Router {
     /// screen; `rotation` closes the spotlight, selects Library and shows Reminders. `auth-callback`
     /// is handled by `SessionStore`, not here.
     ///
-    /// A sheet that may hold unsaved input (Add, Edit, Share, the reminder picker, the starter pack;
+    /// A sheet that may hold unsaved input (Add, Edit, Share, the reminder picker, Verified Quotes;
     /// see `SheetRoute.mayHoldUnsavedInput`), or any sheet marked `holdsDeepLinks()`, is never closed
     /// by a link: the link waits in `pendingLink`, and opens once the sheet is dismissed (saved or
     /// cancelled). Any other shell sheet (the widget guide, Safari) is closed first, and a quote link

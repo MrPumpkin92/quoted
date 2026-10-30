@@ -1,4 +1,4 @@
--- Playlists (supabase/migrations/20261029090100_playlists.sql): owner-only
+-- Playlists (supabase/migrations/20261030030100_playlists.sql): owner-only
 -- tables with column grants; playlist_view for the owner, accepted friends
 -- and (public) anyone, never across a block, never when held or private;
 -- terms, suspension and the word filter (QR003) on titles; Public needs
@@ -10,7 +10,7 @@
 -- item is saved (and copied) as "Quoted Catalog", without the owner row's
 -- hidden creator or edited-from; deleting a playlist makes no room under the
 -- 20-a-day limit.
--- 20261029090600: set_playlist_positions reorders a playlist in one statement,
+-- 20261030030600: set_playlist_positions reorders a playlist in one statement,
 -- for its owner only.
 begin;
 set local client_min_messages = warning;
@@ -140,7 +140,7 @@ insert into private.blocked_terms (term) values ('darn'), ('heck no');
 select tests.authenticate_as('a');
 insert into public.quotes (id, body, author) values
   (tests.qid(1), 'Alpha', 'Ann'), (tests.qid(5), 'Darn it all', null), (tests.qid(6), 'Zeta', 'Zed');
-select id from public.add_catalog_quotes(array[2]::smallint[], array[tests.qid(2)]);
+select id from public.add_catalog_quotes(array[2]::integer[], array[tests.qid(2)]);
 select tests.authenticate_as('b');
 insert into public.quotes (id, body, author) values (tests.qid(30), 'Bob''s line', 'Bo');
 select tests.authenticate_as('c');
@@ -248,10 +248,10 @@ select results_eq(
 );
 select results_eq(
   $$ select (i->>'position')::int, i->>'body', i->>'creator_username', i->>'edited_from_username',
-            (i->>'verified_starter_id')::smallint
+            (i->>'verified_starter_id')::integer
      from jsonb_array_elements(public.playlist_view(tests.pid(1))->'items') with ordinality as x(i, n) order by n $$,
-  $$ values (0, 'Alpha'::text, 'alice'::text, null::text, null::smallint),
-            (1, (select body from public.starter_quotes where id = 2), null, null, 2::smallint),
+  $$ values (0, 'Alpha'::text, 'alice'::text, null::text, null::integer),
+            (1, (select body from public.starter_quotes where id = 2), null, null, 2::integer),
             (2, 'Bob''s line', 'bob', null, null),
             (3, 'Bob''s line, Alice''s way', 'alice', 'bob', null) $$,
   'items in order with creator usernames; none on the verified one; the blocked-term item is skipped'
@@ -525,7 +525,7 @@ select results_eq(
 select results_eq(
   $$ select origin, creator_id, verified_starter_id, rotation_position
      from public.save_from_playlist(tests.pid(1), tests.handle(2, 'b'), tests.qid(62), true) $$,
-  $$ values ('shared'::text, null::uuid, 2::smallint, 0) $$,
+  $$ values ('shared'::text, null::uuid, 2::integer, 0) $$,
   'a catalog item is saved verified with no creator; p_in_reminders adds it to the Reminders'
 );
 select throws_ok(
@@ -580,8 +580,8 @@ select results_eq(
      join public.playlists p on p.id = i.playlist_id
      join public.quotes q on q.id = i.quote_id
      where p.title = 'Morning' order by i.position $$,
-  $$ values (0, 'Alpha'::text, 'alice'::text, null::text, null::smallint),
-            (1, (select body from public.starter_quotes where id = 2), null, null, 2::smallint),
+  $$ values (0, 'Alpha'::text, 'alice'::text, null::text, null::integer),
+            (1, (select body from public.starter_quotes where id = 2), null, null, 2::integer),
             (2, 'Bob''s line', 'bob', null, null),
             (3, 'Bob''s line, Alice''s way', 'alice', 'bob', null) $$,
   'the copy holds the visible items in order, each keeping its creator'
@@ -713,7 +713,7 @@ select tests.authenticate_as('b');
 select results_eq(
   $$ select verified_starter_id, creator_id, edited_from_id
      from public.save_from_playlist(tests.pid(8), tests.handle(8, 'b'), tests.qid(68)) $$,
-  $$ values (5::smallint, null::uuid, null::uuid) $$,
+  $$ values (5::integer, null::uuid, null::uuid) $$,
   'a verified item is saved as "Quoted Catalog": no creator, and no edited-from naming a third person'
 );
 select title from public.save_playlist_copy(tests.pid(8), 'Austen copy');
@@ -723,7 +723,7 @@ select results_eq(
      join public.playlist_items i on i.playlist_id = c.id
      join public.quotes q on q.id = i.quote_id
      where c.title = 'Austen copy' and q.id <> tests.qid(68) $$,
-  $$ values (4::smallint, null::uuid, null::uuid) $$,
+  $$ values (4::integer, null::uuid, null::uuid) $$,
   'save_playlist_copy saves a verified item without a creator too'
 );
 
@@ -814,7 +814,7 @@ select throws_ok(
 );
 select tests.clear_authentication();
 
--- ---- reordering in one statement (set_playlist_positions, 20261029090600) -------------
+-- ---- reordering in one statement (set_playlist_positions, 20261030030600) -------------
 -- Playlist 4 (full, 200 items): item n sits at position n, item 1 at 0.
 create function tests.fq(n int) returns uuid language sql immutable as $$
   select ('70000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid

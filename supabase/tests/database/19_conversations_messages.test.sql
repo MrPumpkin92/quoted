@@ -1,10 +1,10 @@
--- Conversations and messages (supabase/migrations/20261029090300_conversations_and_messages.sql).
+-- Conversations and messages (supabase/migrations/20261030030300_conversations_and_messages.sql).
 -- The founder's requirement: for every message and conversation endpoint (the
 -- three tables, open_conversation, inbox_conversations, save_from_message and
 -- reports), a non-participant can neither read nor send. C is A's friend, not
 -- B's: friendship with one member is not enough. Also: each member reads only
 -- their own member row, whose times only move forward (cleared_at takes the
--- server clock; last_read_at, since 20261029090600, the client's time of the
+-- server clock; last_read_at, since 20261030030600, the client's time of the
 -- newest message it showed, never later than the server clock); the server builds every snapshot (forged columns are refused); a
 -- quote from your own quote or the catalog, text refused (QR004) when texts
 -- are off while quotes and playlists pass; the word filter (QR003) on text,
@@ -172,7 +172,7 @@ insert into private.blocked_terms (term) values ('darn'), ('heck no'), ('fearles
 -- quote 3 (verified). B, C and H have quotes of their own.
 select tests.authenticate_as('a');
 insert into public.quotes (id, body, author) values (tests.qid(1), 'Alpha', 'Ann'), (tests.qid(3), 'Darn it all', null);
-select id from public.add_catalog_quotes(array[3]::smallint[], array[tests.qid(4)]);
+select id from public.add_catalog_quotes(array[3]::integer[], array[tests.qid(4)]);
 select tests.authenticate_as('b');
 insert into public.quotes (id, body, author) values (tests.qid(10), 'Bob''s line', 'Bo');
 select tests.authenticate_as('c');
@@ -271,7 +271,7 @@ select results_eq(
   $$ insert into public.messages (id, conversation_id, kind, source_quote_id, note)
      values (tests.mid(2), tests.cid('b'), 'quote', tests.qid(1), 'for you')
      returning body, author, source, body_format, note, creator_username, edited_from_username, verified_starter_id $$,
-  $$ values ('Alpha'::text, 'Ann'::text, null::text, '[]'::jsonb, 'for you'::text, 'alice'::text, null::text, null::smallint) $$,
+  $$ values ('Alpha'::text, 'Ann'::text, null::text, '[]'::jsonb, 'for you'::text, 'alice'::text, null::text, null::integer) $$,
   'A sends one of A''s quotes: the server copies its wording and creator'
 );
 select results_eq(
@@ -285,7 +285,7 @@ select results_eq(
   $$ insert into public.messages (id, conversation_id, kind, starter_quote_id)
      values (tests.mid(4), tests.cid('b'), 'quote', 1)
      returning starter_quote_id, body, author, source, creator_id, verified_starter_id $$,
-  $$ select 1::smallint, s.body, s.author, s.source, null::uuid, 1::smallint from public.starter_quotes s where s.id = 1 $$,
+  $$ select 1::integer, s.body, s.author, s.source, null::uuid, 1::integer from public.starter_quotes s where s.id = 1 $$,
   'a catalog quote is copied from the catalog: verified, with no creator'
 );
 select results_eq(
@@ -704,7 +704,7 @@ select results_eq(
   $$ insert into public.messages (id, conversation_id, kind, source_quote_id)
      values (tests.mid(8), tests.cid('e'), 'quote', tests.qid(6))
      returning verified_starter_id, creator_id, creator_username, edited_from_id, edited_from_username $$,
-  $$ values (1::smallint, null::uuid, null::text, null::uuid, null::text) $$,
+  $$ values (1::integer, null::uuid, null::text, null::uuid, null::text) $$,
   'a verified quote is sent with no creator or edited-from: whoever typed the catalog''s wording stays hidden'
 );
 select tests.authenticate_as('e');
@@ -844,7 +844,7 @@ select results_eq(
 );
 select results_eq(
   $$ select verified_starter_id, creator_id from public.save_from_message(tests.mid(4), tests.qid(51)) $$,
-  $$ values (1::smallint, null::uuid) $$,
+  $$ values (1::integer, null::uuid) $$,
   'a saved catalog quote is verified, with no creator'
 );
 select throws_ok(

@@ -4,12 +4,12 @@ import SwiftUI
 
 /// The Library tab root (docs/ui-spec.md §5): the reminders status card, a one-time widget tip, the
 /// "shared with you" row, a count header and the quote list. A filled "+" opens a menu: New Quote, or
-/// From the Starter Pack (the verified quotes not yet in the library).
+/// Browse Verified Quotes (the verified catalog, with the quotes already here dimmed).
 ///
 /// Rows open the detail pager across the Library order. Leading swipe shares or hearts; trailing swipe
 /// deletes (with Undo) or adds to / removes from reminders (Undo puts it back in its old place); the
 /// context menu has all five. Once any quote is a favorite, "All / Favorites" above the count narrows
-/// the list to favorites. Pull to refresh. Empty: "Your library is empty" with Add and the starter pack;
+/// the list to favorites. Pull to refresh. Empty: "Your library is empty" with Add and Verified Quotes;
 /// the toolbar "+" is then quiet glass, so the screen has one filled action.
 struct LibraryView: View {
     @Environment(AppModel.self) private var app
@@ -55,8 +55,8 @@ struct LibraryView: View {
 
     // MARK: Toolbar
 
-    /// The toolbar "+": a menu with New Quote and From the Starter Pack, so the other verified starter
-    /// quotes stay reachable after onboarding (the empty state was the only way in). Filled accent
+    /// The toolbar "+": a menu with New Quote and Browse Verified Quotes, so the verified catalog stays
+    /// reachable after onboarding (the empty state was the only way in). Filled accent
     /// over the list; quiet glass with an accent glyph when the screen already shows its own filled
     /// action ("Add your first quote", "Try again"), so there is only one.
     @ViewBuilder
@@ -75,8 +75,8 @@ struct LibraryView: View {
             Button("New Quote", systemImage: "square.and.pencil") {
                 router.present(.addQuote)
             }
-            Button("From the Starter Pack", systemImage: "checkmark.seal") {
-                router.present(.starterPack)
+            Button("Browse Verified Quotes", systemImage: "checkmark.seal") {
+                router.present(.verifiedQuotes)
             }
         } label: {
             Image(systemName: "plus")
@@ -88,7 +88,7 @@ struct LibraryView: View {
         .controlSize(.large)
         .accessibilityIdentifier("library.add")
         .accessibilityLabel("Add")
-        .accessibilityHint("Write a new quote or pick from the starter pack")
+        .accessibilityHint("Write a new quote or browse verified quotes")
     }
 
     /// Whether the content is the empty or the load-failed state, each with its own filled button.
@@ -257,8 +257,8 @@ struct LibraryView: View {
                         message: "Save the lines that move you. They come back in your widget and reminders.",
                         actionTitle: "Add your first quote",
                         action: { router.present(.addQuote) },
-                        secondaryTitle: "Pick from the starter pack",
-                        secondaryAction: { router.present(.starterPack) }
+                        secondaryTitle: "Browse verified quotes",
+                        secondaryAction: { router.present(.verifiedQuotes) }
                     )
                     .frame(maxHeight: .infinity)
                 }

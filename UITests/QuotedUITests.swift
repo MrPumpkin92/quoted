@@ -483,7 +483,7 @@ final class QuotedUITests: XCTestCase {
         add(attachment)
     }
 
-    /// Library's "+" opens a menu (New Quote / From the Starter Pack); this picks New Quote.
+    /// Library's "+" opens a menu (New Quote / Browse Verified Quotes); this picks New Quote.
     @MainActor
     private func openNewQuote(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) throws {
         app.buttons["library.add"].tap()

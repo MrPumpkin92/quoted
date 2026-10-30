@@ -4,7 +4,11 @@
 #   2. Database tests: the pgTAP files in supabase/tests (RLS, grants, triggers, RPCs) with
 #      `supabase test db --local`, against the running local stack's database. Each file runs in a
 #      transaction that it rolls back, so the stack keeps its data.
-#   3. UI tests (QuotedUITests) on an iOS Simulator with the Debug-Local
+#   3. Catalog checks, offline: `scripts/catalog.sh selftest` (the verifier on committed excerpts) and
+#      `scripts/catalog.sh generate check` (every catalog batch migration regenerates byte for byte).
+#      The full verifier gate (`scripts/catalog.sh acceptance`) needs the downloaded corpus; run it by
+#      hand after a verifier change and before each batch.
+#   4. UI tests (QuotedUITests) on an iOS Simulator with the Debug-Local
 #      configuration, which talks to the local Supabase stack (`supabase start`).
 #      Anonymous sign-ins must be on there (`enable_anonymous_sign_ins = true` in
 #      supabase/config.toml, then `supabase stop && supabase start`); the script checks first.
@@ -14,6 +18,7 @@
 #   SIMULATOR=8DDD416E-67E0-4A70-82D2-B6507EBC80E5 scripts/test.sh   # UDID or device name
 #   SKIP_PACKAGE_TESTS=1 scripts/test.sh
 #   SKIP_DB_TESTS=1 scripts/test.sh
+#   SKIP_CATALOG_TESTS=1 scripts/test.sh
 #   SKIP_UI_TESTS=1 scripts/test.sh
 #   KEEP_APP=1 scripts/test.sh          # don't uninstall Quoted first (skips notification priming)
 #   CLEAN_TEST_USERS=1 scripts/test.sh  # delete the UI test accounts from the local stack afterwards
@@ -94,6 +99,12 @@ if [[ "${SKIP_DB_TESTS:-0}" != "1" ]]; then
     echo "error: the database tests failed, or that stack's database is not running ('supabase start')." >&2
     exit 1
   fi
+fi
+
+if [[ "${SKIP_CATALOG_TESTS:-0}" != "1" ]]; then
+  echo "==> catalog: selftest and generate check"
+  "$ROOT/scripts/catalog.sh" selftest
+  "$ROOT/scripts/catalog.sh" generate check
 fi
 
 if [[ "${SKIP_UI_TESTS:-0}" != "1" ]]; then

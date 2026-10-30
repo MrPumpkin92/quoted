@@ -12,7 +12,7 @@ The social redesign (`docs/decisions/2026-10-28-social-redesign-council.md`) add
   - **Added by** names who brought a wording into Quoted: "Added by you", "Added by @alice", "Added by a person". Never "Created by", "by @x" or "from @x".
   - **Reminders** is your private list that feeds notifications and widgets. Never "Rotation"; the code keeps the `rotation` naming internally. The glyph is `bell` / `bell.fill`, never the repeat arrows.
   - **Playlist** is its own feature: a titled list of your quotes that you can send to a friend and show on your profile (§19). A playlist never means Reminders, and Reminders is never called a playlist. The glyph is `rectangle.stack`, with no music glyphs. The only bridge is the one-time **Add All to Reminders**.
-  - **Quoted Catalog** is the set of checked quotes Quoted ships. Never "public library", and never "starter pack" outside onboarding (§3).
+  - **Quoted Catalog** is the set of checked quotes Quoted ships: every live row of `catalog_quotes`, the onboarding starters and the later batches. Never "public library", and never "starter pack" outside onboarding (§3). Today's "Verified Quotes" sheet takes this name with the new Library (§5).
 - **Casing.**
   - Title Case: navigation titles, toolbar labels, menu items, swipe actions, dialog and alert buttons, and list rows that act. Examples: "New Post", "Edit Quote", "Choose a Quote", "See All", "New Playlist".
   - Sentence case: `PrimaryButton`, bordered capsules and inline text buttons in content. Examples: "Try again", "Add a quote", "Post a quote", "Save a copy", "Show Quoted Catalog".
@@ -117,7 +117,7 @@ Every quote says who brought its wording into Quoted and whether Quoted checked 
   - Opens from the block, any `ProvenanceLine` with an action and every "About This Quote" menu item. Detents `.medium` and `.large`, drag indicator, inline title "About This Quote", `Button(role: .close)`. A deep link closes it.
   - A `ScrollView` on Ground, 16-pt gutters, 24 pt between groups. The trust answer comes first, then the people, then the actions.
   - **Header** (`.isHeader`): the card line with its glyph in `.headline` ("Added by you · Not checked", "Quoted Catalog · Checked"). Under it, the status in `.body` `.secondary`. Checked: "Quoted checked this quote word for word against a public-domain edition of the work, and its author against the same edition." Unchecked: "Quoted hasn't checked this wording against a source."
-  - **Checked: source card.** The work in serif italic, the author, the location (a spinner while it loads), a divider, then **Read it on Project Gutenberg** or **Wikisource** (`book`, at least 44 pt), which opens `SafariView`.
+  - **Checked: source card.** The work in serif italic, the author, "Spoken by …" when a character speaks the line, the location (a spinner while it loads), all from the `catalog_quotes` row the seal names, whatever its status (`CatalogStore.verifiedSource(id:)`), a divider, then **Read it on Project Gutenberg** or **Wikisource** (`book`, at least 44 pt), which opens `SafariView`.
   - **Unchecked: people card.** `LabeledContent` rows "Added by" ("@alice", "You (@hwei)" or "A person") and "Edited from" (only when set). Footnote: yours "Your username stays with this quote when you send or post it."; unknown "Quoted doesn't know which account added it."
   - **Actions card**, hidden when empty: **View @alice's Profile** and, for "edited from", **View @bob's Profile**. Each closes the sheet, then pushes `.profile` on the current tab. Then the report items for the context: a checked quote, Report Wrong Wording…; a post, message or playlist, Report Post… (Message…, Playlist…) and Report and Block @alice…; your Library or a friend favorite with another creator, Report @alice… and Report and Block @alice…; an unknown creator, none.
   - Checked and in your Library: "Change the wording, author or source and the seal comes off."
@@ -206,7 +206,7 @@ Removed: `.sharedInbox` ("Shared with you" is retired), `.account` and `.profile
 | `.newPlaylist(adding: UUID?)` | New Playlist (§19) | Playlists `+`, your profile, the playlist empty states, Add to Playlist |
 | `.playlistQuotePicker(UUID)` | Add Quotes (§19) | Your playlist's bottom bar |
 | `.profilePreview(Audience)` | View As (§10a) | Your profile's toolbar |
-| `.catalogPicker(joinsReminders:)` (was `.starterPack`) | The Quoted Catalog picker (§5) | Library "+" (`false`). The Reminders picker's Quoted Catalog segment reuses its list with `true` (§8) |
+| `.catalogPicker(joinsReminders:)` (today `.verifiedQuotes`, and `.starterPack` before it) | The Quoted Catalog picker (§5) | Library "+" and the Library empty state (`false`). The Reminders picker's Quoted Catalog segment reuses its list with `true` (§8) |
 | `.widgetGuide`, `.reminderPicker`, `.safari(URL)` | As before | As before |
 
 - Removed: `.share(Quote)`. Its two halves are now `.send` and the **Share Image…** `ShareLink`, which needs no route.
@@ -265,10 +265,10 @@ Removed: `.sharedInbox` ("Shared with you" is retired), `.account` and `.profile
 
 ### 3. Starter pack (`Margin-Starter.png`)
 - Title "Pick a few to start", with the subtitle "They'll show up in your widget and reminders." and, under it, the verified seal with "Every quote is checked word for word against its source." The rows don't repeat the seal.
-- A list of all 60 `starter_quotes`, each row a serif excerpt plus an attribution. Tapping the whole row toggles it; a check circle in the accent shows the selected state.
+- A list of the live starters in `sortOrder` (the `starter_quotes` view of `catalog_quotes`: 60 today), each row a serif excerpt plus an attribution. Tapping the whole row toggles it; a check circle in the accent shows the selected state.
 - The bottom button reads **Continue with N quotes** and is disabled at 0.
 - "Skip" in the nav bar.
-- Selected quotes are imported with `addToRotation: true`.
+- Selected quotes are saved through `add_catalog_quotes` with `p_in_reminders: true` (origin `starter`), so they join the library and the reminders.
 
 ### 4. Notification priming (council fix, critical)
 - Title "Your quotes, a few times a day".
@@ -280,7 +280,10 @@ Removed: `.sharedInbox` ("Shared with you" is retired), `.account` and `.profile
 ### 5. Library (tab)
 - Large title "Library". A filled `+` (`.glassProminent`) in the toolbar opens a menu (VoiceOver hint "Write a new quote or add some from the Quoted Catalog"):
   - **New Quote** (`square.and.pencil`) opens Add.
-  - **From the Quoted Catalog** (`checkmark.seal.fill`) presents `.catalogPicker(joinsReminders: false)`, the starter picker renamed. Title "Quoted Catalog". Its header is the filled seal with "Every quote here was checked word for word against a public-domain edition."; the rows pass `provenance: nil`. It keeps multi-select, quotes you already have dimmed, and **Add N quotes**. Picks go to the library only, with the toast "Added 3 quotes to your library" and **Add to Reminders**.
+  - **From the Quoted Catalog** (`checkmark.seal.fill`) presents `.catalogPicker(joinsReminders: false)`, today's Verified Quotes sheet renamed. Title "Quoted Catalog". It lists every live quote in `catalog_quotes` (the starters and the later batches, from `CatalogStore`), in sections by theme in a fixed order (Courage, Calm, Time, Love, Nature, Purpose, Self); each quote shows once, under its first theme. Its header is the filled seal with "Every quote here was checked word for word against a public-domain edition."; the rows pass `provenance: nil`. It keeps multi-select (tapping a row toggles its check circle), quotes you already have dimmed, and the pinned **Add N quotes**. Picks are saved through `add_catalog_quotes`, in list order, to the library only, with the toast "Added 3 quotes to your library" and **Add to Reminders**. The server adds only live rows and fails the whole add for any other (23503), so a failed add keeps the sheet open with its toast and reloads the list: a quote retired since the list loaded drops out of it and out of the count.
+    - **Today's build**, until this Library ships: the item is **Browse Verified Quotes** (`checkmark.seal`). It and the empty state's quiet "Browse verified quotes" link present `SheetRoute.verifiedQuotes` (`VerifiedQuotesView`), titled "Verified Quotes". The top says "They'll show up in your widget and reminders." and, with the seal, "Every quote is checked word for word against its source."; the rows don't repeat the seal. It has the same theme sections, check circles and dimmed rows, and the same reload after a failed add. Its picks join the library and the end of your reminders, in list order, with "Added N quotes".
+
+  This is how people find more checked quotes after onboarding. Onboarding (§3) still offers only the starters.
 - **StatusCard** (shown when at least one quote is in reminders) pushes Reminders. It has a bell tile in a soft accent square and reads:
   - Normal: "**6 quotes in your reminders**" / "3× daily · Next at 8:00 PM".
   - Off states: "Reminders off · Turn on", or "Notifications off in Settings · Turn on", which opens `UIApplication.openNotificationSettingsURLString`.
@@ -409,6 +412,7 @@ Removed: `.sharedInbox` ("Shared with you" is retired), `.account` and `.profile
 - An "Add quotes" button opens `ReminderQuotePicker`: a segmented **Library** | **Quoted Catalog** picker over a multi-select. Library lists the library quotes that aren't in reminders. Quoted Catalog reuses the catalog picker's list with `joinsReminders: true`: its picks join your library and your reminders. The toolbar **Add N** is the one filled control.
   - The button is never disabled.
   - When the library is empty or every library quote is already in reminders (where onboarding leaves everyone), the picker opens on Quoted Catalog. The Library segment then ends with the footer line "Every quote is in your reminders." and a quiet **Write your own**.
+    - **Today's build**, until this picker ships: there is no segment. When every library quote is already in reminders, the picker says "Every quote is in your reminders" and offers **Browse verified quotes** (filled, presents Verified Quotes, §5) and **Write your own** (quiet).
 - Every change re-plans notifications and updates the widget snapshot right away.
 
 ### 9. Search (`Tab(role: .search)`, bottom right)
@@ -542,7 +546,7 @@ One field, with grouped results across everything you can already reach. Search 
   - The note: `TextField("Add a note (optional)", axis: .vertical)`, 1 to 4 lines, `.body`, in a Surface rounded rectangle (20) with a hairline; the counter "245/280" shows from 240. Hidden for playlists.
   - The footnote (`.footnote` `.secondary`, `sendFootnote`): your own quote "Your username stays with this quote."; someone else's "Added by @alice stays with this quote."; a catalog or unknown quote, none; a playlist "Each quote keeps who added it."
   - **Send** (`PrimaryButton`): "Send" (disabled with nothing selected), "Send to Maya" or "Send to 3 friends", loading while the server works. **The one filled action.**
-- **Someone else's quote** (a post, a message, a friend favorite or a playlist item). A checked one sends its catalog id. A post or a message is forwarded as it is (`source_post_id` or `source_message_id`): nothing is saved, and the server copies what you can read, so a quote you can no longer see fails with "This quote is not available." A friend favorite or a playlist item has no forward source: it is saved to your library first (not into Reminders), and the footnote adds " Sending also saves it to your library."
+- **Someone else's quote** (a post, a message, a friend favorite or a playlist item). A checked one sends its catalog id when that row is live (the live catalog lists it). The server takes only live rows by id (23503 otherwise), so a quote whose catalog row was retired goes as an unchecked one does, below, and the server seals the copy again. A post or a message is forwarded as it is (`source_post_id` or `source_message_id`): nothing is saved, and the server copies what you can read, so a quote you can no longer see fails with "This quote is not available." A friend favorite or a playlist item has no forward source: it is saved to your library first (not into Reminders), and the footnote adds " Sending also saves it to your library."
 - **Sending.** Each friend gets one quote message in their 1:1 conversation, sent separately with its own client id. `.sensoryFeedback(.success)`.
   - All sent: the sheet closes with "Sent to Maya", "Sent to Maya and Jordan" or "Sent to 3 friends" and **Undo** for 5 s, which unsends them.
   - Some fail (unfriended, blocked, a closed conversation or a limit): the sheet closes with "Sent to Maya and Jordan. Couldn't send to @sam." and **Undo**, which unsends the delivered ones.
@@ -625,7 +629,7 @@ One field, with grouped results across everything you can already reach. Search 
   - Offline: cached posts. Pull to refresh, Save, Send, Delete and Report toast "You're offline. Try again when connected." and change nothing.
 - **Empty Feed, "Checked against the source"**, when the Feed has loaded with no posts from you or your friends (never while loading or after an error):
   - A `ScrollView` on Ground. The heading "Checked against the source" (`.headline`, header trait), then 12 pt below, a `QuoteCard` with one catalog quote: serif from `.hero` stepping down through `.title`, `.title2` and `.title3` with `ViewThatFits`, so the heading, card and bar fit one screen at the default size; past `.title3` the page scrolls. At accessibility sizes it stays `.hero` and scrolls. Hanging marks and the `AttributionLine`, then a hairline and the checked provenance block ("Quoted Catalog", "Checked word for word against …"), which opens the provenance sheet (hint "Shows how it was checked").
-  - The quote comes from the cached catalog in `sortOrder`. Its index is the whole days since 2001-01-01 in the current calendar and time zone, modulo the count. It changes the next time the Feed appears after local midnight, never while it is on screen.
+  - The quote comes from the cached live catalog in id order (ids are dense and never reused). Its index is the whole days since 2001-01-01 in the current calendar and time zone, modulo the count. It changes the next time the Feed appears after local midnight, never while it is on screen.
   - **Bottom bar** (`.safeAreaBar`, reporting its height): one guidance line (`.body` `.secondary`, centred) and, 12 pt below, the filled `PrimaryButton`:
 
     | Friends | Guidance | Filled button |
@@ -702,7 +706,7 @@ One field, with grouped results across everything you can already reach. Search 
 - Pushed onto the Library stack from the top section. Large title "Quoted Catalog".
 - **Layout:** a plain `List` on Ground.
   1. **Promise row** (no card, no separator), `.subheadline` `.secondary`: the filled accent seal with "Every quote here was checked word for word against a public-domain edition." No count.
-  2. The catalog in `sortOrder`, as `QuoteRow(provenance: nil)` (the promise row states the seal), with a trailing `SaveToLibraryButton(.capsule)` centred vertically. At accessibility sizes the capsule moves under the attribution.
+  2. Every live catalog quote (`CatalogStore`), in the catalog picker's theme sections (§5): a section header per theme in the fixed order, each quote once, under its first theme. Rows are `QuoteRow(provenance: nil)` (the promise row states the seal), with a trailing `SaveToLibraryButton(.capsule)` centred vertically. At accessibility sizes the capsule moves under the attribution.
 - **Row tap:** a quote you hold pushes your copy (`.quote(id:contextIDs:)`). Any other pushes `.quoteSnapshot(.catalog(id))`, where the whole quote, the edition line and Read it on Project Gutenberg or Wikisource live. The capsule never opens the row.
 - **Swipes and menu:** a leading **Save** (full swipe) when not held. Context menu: Save to Library, Send… (`.send(.catalog(id))`), Post… (`.composePost(.catalog(id))`), About This Quote (`info.circle`, `.provenance`).
 - **Save:** `add_catalog_quotes` with a client id, Library only, with the `SaveToLibraryButton` feedback and the toast "Saved to your library" with **Add to Reminders**.

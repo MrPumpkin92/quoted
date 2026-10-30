@@ -2,15 +2,15 @@
 -- each limit just under and hit, the QR001 (rate) and QR002 (total) codes,
 -- one report per reporter + reported user + share, a blocked pair that fails
 -- like an unknown user, and the supporting indexes. The users who send friend
--- requests have accepted the terms (20261029090000_provenance_and_accounts;
+-- requests have accepted the terms (20261030030000_provenance_and_accounts;
 -- the 150-friend cap is in 16_provenance_accounts).
--- Ported to 20261029090300_conversations_and_messages: the shares limit (100 a
+-- Ported to 20261030030300_conversations_and_messages: the shares limit (100 a
 -- day) became the messages limit (300 a day, SECURITY DEFINER because a
 -- sender cannot read all of their own messages); one report per reporter,
 -- reported user and target (reports_reporter_reported_target_key); a block no
 -- longer deletes messages, so the "reports lose their share" collision case
 -- now unsends the two reported messages. Removed: none.
--- 20261029090600: an unverified report (about a person, with what the reporter
+-- 20261030030600: an unverified report (about a person, with what the reporter
 -- saw of a gone item) is one per content too; one reporter files at most 3
 -- profile reports about one person in 24 hours (QR001), and the queue counts
 -- the different people who reported someone (reporters_against_user).

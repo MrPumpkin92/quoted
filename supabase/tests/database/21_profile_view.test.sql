@@ -1,4 +1,4 @@
--- profile_view (supabase/migrations/20261029090400_profiles_and_moderation.sql):
+-- profile_view (supabase/migrations/20261030030400_profiles_and_moderation.sql):
 -- one profile page by exact username (after normalizing, like find_profile);
 -- each relationship (self, friend, incoming, outgoing, none, you_blocked);
 -- null when that person blocked the caller, for an unknown or partial
@@ -108,7 +108,7 @@ insert into private.blocked_terms (term) values ('darn'), ('fearless');
 -- 1 to 4 are favorites.
 select tests.authenticate_as('a');
 insert into public.quotes (id, body, author) values (tests.qid(1), 'Alpha', 'Ann'), (tests.qid(3), 'Darn it all', null);
-select id from public.add_catalog_quotes(array[3]::smallint[], array[tests.qid(4)]);
+select id from public.add_catalog_quotes(array[3]::integer[], array[tests.qid(4)]);
 select tests.clear_authentication();
 insert into public.quotes (id, owner_id, body, author, origin, creator_id, creator_username) values
   (tests.qid(2), tests.uid('a'), 'Bob''s line', 'Bo', 'shared', tests.uid('b'), 'bob');

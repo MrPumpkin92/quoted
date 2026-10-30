@@ -1,0 +1,60 @@
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 1, "judgements": [], "speaker": null, "work_id": 1}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "close_period", "was": ","}]}, "id": 2, "judgements": [{"kind": "close_period", "note": "comma after “all” closed with a period; documented in docs/starter-pack-sources.md"}], "speaker": null, "work_id": 2}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 3, "judgements": [{"kind": "edition", "note": "the 1831 revised text; the 1818 first edition differs in punctuation (a gate negative)"}], "speaker": "the creature", "work_id": 3}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 4, "judgements": [{"kind": "pd_exception", "note": "Gummere (d. 1969): fails the strict rule until 2070-01-01 (Mexico); D4, out of scope here"}], "speaker": null, "work_id": 4}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 5, "judgements": [], "speaker": "Elizabeth", "work_id": 5}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 6, "judgements": [], "speaker": null, "work_id": 6}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 7, "judgements": [], "speaker": "Lady Macbeth", "work_id": 7}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 8, "judgements": [], "speaker": null, "work_id": 8}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 9, "judgements": [], "speaker": "Polonius", "work_id": 9}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 10, "judgements": [], "speaker": null, "work_id": 10}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 11, "judgements": [{"kind": "trim_undocumented", "note": "drops “Marilla, ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": "Anne", "work_id": 11}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 12, "judgements": [], "speaker": null, "work_id": 12}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 13, "judgements": [], "speaker": "Jane", "work_id": 13}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 14, "judgements": [], "speaker": null, "work_id": 14}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 15, "judgements": [], "speaker": null, "work_id": 15}
+{"expect": {"cls": "PASS_ELIDED", "edits": [{"kind": "elide", "style": "verse"}]}, "id": 16, "judgements": [{"kind": "elision", "note": "lines 3–6 left out; documented in docs/starter-pack-sources.md"}], "speaker": null, "work_id": 16}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 17, "judgements": [], "speaker": null, "work_id": 17}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 18, "judgements": [], "speaker": null, "work_id": 18}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 19, "judgements": [], "speaker": "the White Queen", "work_id": 19}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 20, "judgements": [], "speaker": "Dorothea", "work_id": 20}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "close_period", "was": ";"}]}, "id": 21, "judgements": [{"kind": "close_period", "note": "semicolon at the cut closed with a period; documented in docs/starter-pack-sources.md"}], "speaker": null, "work_id": 21}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 22, "judgements": [], "speaker": null, "work_id": 22}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 23, "judgements": [], "speaker": null, "work_id": 23}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 24, "judgements": [{"kind": "trim_undocumented", "note": "drops “for ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": null, "work_id": 24}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 25, "judgements": [], "speaker": null, "work_id": 25}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 26, "judgements": [{"kind": "trim_undocumented", "note": "drops the start of the sentence (“…that which we are”); not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": null, "work_id": 26}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 27, "judgements": [{"kind": "trim_undocumented", "note": "drops “At any rate, ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}, {"kind": "pd_exception", "note": "Cather (d. 1947): clears strict on 2028-01-01 (D4)"}], "speaker": null, "work_id": 27}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 28, "judgements": [], "speaker": null, "work_id": 28}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}, {"kind": "close_period", "was": ","}]}, "id": 29, "judgements": [{"kind": "trim", "note": "clause trimmed from a longer sentence; documented in docs/starter-pack-sources.md"}, {"kind": "credit_override", "note": "credited to Socrates; the work's author is Plato"}], "speaker": null, "work_id": 29}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}]}, "id": 30, "judgements": [{"kind": "trim_undocumented", "note": "drops “I don’t know how long it will last, but ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": "Amy", "work_id": 30}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 31, "judgements": [], "speaker": null, "work_id": 31}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 32, "judgements": [], "speaker": null, "work_id": 32}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 33, "judgements": [{"kind": "trim", "note": "leading “No,” dropped; documented in docs/starter-pack-sources.md"}], "speaker": "Lord Darlington", "work_id": 33}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 34, "judgements": [], "speaker": null, "work_id": 34}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 35, "judgements": [], "speaker": null, "work_id": 35}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "close_period", "was": ";"}]}, "id": 36, "judgements": [{"kind": "close_period", "note": "semicolon at the cut closed with a period; documented in docs/starter-pack-sources.md"}], "speaker": null, "work_id": 36}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "close_period", "was": ";"}]}, "id": 37, "judgements": [{"kind": "close_period", "note": "semicolon at the cut closed with a period; documented in docs/starter-pack-sources.md"}], "speaker": null, "work_id": 37}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 38, "judgements": [], "speaker": null, "work_id": 38}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 39, "judgements": [], "speaker": null, "work_id": 39}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 40, "judgements": [{"kind": "title_display", "note": "Henley left it untitled; “Invictus” is Quiller-Couch's title"}], "speaker": null, "work_id": 40}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 41, "judgements": [], "speaker": null, "work_id": 41}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 42, "judgements": [{"kind": "pd_exception", "note": "Garnett (d. 1946): clears strict on 2027-01-01 (D4)"}], "speaker": "Father Zossima", "work_id": 42}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 43, "judgements": [], "speaker": null, "work_id": 43}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 44, "judgements": [], "speaker": null, "work_id": 44}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 45, "judgements": [], "speaker": null, "work_id": 45}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 46, "judgements": [{"kind": "unbacked_source", "note": "the Wikisource page has no scan"}], "speaker": null, "work_id": 46}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 47, "judgements": [{"kind": "unbacked_source", "note": "the Wikisource page has no scan and names no source"}, {"kind": "reported_transcription", "note": "Marius Robinson's report in the Anti-Slavery Bugle, 1851"}], "speaker": null, "work_id": 47}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 48, "judgements": [{"kind": "manuscript_wording", "note": "the Pickering Manuscript, unpunctuated"}], "speaker": null, "work_id": 48}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 49, "judgements": [{"kind": "trim_undocumented", "note": "drops “But believe me, my dear boy, ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": "Kutúzov", "work_id": 49}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 50, "judgements": [{"kind": "pd_exception", "note": "Millay (d. 1950): clears strict on 2031-01-01 (D4)"}], "speaker": null, "work_id": 50}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 51, "judgements": [{"kind": "unbacked_source", "note": "the Wikisource page has no scan"}], "speaker": null, "work_id": 51}
+{"expect": {"cls": "PASS_ELIDED", "edits": [{"kind": "elide", "style": "prose"}]}, "id": 52, "judgements": [{"kind": "elision", "note": "speech tag omitted; documented in docs/starter-pack-sources.md"}], "speaker": "John Rokesmith", "work_id": 52}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}]}, "id": 53, "judgements": [{"kind": "trim_undocumented", "note": "drops “O, wind, ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": null, "work_id": 53}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 54, "judgements": [{"kind": "trim_undocumented", "note": "drops “I have learned that ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": null, "work_id": 54}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 55, "judgements": [{"kind": "trim_undocumented", "note": "drops “For this reason,” he would add, “”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": "Serlo", "work_id": 55}
+{"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}]}, "id": 56, "judgements": [{"kind": "trim_undocumented", "note": "drops “Finally resuming the chair at my desk ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": null, "work_id": 56}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 57, "judgements": [], "speaker": "Andrea", "work_id": 57}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 58, "judgements": [], "speaker": null, "work_id": 58}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 59, "judgements": [{"kind": "speaker", "note": "Inside quotation marks: Eastman's own answer for “him” (any elder) to “What are the fruits of silence?”, not a named person, so it stays credited to Eastman. The next paragraph's Wabashaw line is a named speaker (a gate negative)."}], "speaker": null, "speaker_ok": true, "work_id": 59}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 60, "judgements": [{"kind": "edition_modernised", "note": "the 1840 edition's modernised spelling (1624: “Iland, intire of it selfe”)"}], "speaker": null, "work_id": 60}

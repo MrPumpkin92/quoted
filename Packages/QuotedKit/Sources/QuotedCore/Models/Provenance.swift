@@ -7,7 +7,7 @@ import Foundation
 /// `friend_favorites`, `playlist_view` and `profile_view` (where the usernames are null for checked
 /// quotes). The client only shows it; ``ProvenanceCopy`` holds every string.
 public struct Provenance: Hashable, Sendable, Codable {
-    /// The Quoted Catalog quote (`starter_quotes.id`) this wording matches exactly. Non-nil means
+    /// The Quoted Catalog quote (`catalog_quotes.id`) this wording matches exactly. Non-nil means
     /// checked word for word.
     public var catalogID: Int?
     /// The username of the account that brought this wording into Quoted, or nil when unknown or

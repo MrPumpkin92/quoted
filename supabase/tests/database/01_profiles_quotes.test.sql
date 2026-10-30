@@ -1,11 +1,11 @@
 -- profiles and quotes: own-row writes, no cross-user access, constraints.
--- Since 20261029090000_provenance_and_accounts clients write profiles and
+-- Since 20261030030000_provenance_and_accounts clients write profiles and
 -- quotes through column grants: a username is checked on insert (it cannot be
 -- updated), and server-owned quote columns are refused with 42501.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(30);
+select plan(31);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -222,12 +222,18 @@ select throws_ok(
 );
 
 -- A client may only say manual or pasted (16_provenance_accounts); the check
--- constraint binds the server too.
+-- constraint binds the server too, which stores catalog for a catalog quote
+-- that is not a starter (public.add_catalog_quotes).
 select tests.clear_authentication();
 select throws_ok(
   $$ insert into public.quotes (owner_id, body, origin) values (tests.uid('a'), 'x', 'scraped') $$,
   '23514', null,
-  'origin must be manual, starter, shared or pasted'
+  'origin must be manual, starter, shared, pasted or catalog'
+);
+
+select lives_ok(
+  $$ insert into public.quotes (owner_id, body, origin) values (tests.uid('a'), 'From the catalog', 'catalog') $$,
+  'a quote added from the catalog has origin catalog'
 );
 select tests.authenticate_as('a');
 

@@ -19,6 +19,15 @@ struct RequestTests {
         """
     }
 
+    /// A `catalog_quotes` row as `Columns.catalogQuote` selects it.
+    static func catalogJSON(_ id: Int, starter: Bool = false, status: String = "live") -> String {
+        """
+        {"id":\(id),"body":"Quote \(id)","body_format":[],"author":"Author \(id)","source":"Work \(id)",
+         "source_location":"Chapter 1","source_url":"https://www.gutenberg.org/ebooks/\(id)","speaker":null,
+         "themes":["courage"],"is_starter":\(starter),"sort_order":\(starter ? String(id) : "null"),"status":"\(status)"}
+        """
+    }
+
     /// A `friendships` row with both embedded profiles.
     static func friendshipJSON(_ id: UUID, other: UUID = friend) -> String {
         """
@@ -39,6 +48,8 @@ struct RequestTests {
         await #expect(throws: QuotedError.notSignedIn) { try await backend.playlists.mine() }
         await #expect(throws: QuotedError.notSignedIn) { try await backend.reports.report(.catalogQuote(1), reason: .wrongWording) }
         await #expect(throws: QuotedError.notSignedIn) { try await backend.account.deleteAccount() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.catalog.fetchLive() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.catalog.quote(id: 1) }
         #expect(await backend.events.logWebSearchTapAndWait() == false)
         #expect(server.requests.isEmpty)
     }
@@ -352,10 +363,91 @@ struct RequestTests {
         #expect(server.requests.count == 1)
     }
 
+    @Test func addCatalogQuotesTakesAnyCatalogIDAndKeepsTheServersOrigin() async throws {
+        let ids = [UUID(), UUID()]
+        let server = StubServer { request in
+            guard request.path == "/rest/v1/rpc/add_catalog_quotes" else { return .notFound(request) }
+            return .json(200, "[\(Self.quoteJSON(ids[0], origin: "starter")),\(Self.quoteJSON(ids[1], origin: "catalog"))]")
+        }
+        let backend = try await server.makeSignedInBackend()
+        // A starter and a Verified Quotes pick past the old smallint range.
+        let picked = [
+            CatalogQuote(id: 4, body: "Starter", author: "A", source: "W", isStarter: true, sortOrder: 4),
+            CatalogQuote(id: 40_000, body: "Batch", author: "B", source: "V", speaker: "Hamlet", themes: [.calm]),
+        ]
+        let added = try await backend.quotes.addCatalogQuotes(picked.map(\.id), ids: ids)
+        #expect(added.map(\.origin) == picked.map(\.libraryOrigin))
+        #expect(added.map(\.origin) == [.starter, .catalog])
+        #expect(server.requests(table: "quotes").isEmpty, "never a direct insert of catalog words")
+
+        let body = try #require(server.requests.first?.json as? [String: Any])
+        // Only ids travel: nothing about the catalog rows themselves.
+        #expect(Set(body.keys) == ["p_starter_ids", "p_ids", "p_in_reminders"])
+        #expect(body["p_starter_ids"] as? [Int] == [4, 40_000])
+        #expect(body["p_in_reminders"] as? Bool == false)
+    }
+
+    @Test func fetchLiveReadsLiveCatalogRowsInPages() async throws {
+        let ids = Array(1...1_203)
+        let server = StubServer { request in
+            guard request.path == "/rest/v1/catalog_quotes" else { return .notFound(request) }
+            let offset = Int(request.query["offset"] ?? "") ?? 0
+            let limit = Int(request.query["limit"] ?? "") ?? 0
+            let rows = ids.dropFirst(offset).prefix(limit).map { Self.catalogJSON($0, starter: $0 <= 60) }
+            return .page(Array(rows), offset: offset, total: ids.count)
+        }
+        let backend = try await server.makeSignedInBackend()
+        let live = try await backend.catalog.fetchLive()
+        #expect(live.map(\.id) == ids)
+        #expect(live.filter(\.isStarter).count == 60)
+
+        let requests = server.requests(table: "catalog_quotes")
+        #expect(requests.map { $0.query["offset"] } == ["0", "500", "1000"])
+        let first = try #require(requests.first)
+        #expect(first.method == "GET")
+        #expect(first.query["status"] == "eq.live")
+        #expect(first.query["order"] == "id.asc.nullslast")
+        #expect(first.query["select"] == Columns.catalogQuote.replacingOccurrences(of: " ", with: ""))
+        #expect(first.query["limit"] == "\(Paging.pageSize)")
+        #expect(first.header("Prefer")?.contains("count=exact") == true)
+    }
+
+    @Test func fetchLiveStopsAtAShortPageWithoutACount() async throws {
+        let server = StubServer { request in
+            let offset = Int(request.query["offset"] ?? "") ?? 0
+            let rows = (offset + 1...offset + (offset == 0 ? 500 : 7)).map { Self.catalogJSON($0) }
+            return .json(200, "[\(rows.joined(separator: ","))]")
+        }
+        let backend = try await server.makeSignedInBackend()
+        #expect(try await backend.catalog.fetchLive().count == 507)
+        #expect(server.requests(table: "catalog_quotes").map { $0.query["offset"] } == ["0", "500"])
+    }
+
+    @Test func catalogQuoteByIDAsksForOneRowOfAnyStatus() async throws {
+        let server = StubServer { request in
+            guard request.path == "/rest/v1/catalog_quotes" else { return .notFound(request) }
+            if request.query["id"] == "eq.62" {
+                return .json(200, Self.catalogJSON(62, status: "withdrawn"))
+            }
+            return .json(406, #"{"code":"PGRST116","details":"The result contains 0 rows","hint":null,"message":"Cannot coerce the result to a single JSON object"}"#)
+        }
+        let backend = try await server.makeSignedInBackend()
+        let quote = try #require(try await backend.catalog.quote(id: 62))
+        #expect(quote.status == .withdrawn)
+        #expect(quote.sourceLocation == "Chapter 1")
+        #expect(try await backend.catalog.quote(id: 9_999) == nil)
+
+        let request = try #require(server.requests(table: "catalog_quotes").first)
+        #expect(request.method == "GET")
+        #expect(request.query["status"] == nil)
+        #expect(request.query["select"] == Columns.catalogQuote.replacingOccurrences(of: " ", with: ""))
+        #expect(request.header("Accept") == "application/vnd.pgrst.object+json")
+    }
+
     @Test func createAcceptsOnlyYourOwnWords() async throws {
         let server = StubServer { .notFound($0) }
         let backend = try await server.makeSignedInBackend()
-        for origin in [QuoteOrigin.starter, .shared] {
+        for origin in [QuoteOrigin.starter, .shared, .catalog] {
             await #expect(throws: QuotedError.self) {
                 try await backend.quotes.create(QuoteDraft(body: "x"), origin: origin)
             }

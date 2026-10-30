@@ -48,8 +48,8 @@ enum SheetRoute: Identifiable, Hashable, Sendable {
     case widgetGuide
     /// `ReminderQuotePicker()`: multi-select library quotes to add to reminders.
     case reminderPicker
-    /// `StarterFlowView(mode: .addMore)`: pick more starter quotes after onboarding.
-    case starterPack
+    /// `VerifiedQuotesView()`: pick from every live verified quote, by theme.
+    case verifiedQuotes
     /// `SafariView(url:)`: Google inside Quoted, from the search tab's web row.
     case safari(URL)
 
@@ -58,7 +58,7 @@ enum SheetRoute: Identifiable, Hashable, Sendable {
     /// after the sheet is dismissed (see `Router.open(_:reminderQuoteIDs:)`).
     var mayHoldUnsavedInput: Bool {
         switch self {
-        case .addQuote, .pastedQuote, .editQuote, .share, .reminderPicker, .starterPack: true
+        case .addQuote, .pastedQuote, .editQuote, .share, .reminderPicker, .verifiedQuotes: true
         case .widgetGuide, .safari: false
         }
     }
@@ -71,7 +71,7 @@ enum SheetRoute: Identifiable, Hashable, Sendable {
         case .share(let quote): "share-\(quote.id.uuidString)"
         case .widgetGuide: "widgetGuide"
         case .reminderPicker: "reminderPicker"
-        case .starterPack: "starterPack"
+        case .verifiedQuotes: "verifiedQuotes"
         case .safari(let url): "safari-\(url.absoluteString)"
         }
     }

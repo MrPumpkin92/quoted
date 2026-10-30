@@ -174,7 +174,10 @@ struct ModelCodingTests {
     }
 
     @Test func rawValuesMatchDatabase() {
-        #expect(QuoteOrigin.allCases.map(\.rawValue) == ["manual", "starter", "shared", "pasted"])
+        #expect(QuoteOrigin.allCases.map(\.rawValue) == ["manual", "starter", "shared", "pasted", "catalog"])
+        #expect(CatalogTheme.allCases.map(\.rawValue) == ["courage", "calm", "time", "love", "nature", "purpose", "self"])
+        #expect(CatalogTheme.allCases.map(\.title) == ["Courage", "Calm", "Time", "Love", "Nature", "Purpose", "Self"])
+        #expect(CatalogStatus.allCases.map(\.rawValue) == ["live", "retired", "withdrawn"])
         #expect(ReportReason.allCases.map(\.rawValue) == ["spam", "harassment", "inappropriate", "copyright", "wrong_wording", "other"])
         #expect(ReportReason.personReasons.map(\.title) == ["Spam", "Harassment", "Inappropriate", "Copyright", "Other"])
         #expect(Audience.allCases.map(\.rawValue) == ["private", "friends", "public"])
@@ -235,6 +238,82 @@ struct ModelCodingTests {
         #expect(friendship.addressee == nil)
         #expect(friendship.otherParty == nil) // other_party must carry its own id
         #expect(friendship.otherParty(for: friendship.addresseeID)?.username == "ada")
+    }
+
+    @Test func catalogOriginRoundTrips() throws {
+        let json = #"{"id":"8f0c5b8e-3f5e-4c1a-9a51-0d8c1c7e2b11","body":"hi","origin":"catalog","created_at":"2026-10-19T03:26:38Z"}"#
+        let quote = try Fixture.decode(Quote.self, json)
+        #expect(quote.origin == .catalog)
+        #expect(try Fixture.jsonObject(quote)["origin"] as? String == "catalog")
+        #expect(try Fixture.decode(Quote.self, String(decoding: QuotedJSON.makeEncoder().encode(quote), as: UTF8.self)).origin == .catalog)
+    }
+
+    @Test func decodesCatalogQuote() throws {
+        let quote = try Fixture.decode(CatalogQuote.self, #"""
+        {"id":61,"body":"There is nothing either good or bad, but thinking makes it so.","body_format":[{"start":0,"length":99,"italic":true}],
+         "author":"William Shakespeare","source":"Hamlet","source_location":"Act 2, Scene 2",
+         "source_url":"https://www.gutenberg.org/ebooks/1524","speaker":"Hamlet","themes":["calm","wonder","self"],
+         "is_starter":false,"sort_order":null,"status":"live"}
+        """#)
+        #expect(quote.id == 61)
+        #expect(quote.speaker == "Hamlet")
+        // Unknown themes are dropped; the first known one files it.
+        #expect(quote.themes == [.calm, .selfhood])
+        #expect(quote.primaryTheme == .calm)
+        #expect(quote.isStarter == false)
+        #expect(quote.sortOrder == nil)
+        #expect(quote.status == .live)
+        #expect(quote.libraryOrigin == .catalog)
+        #expect(quote.format == [TextRun(start: 0, length: quote.body.utf16.count, italic: true)])
+        #expect(quote.sourceURL?.host() == "www.gutenberg.org")
+        #expect(quote.attribution == "William Shakespeare, Hamlet")
+        let data = try QuotedJSON.makeEncoder().encode(quote)
+        #expect(try QuotedJSON.makeDecoder().decode(CatalogQuote.self, from: data) == quote)
+        #expect(QuoteDraft(catalog: quote) == QuoteDraft(body: quote.body, format: quote.format, author: "William Shakespeare", source: "Hamlet"))
+
+        // Missing optional columns, an unknown status and a malformed theme list still decode.
+        let sparse = try Fixture.decode(CatalogQuote.self, #"{"id":3,"body":"Know thyself.","themes":"courage","status":"archived","is_starter":true,"sort_order":3}"#)
+        #expect(sparse.themes.isEmpty)
+        #expect(sparse.status == .retired)
+        #expect(sparse.isStarter)
+        #expect(sparse.sortOrder == 3)
+        #expect(sparse.libraryOrigin == .starter)
+        #expect(sparse.speaker == nil)
+    }
+
+    @Test func catalogQuoteFromStarter() {
+        let starter = StarterQuote(id: 7, body: "Know thyself.", author: "Socrates", sortOrder: 3, sourceLocation: "Apology", sourceURL: URL(string: "https://example.org"))
+        let quote = CatalogQuote(starter: starter)
+        #expect(quote.id == 7)
+        #expect(quote.isStarter)
+        #expect(quote.sortOrder == 3)
+        #expect(quote.status == .live)
+        #expect(quote.sourceLocation == "Apology")
+        #expect(quote.sourceURL == starter.sourceURL)
+        #expect(quote.libraryOrigin == .starter)
+        // The same Quoted Catalog provenance, status line and snapshot as the starter.
+        #expect(quote.provenance == starter.provenance)
+        #expect(quote.statusLine == starter.statusLine)
+        #expect(quote.snapshot == starter.snapshot)
+        #expect(quote.snapshot.provenance.isChecked)
+        // A non-starter never keeps an onboarding position.
+        #expect(CatalogQuote(id: 70, body: "x", sortOrder: 5).sortOrder == nil)
+    }
+
+    @Test func catalogSectionsFileEachQuoteUnderItsFirstTheme() {
+        let quotes = [
+            CatalogQuote(id: 1, body: "a", themes: [.selfhood, .courage]),
+            CatalogQuote(id: 2, body: "b", themes: [.courage]),
+            CatalogQuote(id: 3, body: "c", themes: []),
+            CatalogQuote(id: 4, body: "d", themes: [.time, .purpose]),
+            CatalogQuote(id: 5, body: "e", themes: [.courage, .calm]),
+        ]
+        let sections = CatalogQuote.sections(quotes)
+        #expect(sections.map(\.theme) == [.courage, .time, .selfhood, nil])
+        #expect(sections.map { $0.quotes.map(\.id) } == [[2, 5], [4], [1], [3]])
+        #expect(sections.map(\.title) == ["Courage", "Time", "Self", "More"])
+        #expect(Set(sections.map(\.id)).count == sections.count)
+        #expect(CatalogQuote.sections([]).isEmpty)
     }
 
     @Test func decodesProfileAndStarter() throws {

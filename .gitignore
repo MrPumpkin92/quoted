@@ -16,6 +16,9 @@ DerivedData/
 # Local build output (scripts use -derivedDataPath build/DerivedData)
 build/
 
+# Python bytecode (scripts/catalog runs with -B, but tests may not)
+__pycache__/
+
 # Swift Package Manager
 .build/
 .swiftpm/

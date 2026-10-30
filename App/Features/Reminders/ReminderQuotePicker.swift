@@ -9,7 +9,7 @@ import SwiftUI
 /// and closes the sheet.
 ///
 /// With nothing to pick (every Library quote is already in reminders, which is where onboarding
-/// leaves everyone), it offers more quotes instead: the starter pack (its picks join reminders) and
+/// leaves everyone), it offers more quotes instead: Verified Quotes (its picks join reminders) and
 /// Write your own.
 struct ReminderQuotePicker: View {
     @Environment(LibraryStore.self) private var library
@@ -66,9 +66,9 @@ struct ReminderQuotePicker: View {
                 EmptyStateView(
                     systemImage: library.isEmpty ? "text.quote" : "bell.badge",
                     title: library.isEmpty ? "Your library is empty" : "Every quote is in your reminders",
-                    message: "Pick more from the starter pack, or write your own. They join your reminders.",
-                    actionTitle: "Browse the starter pack",
-                    action: { router.present(.starterPack) },
+                    message: "Pick more verified quotes, or write your own. They join your reminders.",
+                    actionTitle: "Browse verified quotes",
+                    action: { router.present(.verifiedQuotes) },
                     secondaryTitle: "Write your own",
                     secondaryAction: { router.present(.addQuote) }
                 )

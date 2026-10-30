@@ -3,8 +3,8 @@ import SwiftUI
 import UIKit
 
 /// Anything the design components can show as a quote: a styled body plus an optional author and
-/// source. `Quote`, `QuoteSnapshot`, `InboxQuote`, `StarterQuote`, `FriendFavorite` and
-/// `SnapshotQuote` all conform.
+/// source. `Quote`, `QuoteSnapshot`, `InboxQuote`, `StarterQuote`, `CatalogQuote`, `FriendFavorite`
+/// and `SnapshotQuote` all conform.
 protocol QuoteContent: RichTextContent {
     var author: String? { get }
     var source: String? { get }
@@ -30,6 +30,10 @@ extension InboxQuote: QuoteContent {
 extension StarterQuote: QuoteContent {
     /// Every starter quote was checked word for word against its source.
     var isVerified: Bool { true }
+}
+extension CatalogQuote: QuoteContent {
+    /// Checked word for word against its source, unless it was withdrawn.
+    var isVerified: Bool { status != .withdrawn }
 }
 extension SnapshotQuote: QuoteContent {}
 extension FriendFavorite: QuoteContent {}

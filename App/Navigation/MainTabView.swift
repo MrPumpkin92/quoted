@@ -190,8 +190,8 @@ struct SheetHost: View {
             WidgetGuideView()
         case .reminderPicker:
             ReminderQuotePicker()
-        case .starterPack:
-            StarterFlowView(mode: .addMore)
+        case .verifiedQuotes:
+            VerifiedQuotesView()
         case .safari(let url):
             SafariView(url: url)
         }

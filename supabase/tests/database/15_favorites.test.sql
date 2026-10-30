@@ -2,7 +2,7 @@
 -- quotes; favorited_at is server-owned; a friend sees the owner's favorites only
 -- through public.friend_favorites, only when accepted friends, not blocked, and
 -- the owner opted in; quotes stay owner-only otherwise.
--- Ported to 20261029090000_provenance_and_accounts: shows_favorites became
+-- Ported to 20261030030000_provenance_and_accounts: shows_favorites became
 -- favorites_visibility ('private' or 'friends'), friend_favorites also returns
 -- the creator and edited-from usernames, and a client cannot send favorited_at
 -- at all (column grants, 42501), so the "re-dating" and "client-sent date"

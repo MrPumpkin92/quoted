@@ -2,18 +2,18 @@
 -- cascades through every table and leaves other users' data intact. Reports
 -- are the exception: they stay for moderation with the deleted user's id set
 -- to null (by them, and about them). Events carry no user id at all.
--- 20261029090000_provenance_and_accounts: other people's copies keep their text
+-- 20261030030000_provenance_and_accounts: other people's copies keep their text
 -- and lose the creator and edited-from ("Added by a person"), the private
 -- per-user rows (tombstones, suspension) go too, and the username is retired.
--- 20261029090100_playlists: A's playlists and their items go; B's playlist
+-- 20261030030100_playlists: A's playlists and their items go; B's playlist
 -- keeps its items, including B's copy of A's words.
--- 20261029090200_posts: A's posts go; posts others made of A's words keep
+-- 20261030030200_posts: A's posts go; posts others made of A's words keep
 -- their snapshot and lose A as creator and edited-from.
--- 20261029090300_conversations_and_messages: shares became messages. A's
+-- 20261030030300_conversations_and_messages: shares became messages. A's
 -- conversations go with every message in them (both sides lose that history)
 -- and A's message tombstones; B and C keep their own conversation; reports
 -- name message_id instead of share_id and keep their snapshots.
--- 20261029090400_profiles_and_moderation: a report keeps its target_kind when
+-- 20261030030400_profiles_and_moderation: a report keeps its target_kind when
 -- its target goes with the account; profile_view finds nothing for a deleted
 -- (retired) username; and D's quote and post, whose creator and edited-from
 -- accounts are deleted in one statement, lose both pairs and keep their text.

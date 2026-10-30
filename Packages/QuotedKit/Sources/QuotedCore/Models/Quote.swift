@@ -10,6 +10,9 @@ public enum QuoteOrigin: String, Codable, Hashable, Sendable, CaseIterable {
     case shared
     /// Brought back with the PasteButton (for example from a web search).
     case pasted
+    /// Added from the Verified Quotes list: a catalog quote that is not a starter (a starter added
+    /// there is `starter`, as in onboarding). Set by `add_catalog_quotes`, like `starter`.
+    case catalog
 
     /// Unknown values (from a newer server) decode as `.manual` instead of failing the whole row.
     public init(from decoder: any Decoder) throws {
@@ -40,8 +43,9 @@ public struct Quote: Identifiable, Hashable, Sendable, RichTextContent {
     public var rotationPosition: Int?
     public var createdAt: Date
     public var updatedAt: Date
-    /// The starter quote whose wording, author and source this quote matches exactly, or nil. Set by
-    /// the server only (trigger `quotes_set_verified`); editing the text clears it.
+    /// The catalog quote (`catalog_quotes.id`) whose wording, author and source this quote matches
+    /// exactly, or nil. Set by the server only (trigger `quotes_set_verified`); editing the text
+    /// clears it. The column keeps its starter-era name, which builds up to 6 select.
     public var verifiedStarterID: Int?
     /// The owner's heart. Friends see favorites only when the owner's `favorites_visibility` is friends.
     public var isFavorite: Bool

@@ -236,6 +236,14 @@ struct LocalStackTests {
     private func catalog(_ alice: TestUser) async throws {
         let catalog = try await alice.backend.starter.fetchAll()
         #expect(catalog.map(\.sortOrder) == catalog.map(\.sortOrder).sorted())
+        // The live catalog holds every live starter; one row also reads by id.
+        let live = try await alice.backend.catalog.fetchLive()
+        #expect(Set(catalog.map(\.id)).isSubset(of: Set(live.filter(\.isStarter).map(\.id))))
+        #expect(live.allSatisfy { $0.status == .live && !$0.themes.isEmpty })
+        if let first = catalog.first {
+            let row = try await alice.backend.catalog.quote(id: first.id)
+            #expect(row?.body == first.body)
+        }
         guard catalog.count >= 2 else {
             print("[LocalStack] starter_quotes has \(catalog.count) rows; skipped addCatalogQuotes (seed migration not applied?)")
             return
@@ -252,6 +260,15 @@ struct LocalStackTests {
         // A retry with the same ids returns the same quotes.
         #expect(try await alice.quotes.addCatalogQuotes(picked.map(\.id), ids: ids, inReminders: true).map(\.id) == ids)
         await #expect(throws: QuotedError.notFound) { try await alice.quotes.addCatalogQuotes([32_000]) }
+
+        // A Verified Quotes pick that is not a starter keeps origin catalog, sealed with its own id.
+        if let batch = live.first(where: { !$0.isStarter }) {
+            let saved = try await alice.quotes.addCatalogQuotes([batch.id])
+            #expect(saved.map(\.origin) == [.catalog])
+            #expect(saved.map(\.verifiedStarterID) == [batch.id])
+            #expect(saved.map(\.provenance) == [batch.provenance])
+            #expect(saved.map(\.rotationPosition) == [nil])
+        }
     }
 
     /// More quotes than PostgREST's max_rows (1000): fetchMine pages through all of them.

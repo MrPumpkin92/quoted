@@ -65,7 +65,8 @@ public struct FriendFavorite: Identifiable, Hashable, Sendable, RichTextContent 
     public var format: [TextRun]
     public var author: String?
     public var source: String?
-    /// Set when the wording and attribution match a Quoted Catalog quote (the filled seal).
+    /// Set when the wording and attribution match a Quoted Catalog quote (`catalog_quotes.id`; the
+    /// filled seal).
     public var verifiedStarterID: Int?
     /// Who added it (null for checked quotes).
     public var creatorUsername: String?
@@ -290,8 +291,9 @@ extension Friendship: Codable {
     }
 }
 
-/// One Quoted Catalog quote from `starter_quotes` (the table keeps its first name). Every one was
-/// checked word for word against the public-domain text at `sourceURL` (docs/starter-pack-sources.md).
+/// One onboarding starter quote from `starter_quotes` (the live starters in `catalog_quotes`; see
+/// ``CatalogQuote``). Every one was checked word for word against the public-domain text at
+/// `sourceURL` (docs/starter-pack-sources.md).
 public struct StarterQuote: Identifiable, Hashable, Sendable, RichTextContent {
     public var id: Int
     public var body: String

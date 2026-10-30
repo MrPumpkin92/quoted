@@ -1,5 +1,5 @@
 -- friendships lifecycle and blocks. Every user here has accepted the terms
--- (20261029090000_provenance_and_accounts; 16_provenance_accounts covers the
+-- (20261030030000_provenance_and_accounts; 16_provenance_accounts covers the
 -- terms, suspension and 150-friend rules).
 begin;
 set local client_min_messages = warning;

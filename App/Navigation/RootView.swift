@@ -28,7 +28,7 @@ struct RootView: View {
                 UsernameView()
                     .transition(.opacity)
             case .needsStarter:
-                StarterFlowView(mode: .onboarding)
+                StarterFlowView()
                     .transition(.opacity)
             case .ready:
                 MainTabView()

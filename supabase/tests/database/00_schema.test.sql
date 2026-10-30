@@ -1,23 +1,26 @@
 -- Schema contract: RLS everywhere, explicit grants, nothing for anon, named
 -- foreign keys (PostgREST embedding hints), indexed foreign keys and safe
 -- private functions. See docs/system-design.md section 3.
--- 20261029090000_provenance_and_accounts: column grants on profiles and quotes,
+-- 20261028120000_catalog_corpus: catalog_authors, catalog_works and
+-- catalog_quotes, and the starter_quotes view for builds up to 6; every
+-- catalog id elsewhere points at catalog_quotes.
+-- 20261030030000_provenance_and_accounts: column grants on profiles and quotes,
 -- the provenance foreign keys, and the private tables no API role can read.
--- 20261029090100_playlists: the playlists and playlist_items tables, their
+-- 20261030030100_playlists: the playlists and playlist_items tables, their
 -- column grants and foreign keys, and the playlist RPCs and helpers.
--- 20261029090200_posts: the posts table (no client reads source_quote_id),
+-- 20261030030200_posts: the posts table (no client reads source_quote_id),
 -- its column grants, foreign keys and indexes, and save_from_post.
--- 20261029090300_conversations_and_messages: shares is gone; conversations,
+-- 20261030030300_conversations_and_messages: shares is gone; conversations,
 -- conversation_members and messages (column grants: no client reads
 -- source_quote_id or writes a snapshot), the report targets, the deferred
 -- foreign key checks, the message tombstones, and the RPCs and helpers.
--- 20261029090400_profiles_and_moderation: profile_view, the founder's
+-- 20261030030400_profiles_and_moderation: profile_view, the founder's
 -- suspend_user and unsuspend_user, the reports triggers (target_kind and the
 -- auto-hold) and the moderation queue's columns.
--- 20261029090500_forward_quotes: messages.source_post_id and source_message_id
+-- 20261030030500_forward_quotes: messages.source_post_id and source_message_id
 -- (sent, never read back; deferred foreign keys with sparse indexes) and
 -- private.forwardable_snapshot, for signed-in senders only.
--- 20261029090600_read_marks_reports_playlist_order: received_quotes is a
+-- 20261030030600_read_marks_reports_playlist_order: received_quotes is a
 -- SECURITY INVOKER read for signed-in users only, returning only the message
 -- columns clients may read; the queue gains reporters_against_user.
 -- Review fixes: reporters read reports column by column (never the server's
@@ -27,13 +30,23 @@
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(51);
+select plan(53);
 
 select tables_are(
   'public',
-  array['profiles', 'quotes', 'friendships', 'blocks', 'reports', 'starter_quotes', 'events',
+  array['profiles', 'quotes', 'friendships', 'blocks', 'reports',
+        'catalog_authors', 'catalog_works', 'catalog_quotes', 'events',
         'playlists', 'playlist_items', 'posts', 'conversations', 'conversation_members', 'messages'],
-  'public has exactly the MVP tables (shares moved into messages), playlists, posts and conversations'
+  'public has exactly the MVP tables (shares moved into messages), the catalog, playlists, posts and conversations'
+);
+
+-- builds up to 6 read the starter pack through this view (20261028120000_catalog_corpus).
+select views_are('public', array['starter_quotes'], 'public has exactly one view, starter_quotes');
+
+select is(
+  (select reloptions from pg_class where oid = 'public.starter_quotes'::regclass),
+  array['security_invoker=true'],
+  'starter_quotes runs as the caller, so catalog_quotes RLS applies through it'
 );
 
 select is_empty(
@@ -68,6 +81,9 @@ select results_eq(
      group by table_name order by table_name $$,
   $$ values
        ('blocks', 'DELETE,INSERT,SELECT'),
+       ('catalog_authors', 'SELECT'),
+       ('catalog_quotes', 'SELECT'),
+       ('catalog_works', 'SELECT'),
        ('conversation_members', 'SELECT'),
        ('conversations', 'SELECT'),
        ('events', 'INSERT'),
@@ -129,6 +145,10 @@ select results_eq(
   $$ values
        ('blocks', 'blocks_blocked_id_fkey', 'profiles', 'c'),
        ('blocks', 'blocks_blocker_id_fkey', 'profiles', 'c'),
+       ('catalog_quotes', 'catalog_quotes_author_id_fkey', 'catalog_authors', 'a'),
+       ('catalog_quotes', 'catalog_quotes_replaced_by_fkey', 'catalog_quotes', 'a'),
+       ('catalog_quotes', 'catalog_quotes_work_id_fkey', 'catalog_works', 'a'),
+       ('catalog_works', 'catalog_works_author_id_fkey', 'catalog_authors', 'a'),
        ('conversation_members', 'conversation_members_conversation_id_fkey', 'conversations', 'c'),
        ('conversation_members', 'conversation_members_user_id_fkey', 'profiles', 'c'),
        ('conversations', 'conversations_user_a_fkey', 'profiles', 'c'),
@@ -143,8 +163,8 @@ select results_eq(
        ('messages', 'messages_source_message_id_fkey', 'messages', 'n'),
        ('messages', 'messages_source_post_id_fkey', 'posts', 'n'),
        ('messages', 'messages_source_quote_id_fkey', 'quotes', 'n'),
-       ('messages', 'messages_starter_quote_id_fkey', 'starter_quotes', 'n'),
-       ('messages', 'messages_verified_starter_id_fkey', 'starter_quotes', 'n'),
+       ('messages', 'messages_starter_quote_id_fkey', 'catalog_quotes', 'n'),
+       ('messages', 'messages_verified_starter_id_fkey', 'catalog_quotes', 'n'),
        ('playlist_items', 'playlist_items_playlist_id_fkey', 'playlists', 'c'),
        ('playlist_items', 'playlist_items_quote_id_fkey', 'quotes', 'c'),
        ('playlists', 'playlists_owner_id_fkey', 'profiles', 'c'),
@@ -152,20 +172,20 @@ select results_eq(
        ('posts', 'posts_creator_id_fkey', 'profiles', 'n'),
        ('posts', 'posts_edited_from_id_fkey', 'profiles', 'n'),
        ('posts', 'posts_source_quote_id_fkey', 'quotes', 'n'),
-       ('posts', 'posts_starter_quote_id_fkey', 'starter_quotes', 'n'),
-       ('posts', 'posts_verified_starter_id_fkey', 'starter_quotes', 'n'),
+       ('posts', 'posts_starter_quote_id_fkey', 'catalog_quotes', 'n'),
+       ('posts', 'posts_verified_starter_id_fkey', 'catalog_quotes', 'n'),
        ('profiles', 'profiles_id_fkey', 'auth.users', 'c'),
        ('quotes', 'quotes_creator_id_fkey', 'profiles', 'n'),
        ('quotes', 'quotes_edited_from_id_fkey', 'profiles', 'n'),
        ('quotes', 'quotes_owner_id_fkey', 'auth.users', 'c'),
-       ('quotes', 'quotes_verified_starter_id_fkey', 'starter_quotes', 'n'),
+       ('quotes', 'quotes_verified_starter_id_fkey', 'catalog_quotes', 'n'),
        ('reports', 'reports_message_id_fkey', 'messages', 'n'),
        ('reports', 'reports_playlist_id_fkey', 'playlists', 'n'),
        ('reports', 'reports_post_id_fkey', 'posts', 'n'),
        ('reports', 'reports_reported_user_id_fkey', 'profiles', 'n'),
        ('reports', 'reports_reporter_id_fkey', 'profiles', 'n'),
-       ('reports', 'reports_starter_quote_id_fkey', 'starter_quotes', 'n') $$,
-  'foreign keys have stable names, targets and delete actions (events has none; reports outlive both accounts)'
+       ('reports', 'reports_starter_quote_id_fkey', 'catalog_quotes', 'n') $$,
+  'foreign keys have stable names, targets and delete actions (events has none; reports outlive both accounts; catalog rows are never deleted, and catalog ids point at catalog_quotes, never the starter_quotes view)'
 );
 
 select is_empty(
@@ -244,18 +264,18 @@ select results_eq(
      where table_schema = 'public' and table_name = 'starter_quotes'
      order by ordinal_position $$,
   $$ values
-       ('id', 'smallint', 'NO', null::text),
-       ('body', 'text', 'NO', null),
-       ('body_format', 'jsonb', 'NO', '''[]''::jsonb'),
-       ('author', 'text', 'NO', null),
+       ('id', 'integer', 'YES', null::text),
+       ('body', 'text', 'YES', null),
+       ('body_format', 'jsonb', 'YES', null),
+       ('author', 'text', 'YES', null),
        ('source', 'text', 'YES', null),
-       ('sort_order', 'smallint', 'NO', null),
-       ('source_location', 'text', 'NO', null),
-       ('source_url', 'text', 'NO', null) $$,
-  'starter_quotes has the agreed columns'
+       ('sort_order', 'integer', 'YES', null),
+       ('source_location', 'text', 'YES', null),
+       ('source_url', 'text', 'YES', null) $$,
+  'the starter_quotes view keeps the columns builds 4-6 select (views report every column nullable; catalog_quotes'' own contract is in 16_catalog)'
 );
 
--- ---- 20261029090000_provenance_and_accounts --------------------------------
+-- ---- 20261030030000_provenance_and_accounts --------------------------------
 select results_eq(
   $$ select conname::text collate "default", pg_get_constraintdef(oid) collate "default"
      from pg_constraint where conname in ('quotes_creator_id_fkey', 'quotes_edited_from_id_fkey') order by 1 $$,
@@ -297,13 +317,13 @@ select results_eq(
             has_function_privilege('service_role', p.oid, 'execute')
      from pg_proc p
      where p.oid in ('public.accept_terms(smallint)'::regprocedure, 'public.my_account()'::regprocedure,
-                     'public.add_catalog_quotes(smallint[], uuid[], boolean)'::regprocedure,
+                     'public.add_catalog_quotes(integer[], uuid[], boolean)'::regprocedure,
                      'public.save_from_favorite(uuid, uuid, uuid, boolean)'::regprocedure,
                      'public.friend_favorites(uuid)'::regprocedure)
      order by 1 $$,
   $$ values
        ('accept_terms(smallint)', false, true, false),
-       ('add_catalog_quotes(smallint[],uuid[],boolean)', false, true, false),
+       ('add_catalog_quotes(integer[],uuid[],boolean)', false, true, false),
        ('friend_favorites(uuid)', false, true, false),
        ('my_account()', false, true, false),
        ('save_from_favorite(uuid,uuid,uuid,boolean)', false, true, false) $$,
@@ -357,7 +377,7 @@ select results_eq(
   'profiles has the new account columns, and shows_favorites is gone'
 );
 
--- ---- 20261029090100_playlists -----------------------------------------------
+-- ---- 20261030030100_playlists -----------------------------------------------
 select results_eq(
   $$ select p.oid::regprocedure::text,
             has_function_privilege('anon', p.oid, 'execute'),
@@ -391,7 +411,7 @@ select results_eq(
        ('private.playlist_is_public_eligible(uuid)', false, true, false, false),
        ('private.playlist_view(uuid)', false, true, false, true),
        ('private.playlist_visible_items(uuid)', false, false, false, true),
-       ('private.quote_is_public_eligible(uuid,smallint,uuid,uuid)', false, true, true, false),
+       ('private.quote_is_public_eligible(uuid,integer,uuid,uuid)', false, true, true, false),
        ('private.save_from_playlist(uuid,uuid,uuid,boolean)', false, true, false, true),
        ('private.save_playlist_copy(uuid,text)', false, true, false, true) $$,
   'the playlist access and item helpers (they return quote ids) are reachable only from the definer functions'
@@ -431,7 +451,7 @@ select results_eq(
   'the playlist tables have their keys, the owner and daily-limit index, and the item order and quote indexes'
 );
 
--- ---- 20261029090200_posts ---------------------------------------------------
+-- ---- 20261030030200_posts ---------------------------------------------------
 select results_eq(
   $$ select p.oid::regprocedure::text,
             has_function_privilege('anon', p.oid, 'execute'),
@@ -462,7 +482,7 @@ select results_eq(
        ('id', 'uuid', 'NO', 'gen_random_uuid()'),
        ('author_id', 'uuid', 'NO', 'auth.uid()'),
        ('source_quote_id', 'uuid', 'YES', null::text),
-       ('starter_quote_id', 'smallint', 'YES', null),
+       ('starter_quote_id', 'integer', 'YES', null),
        ('caption', 'text', 'YES', null),
        ('body', 'text', 'NO', null),
        ('body_format', 'jsonb', 'NO', '''[]''::jsonb'),
@@ -472,7 +492,7 @@ select results_eq(
        ('creator_username', 'text', 'YES', null),
        ('edited_from_id', 'uuid', 'YES', null),
        ('edited_from_username', 'text', 'YES', null),
-       ('verified_starter_id', 'smallint', 'YES', null),
+       ('verified_starter_id', 'integer', 'YES', null),
        ('audience', 'text', 'NO', '''friends''::text'),
        ('held_at', 'timestamp with time zone', 'YES', null),
        ('created_at', 'timestamp with time zone', 'NO', 'now()') $$,
@@ -514,7 +534,7 @@ select results_eq(
   'posts has one policy per command, all for signed-in users'
 );
 
--- ---- 20261029090300_conversations_and_messages --------------------------------
+-- ---- 20261030030300_conversations_and_messages --------------------------------
 select results_eq(
   $$ select p.oid::regprocedure::text,
             has_function_privilege('anon', p.oid, 'execute'),
@@ -582,9 +602,9 @@ select results_eq(
        ('creator_username', 'text', 'YES', null),
        ('edited_from_id', 'uuid', 'YES', null),
        ('edited_from_username', 'text', 'YES', null),
-       ('verified_starter_id', 'smallint', 'YES', null),
+       ('verified_starter_id', 'integer', 'YES', null),
        ('source_quote_id', 'uuid', 'YES', null),
-       ('starter_quote_id', 'smallint', 'YES', null),
+       ('starter_quote_id', 'integer', 'YES', null),
        ('playlist_id', 'uuid', 'YES', null),
        ('playlist_title', 'text', 'YES', null),
        ('created_at', 'timestamp with time zone', 'NO', 'now()'),
@@ -666,7 +686,7 @@ select is_empty(
   'the share trigger functions are gone (private.set_verified_starter stays for quotes)'
 );
 
--- ---- 20261029090400_profiles_and_moderation ---------------------------------
+-- ---- 20261030030400_profiles_and_moderation ---------------------------------
 select results_eq(
   $$ select p.oid::regprocedure::text,
             has_function_privilege('anon', p.oid, 'execute'),
@@ -711,7 +731,7 @@ select results_eq(
   'the moderation queue covers every target: its kind, ids, whether it is gone or held, its reporters, and the reported person''s reports and distinct reporters'
 );
 
--- ---- 20261029090500_forward_quotes ------------------------------------------
+-- ---- 20261030030500_forward_quotes ------------------------------------------
 select results_eq(
   $$ select conname::text collate "default", pg_get_constraintdef(oid) collate "default"
      from pg_constraint
@@ -735,7 +755,7 @@ select results_eq(
   'private.forwardable_snapshot is a definer helper that only signed-in senders (the snapshot trigger) can run'
 );
 
--- ---- 20261029090600_read_marks_reports_playlist_order ------------------------
+-- ---- 20261030030600_read_marks_reports_playlist_order ------------------------
 select results_eq(
   $$ select p.oid::regprocedure::text,
             has_function_privilege('anon', p.oid, 'execute'),

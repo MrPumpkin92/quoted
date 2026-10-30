@@ -33,8 +33,10 @@ public final class Backend: Sendable {
     public let messages: MessagesRepository
     /// Reports.
     public let reports: ReportsRepository
-    /// The Quoted Catalog (`starter_quotes`).
+    /// The onboarding starters (`starter_quotes`).
     public let starter: StarterRepository
+    /// The Quoted Catalog (`catalog_quotes`): the Verified Quotes list and the seal's sources.
+    public let catalog: CatalogRepository
     public let events: EventsRepository
     public let account: AccountService
 
@@ -93,6 +95,7 @@ public final class Backend: Sendable {
         messages = MessagesRepository(client: client)
         reports = ReportsRepository(client: client)
         starter = StarterRepository(client: client)
+        catalog = CatalogRepository(client: client)
         events = EventsRepository(client: client)
         account = AccountService(client: client, auth: auth)
     }

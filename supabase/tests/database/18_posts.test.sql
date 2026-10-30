@@ -1,4 +1,4 @@
--- Posts (supabase/migrations/20261029090200_posts.sql): strangers get zero
+-- Posts (supabase/migrations/20261030030200_posts.sql): strangers get zero
 -- posts; the author and accepted friends read them, never across a block or
 -- while held; clients send only the source, caption and audience and the
 -- server builds the snapshot from the author's own quote or the catalog;
@@ -6,7 +6,7 @@
 -- word filter (QR003) on the caption and an unverified snapshot; Public needs
 -- can_publish and an eligible snapshot; 20 posts a day; save_from_post keeps
 -- the creator and is refused to anyone who cannot see the post.
--- 20261029090300_conversations_and_messages gave reports post_id and the real
+-- 20261030030300_conversations_and_messages gave reports post_id and the real
 -- private.caller_reported_post: a post its reader reported disappears for
 -- them (and cannot be saved), not for its author or other friends.
 -- Review fixes: a verified snapshot keeps no creator or edited-from; a public
@@ -121,7 +121,7 @@ insert into private.blocked_terms (term) values ('darn'), ('heck no'), ('fearles
 select tests.authenticate_as('a');
 insert into public.quotes (id, body, author) values
   (tests.qid(1), 'Alpha', 'Ann'), (tests.qid(5), 'Darn it all', null), (tests.qid(6), 'Zeta', 'Zed');
-select id from public.add_catalog_quotes(array[3]::smallint[], array[tests.qid(2)]);
+select id from public.add_catalog_quotes(array[3]::integer[], array[tests.qid(2)]);
 select tests.authenticate_as('b');
 insert into public.quotes (id, body, author) values (tests.qid(30), 'Bob''s line', 'Bo');
 select tests.authenticate_as('c');
@@ -149,8 +149,8 @@ select results_eq(
   $$ insert into public.posts (id, source_quote_id, caption) values (tests.pid(1), tests.qid(1), 'Morning thought')
      returning id, author_id, starter_quote_id, caption, body, author, source, creator_username,
                edited_from_username, verified_starter_id, audience, held_at, created_at = now() $$,
-  $$ values (tests.pid(1), tests.uid('a'), null::smallint, 'Morning thought'::text, 'Alpha'::text, 'Ann'::text,
-             null::text, 'alice'::text, null::text, null::smallint, 'friends'::text, null::timestamptz, true) $$,
+  $$ values (tests.pid(1), tests.uid('a'), null::integer, 'Morning thought'::text, 'Alpha'::text, 'Ann'::text,
+             null::text, 'alice'::text, null::text, null::integer, 'friends'::text, null::timestamptz, true) $$,
   'A posts one of A''s quotes: the server copies its wording and creator; friends by default, on the server clock'
 );
 select throws_ok(
@@ -197,14 +197,14 @@ select throws_ok(
 select results_eq(
   $$ insert into public.posts (id, starter_quote_id) values (tests.pid(2), 1)
      returning starter_quote_id, body, author, source, body_format, creator_id, edited_from_id, verified_starter_id $$,
-  $$ select 1::smallint, s.body, s.author, s.source, s.body_format, null::uuid, null::uuid, 1::smallint
+  $$ select 1::integer, s.body, s.author, s.source, s.body_format, null::uuid, null::uuid, 1::integer
      from public.starter_quotes s where s.id = 1 $$,
   'a catalog post copies the catalog row: verified, with no creator'
 );
 select results_eq(
   $$ insert into public.posts (id, source_quote_id) values (tests.pid(3), tests.qid(2))
      returning starter_quote_id, body, creator_id, verified_starter_id $$,
-  $$ select null::smallint, s.body, null::uuid, 3::smallint from public.starter_quotes s where s.id = 3 $$,
+  $$ select null::integer, s.body, null::uuid, 3::integer from public.starter_quotes s where s.id = 3 $$,
   'a post of A''s own verified copy stays verified, and verified wording skips the word filter (it holds "fearless")'
 );
 select results_eq(
@@ -525,7 +525,7 @@ select results_eq(
 select results_eq(
   $$ select origin, creator_id, verified_starter_id, rotation_position
      from public.save_from_post(tests.pid(2), tests.qid(62), true) $$,
-  $$ values ('shared'::text, null::uuid, 1::smallint, 0) $$,
+  $$ values ('shared'::text, null::uuid, 1::integer, 0) $$,
   'a catalog post is saved verified with no creator; p_in_reminders adds it to the Reminders'
 );
 select throws_ok(
@@ -584,10 +584,11 @@ select throws_ok(
   'nor can a friend who blocked A'
 );
 
--- Catalog quote 2 leaves the catalog: public post 8 is no longer verified, so
--- strangers lose it; friends keep it.
+-- Catalog quote 2 is withdrawn (catalog rows are never deleted,
+-- 20261028120000_catalog_corpus): the withdrawal's reseal takes the seal off
+-- public post 8 too (20261030030300), so strangers lose it; friends keep it.
 select tests.clear_authentication();
-delete from public.starter_quotes where id = 2;
+select private.catalog_withdraw(2, 'Test: the wording turned out wrong.');
 select tests.authenticate_as('c');
 select throws_ok(
   $$ select public.save_from_post(tests.pid(8)) $$,
@@ -597,7 +598,7 @@ select throws_ok(
 select tests.authenticate_as('b');
 select results_eq(
   $$ select owner_id, creator_id, verified_starter_id from public.save_from_post(tests.pid(8)) $$,
-  $$ values (tests.uid('b'), null::uuid, null::smallint) $$,
+  $$ values (tests.uid('b'), null::uuid, null::integer) $$,
   'but a friend can still save it'
 );
 select tests.clear_authentication();
@@ -643,7 +644,7 @@ select is(tests.prov(8), 'shared|alice|bob', 'A''s own row keeps A as creator an
 select results_eq(
   $$ insert into public.posts (id, source_quote_id) values (tests.pid(9), tests.qid(8))
      returning verified_starter_id, creator_id, creator_username, edited_from_id, edited_from_username $$,
-  $$ values (5::smallint, null::uuid, null::text, null::uuid, null::text) $$,
+  $$ values (5::integer, null::uuid, null::text, null::uuid, null::text) $$,
   'a verified snapshot keeps no creator or edited-from: the names in A''s row stay in A''s Library'
 );
 select tests.authenticate_as('b');
@@ -654,7 +655,7 @@ select results_eq(
 );
 select results_eq(
   $$ select verified_starter_id, creator_id, edited_from_id from public.save_from_post(tests.pid(9), tests.qid(64)) $$,
-  $$ values (5::smallint, null::uuid, null::uuid) $$,
+  $$ values (5::integer, null::uuid, null::uuid) $$,
   'nor in a copy they save'
 );
 select tests.clear_authentication();

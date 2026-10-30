@@ -1,4 +1,4 @@
--- The move of shares into messages (supabase/migrations/20261029090300_conversations_and_messages.sql,
+-- The move of shares into messages (supabase/migrations/20261030030300_conversations_and_messages.sql,
 -- private.move_shares_to_messages). The migration runs the move once, before
 -- it drops public.shares and reports.share_id, and then drops the function,
 -- and every test file runs after the migrations. So this file recreates those
@@ -9,7 +9,9 @@
 -- with the same id, time, note, snapshot and verification, the creator only
 -- for the sender's own typed quote, last_message_at, reports.message_id, a
 -- sender with more than 300 shares over several days, and a second run that
--- changes nothing.
+-- changes nothing. Shares as 20261028120000_catalog_corpus left them: integer
+-- catalog ids, and a share of a batch quote (id > 60) sealed by its batch
+-- migration's reseal, which the moved message keeps.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
@@ -66,7 +68,7 @@ create function tests.pair(x text, y text) returns uuid language sql stable secu
 $$;
 -- ---------------------------------------------------------------------------
 
--- What 20261029090300 drops, as it was (the columns the move reads). The old
+-- What 20261030030300 drops, as it was (the columns the move reads). The old
 -- triggers are not needed: these rows are written as the server wrote them.
 create table public.shares (
   id uuid primary key,
@@ -81,13 +83,13 @@ create table public.shares (
   created_at timestamptz not null,
   seen_at timestamptz,
   saved_at timestamptz,
-  verified_starter_id smallint
+  verified_starter_id integer
 );
 alter table public.reports add column share_id uuid;
 
 -- The migration runs private.move_shares_to_messages once and then drops it
 -- (it can only fail once public.shares is gone). This is a verbatim copy of
--- it from 20261029090300_conversations_and_messages; keep the two identical.
+-- it from 20261030030300_conversations_and_messages; keep the two identical.
 select is_empty(
   $$ select 1 from pg_proc where pronamespace = 'private'::regnamespace and proname = 'move_shares_to_messages' $$,
   'the migration leaves no move function behind (it could only fail once shares is gone)'
@@ -231,6 +233,10 @@ insert into public.shares (id, sender_id, recipient_id, quote_id, body, body_for
 insert into public.shares (id, sender_id, recipient_id, body, author, source, created_at, verified_starter_id)
 select tests.sid(8), tests.uid('a'), tests.uid('c'), s.body, s.author, s.source, now() - interval '9 days', s.id
 from public.starter_quotes s where s.id = 1;
+-- A to C: a catalog batch quote (20261029020004_catalog_batch_001), sealed before the move.
+insert into public.shares (id, sender_id, recipient_id, body, author, source, created_at, verified_starter_id)
+select tests.sid(10), tests.uid('a'), tests.uid('c'), c.body, c.author, c.source, now() - interval '8 days 12 hours', c.id
+from public.catalog_quotes c where c.id = 61;
 -- D to A: 320 shares, 64 a day over five days (the old limit was 100 a day).
 insert into public.shares (id, sender_id, recipient_id, body, created_at)
 select tests.sid(1000 + n), tests.uid('d'), tests.uid('a'), 'D share ' || n,
@@ -245,13 +251,13 @@ insert into public.reports (id, reporter_id, reported_user_id, reason, content_b
 update public.reports set content_verified = true where id = '7e000000-0000-4000-8000-000000000001';
 
 -- ---- the move ---------------------------------------------------------------------
-select is(private.move_shares_to_messages(), 329, 'every share is moved');
+select is(private.move_shares_to_messages(), 330, 'every share is moved');
 
 select results_eq(
   $$ select (select count(*)::int from public.conversations),
             (select count(*)::int from public.conversation_members),
             (select count(*)::int from public.messages) $$,
-  $$ values (3, 6, 329) $$,
+  $$ values (3, 6, 330) $$,
   'one conversation per pair, two member rows each, one message per share'
 );
 select results_eq(
@@ -295,9 +301,10 @@ select results_eq(
 );
 select results_eq(
   $$ select m.id, m.verified_starter_id, m.creator_id from public.messages m
-     where m.id in (tests.sid(8), tests.sid(9)) order by m.id $$,
-  $$ values (tests.sid(8), 1::smallint, null::uuid), (tests.sid(9), null::smallint, null::uuid) $$,
-  'verification is recomputed from the wording: the catalog copy stays verified, a false claim does not'
+     where m.id in (tests.sid(8), tests.sid(9), tests.sid(10)) order by m.id $$,
+  $$ values (tests.sid(8), 1::integer, null::uuid), (tests.sid(9), null::integer, null::uuid),
+            (tests.sid(10), 61::integer, null::uuid) $$,
+  'verification is recomputed from the wording: the catalog copies (a starter and a batch quote) stay verified, a false claim does not'
 );
 select results_eq(
   $$ select body, note from public.messages where id = tests.sid(6) $$,
@@ -379,8 +386,8 @@ select throws_ok(
 );
 select results_eq(
   $$ select count(*)::int from public.messages $$,
-  $$ values (3) $$,
-  'C reads the three shares of A and C''s conversation'
+  $$ values (4) $$,
+  'C reads the four shares of A and C''s conversation'
 );
 select tests.authenticate_as('b');
 select lives_ok(
@@ -394,7 +401,7 @@ select throws_ok(
 );
 
 -- ---- the rest of the migration runs after the move ------------------------------------
--- As 20261029090300 does next: run the deferred checks the move queued, then
+-- As 20261030030300 does next: run the deferred checks the move queued, then
 -- drop reports.share_id and shares. ALTER TABLE refuses a table with pending
 -- trigger events, so without the first step this fails on real data.
 select tests.clear_authentication();

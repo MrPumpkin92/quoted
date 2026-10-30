@@ -177,9 +177,11 @@ public struct QuotesRepository: Sendable {
         }
     }
 
-    /// Saves Quoted Catalog quotes to the library (origin `starter`, no creator: "Quoted Catalog"), in
-    /// the given order, through `public.add_catalog_quotes`. With `inReminders`, the server appends
-    /// them to the end of the Rotation in that order.
+    /// Saves Quoted Catalog quotes (`catalog_quotes` ids: the onboarding starters and the Verified
+    /// Quotes list) to the library, in the given order, through `public.add_catalog_quotes`. The
+    /// server records origin `starter` for a starter and `catalog` for the rest
+    /// (``CatalogQuote/libraryOrigin``), with no creator ("Quoted Catalog"). With `inReminders`, the
+    /// server appends them to the end of the Rotation in that order.
     ///
     /// `ids` (one per catalog id, in order) are the new quotes' IDs; pass the same ones to retry after
     /// a lost answer and get the same quotes back. Missing IDs are generated. An unknown catalog id

@@ -2,21 +2,23 @@ import QuotedCore
 import SwiftUI
 
 /// "Verified quote": what the verified seal means for one quote. Its wording, author and source match a
-/// starter quote that was checked word for word against a public-domain edition
-/// (docs/starter-pack-sources.md); the sheet names the work, where in it the quote is, and opens that
-/// full text in the in-app browser.
+/// catalog quote that was checked word for word against a public-domain edition
+/// (docs/catalog-sources.md); the sheet names the work, who speaks the line (when it isn't the
+/// author's own voice), where in the work it is, and opens that full text in the in-app browser.
 ///
-/// Presented from the quote detail's "Verified quote" button. The location and link come from
-/// `starter_quotes` through `StarterStore`; offline, the sheet still explains the check without them.
+/// Presented from the quote detail's "Verified quote" button for the quote's `verifiedStarterID` (any
+/// catalog id, a starter or not). The location and link come from `catalog_quotes` through
+/// `CatalogStore`, looked up once per session; offline, a starter still resolves from the starter
+/// pack if it was loaded, and otherwise the sheet explains the check without them.
 struct VerifiedQuoteSheet: View {
-    let starterID: Int
+    let catalogID: Int
     let author: String?
     let work: String?
 
-    @Environment(StarterStore.self) private var starter
+    @Environment(CatalogStore.self) private var catalog
     @Environment(\.dismiss) private var dismiss
 
-    @State private var details: StarterQuote?
+    @State private var details: CatalogQuote?
     @State private var didLoad = false
     @State private var isReadingSource = false
 
@@ -46,7 +48,7 @@ struct VerifiedQuoteSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task {
-            details = await starter.verifiedSource(id: starterID)
+            details = await catalog.verifiedSource(id: catalogID)
             didLoad = true
         }
         .sheet(isPresented: $isReadingSource) {
@@ -83,6 +85,11 @@ struct VerifiedQuoteSheet: View {
                     if let author {
                         Text(author)
                             .font(.subheadline)
+                    }
+                    if let speaker = details?.speaker, speaker != author {
+                        Text("Spoken by \(speaker)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
                     if let location = details?.sourceLocation {
                         Text(location)
@@ -124,7 +131,15 @@ struct VerifiedQuoteSheet: View {
 #Preview("Verified quote") {
     Color.clear
         .sheet(isPresented: .constant(true)) {
-            VerifiedQuoteSheet(starterID: 3, author: Samples.emerson.author, work: Samples.emerson.source)
+            VerifiedQuoteSheet(catalogID: 3, author: Samples.emerson.author, work: Samples.emerson.source)
+        }
+        .previewEnvironment()
+}
+
+#Preview("Verified quote, spoken by a character") {
+    Color.clear
+        .sheet(isPresented: .constant(true)) {
+            VerifiedQuoteSheet(catalogID: 62, author: "William Shakespeare", work: "Hamlet")
         }
         .previewEnvironment()
 }

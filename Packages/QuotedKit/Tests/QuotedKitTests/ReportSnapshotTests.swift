@@ -6,7 +6,7 @@ import Testing
 
 /// Reports name a target (post, message, playlist or catalog quote) and the person it is about; the
 /// server copies the content from its own row (`reports_snapshot_target`, migration
-/// `20261029090300_conversations_and_messages`). When the target is gone the app files a profile
+/// `20261030030300_conversations_and_messages`). When the target is gone the app files a profile
 /// report carrying what it showed.
 @Suite("Report snapshot")
 struct ReportSnapshotTests {

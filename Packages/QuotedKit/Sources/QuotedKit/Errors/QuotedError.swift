@@ -172,7 +172,7 @@ extension QuotedError {
         case "QR002":
             return .validation(limitCopy[error.message]
                 ?? (isWrittenForPeople(error.message) ? error.message : "You've reached the limit for your account."))
-        // The word filter and "Friends can text me" (migrations 20261029090000 and 20261029090300).
+        // The word filter and "Friends can text me" (migrations 20261030030000 and 20261030030300).
         case "QR003":
             return .blockedWords(blockedWordsInPostsAndMessages)
         case "QR004":

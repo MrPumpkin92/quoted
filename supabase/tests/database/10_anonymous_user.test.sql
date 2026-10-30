@@ -4,9 +4,9 @@
 -- in. G is that user: an auth.users row with is_anonymous and no email, and a
 -- JWT with is_anonymous true and amr "anonymous". B and C are email users.
 -- The helpers say "guest" because "anon" means the anon role (see 04).
--- Social writes need accepted terms (20261029090000_provenance_and_accounts):
+-- Social writes need accepted terms (20261030030000_provenance_and_accounts):
 -- G accepts them through public.accept_terms like any account.
--- Ported to 20261029090300_conversations_and_messages: shares became messages
+-- Ported to 20261030030300_conversations_and_messages: shares became messages
 -- in a conversation G opens with open_conversation; B's share to G became a
 -- text (clients no longer send snapshots), so the report keeps it in
 -- content_note; "seen and saved" became G's read mark; a block now closes the
@@ -79,7 +79,7 @@ end
 $$;
 
 -- The caller's own reports with every column, read with definer rights:
--- reporters may not select the server's copy (20261029090300), so the tests
+-- reporters may not select the server's copy (20261030030300), so the tests
 -- read it as the founder does.
 create function tests.own_reports() returns setof public.reports language sql stable security definer as $$
   select * from public.reports where reporter_id = auth.uid()

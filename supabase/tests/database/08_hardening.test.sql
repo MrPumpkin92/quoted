@@ -1,10 +1,10 @@
 -- Hardening (supabase/migrations/20261019060000_hardening.sql): body_format
 -- validation and byte cap, non-blank text, server-owned timestamps, reports
 -- that record verification and stay reviewable, and the moderation queue view.
--- Since 20261029090000_provenance_and_accounts clients cannot send created_at
+-- Since 20261030030000_provenance_and_accounts clients cannot send created_at
 -- or updated_at for profiles and quotes at all (column grants, 42501); the
 -- stamping triggers stay behind them.
--- Ported to 20261029090300_conversations_and_messages: shares became messages.
+-- Ported to 20261030030300_conversations_and_messages: shares became messages.
 -- Clients cannot send a snapshot or a time any more (column grants), so the
 -- body_format and created_at checks on messages run as the server; the blank
 -- checks use a text message and a note; seen_at and saved_at became each
@@ -59,7 +59,7 @@ end
 $$;
 
 -- The caller's own reports with every column, read with definer rights:
--- reporters may not select the server's copy (20261029090300), so the tests
+-- reporters may not select the server's copy (20261030030300), so the tests
 -- read it as the founder does.
 create function tests.own_reports() returns setof public.reports language sql stable security definer as $$
   select * from public.reports where reporter_id = auth.uid()
@@ -190,11 +190,14 @@ select throws_ok(
   'messages validate body_format the same way (only the server can send one)'
 );
 
+-- A row that is valid in every other way, so only the body_format check can refuse it.
 select throws_ok(
-  $$ insert into public.starter_quotes (id, body, body_format, author, sort_order, source_location, source_url)
-     values (32767, 'x', '[{"start":0,"length":1,"junk":1}]', 'y', 32767, 'Chapter 1', 'https://example.org/text') $$,
-  '23514', null,
-  'starter_quotes validate body_format the same way'
+  $$ insert into public.catalog_quotes (id, body, body_format, author, source, sort_order, source_location, source_url,
+                                       is_starter, themes)
+     values (32767, 'x', '[{"start":0,"length":1,"junk":1}]', 'y', 'z', 32767, 'Chapter 1', 'https://example.org/text',
+             true, array['calm']) $$,
+  '23514', 'new row for relation "catalog_quotes" violates check constraint "catalog_quotes_body_format_valid"',
+  'catalog_quotes validate body_format the same way'
 );
 
 -- ---- text that is only whitespace -----------------------------------------

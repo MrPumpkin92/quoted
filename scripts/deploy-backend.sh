@@ -112,6 +112,11 @@ supabase link --project-ref "$PROJECT_REF"
 step "Pending migrations (dry run)"
 if ! dry_run="$(supabase db push --linked --dry-run 2>&1)"; then
   printf '%s\n' "$dry_run"
+  if grep -q -- '--include-all' <<<"$dry_run"; then
+    echo "A local migration sorts before the newest one on hosted. Don't push with --include-all, which"
+    echo "applies it out of the order the local tests used: if it was never deployed, rename it to sort"
+    echo "after the newest hosted migration, commit, test and run this again (docs/system-design.md)."
+  fi
   die "the dry run failed; nothing was pushed"
 fi
 printf '%s\n' "$dry_run"
@@ -136,6 +141,40 @@ if grep -q '20261019060000_hardening' <<<"$dry_run"; then
       * fails if a quote or share body is only whitespace. The error names
         the constraint (quotes_body_not_blank or shares_body_not_blank): fix
         or delete those rows in the SQL editor, then run this script again.
+CHECKS
+fi
+if grep -q '_catalog_corpus' <<<"$dry_run"; then
+  cat <<'CHECKS'
+  - 20261028120000_catalog_corpus (the verified catalog, M1):
+      * renames starter_quotes to catalog_quotes and leaves a starter_quotes
+        view of the 60 live starters, so builds up to 6 keep onboarding as
+        before. PostgREST reloads its schema at the end; an app open at that
+        moment may retry onboarding once;
+      * widens the catalog ids to integer, which rewrites the quotes and shares
+        tables under a brief lock: every read and write waits for it. Deploy at
+        a quiet hour;
+      * adds no new quotes. Batches come later, each in its own migration.
+CHECKS
+fi
+if grep -q '_catalog_batch_' <<<"$dry_run"; then
+  cat <<'CHECKS'
+  - catalog batches (*_catalog_batch_NNN): new verified quotes.
+      * Deploy only after a TestFlight build with the catalog client is up:
+        on builds up to 6, a newly sealed quote's Verified sheet has no
+        location or link.
+      * Each batch fails as a whole if any of its ids is already stored with
+        different text (insert-or-verify, never update), then reseals users'
+        matching quotes and shares (quotes, quote messages and posts once the
+        social redesign is in). App writes to quotes wait for the reseal
+        (seconds). The report to read is supabase/catalog/batches/NNN.md.
+CHECKS
+fi
+if grep -q '_catalog_withdraw_' <<<"$dry_run"; then
+  cat <<'CHECKS'
+  - catalog withdrawals (*_catalog_withdraw_<id>): the seal comes off that
+    quote in every user's library and inbox at their next refresh, and it
+    leaves onboarding if it was a starter. The evidence belongs in
+    docs/catalog-sources.md before you push.
 CHECKS
 fi
 

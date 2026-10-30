@@ -2,7 +2,7 @@
 -- trigger (client values ignored, content_verified = true), kept as sent for a
 -- profile report (content_verified = false), and still there after a block or
 -- after the target is gone.
--- Ported to 20261029090300_conversations_and_messages: shares became messages
+-- Ported to 20261030030300_conversations_and_messages: shares became messages
 -- and reports.share_id became message_id; the trigger is now
 -- reports_snapshot_target, which also fills content_note and covers posts,
 -- playlists and Quoted Catalog quotes (wrong_wording) too.
@@ -66,7 +66,7 @@ end
 $$;
 
 -- The caller's own reports with every column, read with definer rights:
--- reporters may not select the server's copy (20261029090300), so the tests
+-- reporters may not select the server's copy (20261030030300), so the tests
 -- read it as the founder does.
 create function tests.own_reports() returns setof public.reports language sql stable security definer as $$
   select * from public.reports where reporter_id = auth.uid()

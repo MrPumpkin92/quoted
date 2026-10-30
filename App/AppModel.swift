@@ -25,6 +25,7 @@ final class AppModel {
     let social: SocialStore
     let reminders: ReminderStore
     let starter: StarterStore
+    let catalog: CatalogStore
     let recentSearches: RecentSearches
     let router: Router
     let toasts: ToastCenter
@@ -56,6 +57,7 @@ final class AppModel {
         let library = LibraryStore(backend: backend, appGroup: appGroup, toasts: toasts, reminders: reminders)
         let social = SocialStore(backend: backend, toasts: toasts)
         let starter = StarterStore(backend: backend)
+        let catalog = CatalogStore(backend: backend, starter: starter)
         let recentSearches = RecentSearches(defaults: sideEffects ? .standard : (UserDefaults(suiteName: "quoted.preview") ?? .standard))
         reminders.library = library
         library.social = social
@@ -69,6 +71,7 @@ final class AppModel {
         self.library = library
         self.social = social
         self.starter = starter
+        self.catalog = catalog
         self.recentSearches = recentSearches
         self.session = SessionStore(
             backend: backend,
@@ -77,6 +80,7 @@ final class AppModel {
             social: social,
             reminders: reminders,
             starter: starter,
+            catalog: catalog,
             recentSearches: recentSearches,
             router: router,
             toasts: toasts,
@@ -231,6 +235,7 @@ extension View {
             .environment(model.social)
             .environment(model.reminders)
             .environment(model.starter)
+            .environment(model.catalog)
             .environment(model.recentSearches)
             .environment(model.router)
             .environment(model.toasts)
@@ -257,6 +262,7 @@ extension AppModel {
             me: Samples.alex.id
         )
         model.starter.seedPreview(quotes: Samples.starters)
+        model.catalog.seedPreview(quotes: Samples.catalog)
         model.reminders.seedPreview(permission: .authorized)
         return model
     }

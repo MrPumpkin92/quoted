@@ -48,9 +48,10 @@ final class LibraryStore {
     @ObservationIgnored private var refreshAfterWrites = false
     @ObservationIgnored private var refreshTask: Task<RefreshOutcome, Never>?
     @ObservationIgnored private var refreshSerial = 0
-    /// New quote IDs for catalog quotes (by catalog ID) and saved messages (by message ID), kept for
-    /// the session so a retry after a lost answer finds the first insert (`QuotesRepository`).
-    @ObservationIgnored private var starterImportIDs: [Int: UUID] = [:]
+    /// New quote IDs for catalog quotes (by catalog ID, which a starter shares) and saved messages (by
+    /// message ID), kept for the session so a retry after a lost answer finds the first insert
+    /// (`QuotesRepository`).
+    @ObservationIgnored private var catalogImportIDs: [Int: UUID] = [:]
     @ObservationIgnored private var sharedSaveIDs: [UUID: UUID] = [:]
     @ObservationIgnored private var cacheWrite: Task<Void, Never>?
     @ObservationIgnored private var rotationWrite: Task<Bool, Never>?
@@ -96,6 +97,19 @@ final class LibraryStore {
     /// Whether a starter quote is already in the library (same body and author).
     func contains(starter: StarterQuote) -> Bool {
         quotes.contains { $0.body == starter.body && $0.author == starter.author }
+    }
+
+    /// The IDs of the catalog quotes in `candidates` that the library already holds (same body and
+    /// author, as `contains(starter:)`), in one pass over each list.
+    func ownedCatalogIDs(in candidates: [CatalogQuote]) -> Set<Int> {
+        let held = Set(quotes.map { CopyKey(body: $0.body, author: $0.author) })
+        return Set(candidates.filter { held.contains(CopyKey(body: $0.body, author: $0.author)) }.map(\.id))
+    }
+
+    /// What makes two quotes the same for "already in your library".
+    private struct CopyKey: Hashable {
+        var body: String
+        var author: String?
     }
 
     /// The quote's index in the reminder order, or nil when it is not in reminders. Capture it before
@@ -447,30 +461,38 @@ final class LibraryStore {
         Task { await reorderReminders(ids) }
     }
 
-    // MARK: Starter pack, received quotes and favorites
+    // MARK: Verified quotes, received quotes and favorites
 
-    /// Adds Quoted Catalog quotes to the library and the end of the reminders, in order
-    /// (`add_catalog_quotes`: origin `starter`, no creator). Waits for the server; on failure shows a
-    /// toast and returns false.
+    /// Adds starter quotes (onboarding) to the library and the end of the reminders; see
+    /// `importCatalog(_:)`.
     @discardableResult
     func importStarter(_ starters: [StarterQuote]) async -> Bool {
-        guard !starters.isEmpty else { return true }
+        await importCatalog(starters.map(CatalogQuote.init(starter:)))
+    }
+
+    /// Adds Quoted Catalog quotes to the library and the end of the reminders, in the given order
+    /// (`add_catalog_quotes`: the server gives a starter origin `starter` and the rest `catalog`, with
+    /// no creator). Waits for the server; on failure shows a toast and returns false.
+    @discardableResult
+    func importCatalog(_ picked: [CatalogQuote]) async -> Bool {
+        guard !picked.isEmpty else { return true }
         let owner = userID
         beginWrite()
-        let assertion = BackgroundTaskAssertion("Add starter quotes")
+        let assertion = BackgroundTaskAssertion("Add verified quotes")
         defer {
             assertion.end()
             endWrite()
         }
         do {
-            // The same starter gets the same new ID on a retry, so a lost answer adds nothing twice.
-            let ids = starters.map { starter in
-                if let id = starterImportIDs[starter.id] { return id }
+            // The same catalog quote gets the same new ID on a retry, so a lost answer adds nothing
+            // twice.
+            let ids = picked.map { quote in
+                if let id = catalogImportIDs[quote.id] { return id }
                 let id = UUID()
-                starterImportIDs[starter.id] = id
+                catalogImportIDs[quote.id] = id
                 return id
             }
-            let inserted = try await backend.quotes.addCatalogQuotes(starters.map(\.id), ids: ids, inReminders: true)
+            let inserted = try await backend.quotes.addCatalogQuotes(picked.map(\.id), ids: ids, inReminders: true)
             guard userID == owner else { return false }
             for quote in inserted { upsertLocal(quote) }
             hasLoaded = true
@@ -595,7 +617,7 @@ final class LibraryStore {
     func reset() {
         quotes = []
         lastCreatedQuoteID = nil
-        starterImportIDs = [:]
+        catalogImportIDs = [:]
         sharedSaveIDs = [:]
         hasLoaded = false
         isRefreshing = false

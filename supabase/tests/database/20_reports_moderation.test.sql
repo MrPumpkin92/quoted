@@ -1,5 +1,5 @@
--- Reports and moderation (supabase/migrations/20261029090400_profiles_and_moderation.sql,
--- on the reports rework of 20261029090300_conversations_and_messages): a
+-- Reports and moderation (supabase/migrations/20261030030400_profiles_and_moderation.sql,
+-- on the reports rework of 20261030030300_conversations_and_messages): a
 -- report on a post, a message, a playlist, a Quoted Catalog quote
 -- (wrong_wording) and a profile, each with its server-owned target_kind; the
 -- target must be one the reporter can see and reported_user_id its author,
@@ -238,7 +238,7 @@ select throws_ok(
 );
 select results_eq(
   $$ select target_kind, reason, details, starter_quote_id from public.reports where id = tests.rid(4) $$,
-  $$ values ('catalog_quote'::text, 'wrong_wording'::text, 'One word is wrong'::text, 1::smallint) $$,
+  $$ values ('catalog_quote'::text, 'wrong_wording'::text, 'One word is wrong'::text, 1::integer) $$,
   'B reads what B filed, and its kind'
 );
 

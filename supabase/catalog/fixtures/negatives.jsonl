@@ -1,0 +1,6 @@
+{"author": "Mary Shelley", "citation": "Frankenstein (1818)", "expect": {"renders_starter": false}, "key": "frankenstein_1818", "starter_body": 3}
+{"author": "Jane Austen", "citation": "Pride and Prejudice", "expect": {"cls": "NEAR_MISS", "near": "high"}, "key": "austen_mockup", "text": "There is a stubbornness about me that never can bear to be frightened at the will of others. My courage always rises at every attempt to intimidate me."}
+{"author": "John Donne", "citation": "Devotions upon Emergent Occasions", "expect": {"cls": "NEAR_MISS", "flag": "orthographic_only"}, "key": "donne_1624", "text": "No man is an Iland, intire of it selfe; every man is a peece of the Continent, a part of the maine"}
+{"author": "Ohiyesa (Charles Eastman)", "citation": "The Soul of the Indian", "expect": {"flag": "NEEDS_SPEAKER"}, "key": "wabashaw", "text": "Guard your tongue in youth"}
+{"author": "Marcus Aurelius", "citation": "Meditations (trans. George Long)", "expect": {"cls": "NEAR_MISS", "near": "low"}, "key": "marcus_paraphrase", "text": "Very little is needed to make a happy life."}
+{"author": "Leo Tolstoy", "citation": "War and Peace (trans. Louise and Aylmer Maude)", "expect": {"cls": "NOT_FOUND"}, "key": "tolstoy_paraphrase", "text": "The two most powerful warriors are patience and time."}

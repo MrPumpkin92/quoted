@@ -66,8 +66,8 @@ struct QuoteDetailView: View {
                 Text("It leaves your library, your reminders and the widget.")
             }
             .sheet(item: $verifying) { quote in
-                if let starterID = quote.verifiedStarterID {
-                    VerifiedQuoteSheet(starterID: starterID, author: quote.author, work: quote.source)
+                if let catalogID = quote.verifiedStarterID {
+                    VerifiedQuoteSheet(catalogID: catalogID, author: quote.author, work: quote.source)
                 }
             }
     }

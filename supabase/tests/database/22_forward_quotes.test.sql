@@ -1,4 +1,4 @@
--- Forwarding (supabase/migrations/20261029090500_forward_quotes.sql): a quote
+-- Forwarding (supabase/migrations/20261030030500_forward_quotes.sql): a quote
 -- message made from a post (source_post_id) or from another quote message
 -- (source_message_id). A friend forwards a friend's post and a received quote
 -- message to another friend, and the copy keeps the creator unless it is
@@ -170,22 +170,22 @@ update public.posts set held_at = now() where id = tests.pid(4);
 select tests.authenticate_as('a');
 select results_eq(
   tests.forward(100, 'p', tests.pid(1), 'c', 'Look at this') || ' returning body, author, creator_username, note, verified_starter_id',
-  $$ values ('Bob''s line'::text, 'Bo'::text, 'bob'::text, 'Look at this'::text, null::smallint) $$,
+  $$ values ('Bob''s line'::text, 'Bo'::text, 'bob'::text, 'Look at this'::text, null::integer) $$,
   'A forwards friend B''s post to C: the quote and its creator, with A''s own note and not B''s caption'
 );
 select results_eq(
   tests.forward(101, 'm', tests.mid(1), 'c') || ' returning body, author, creator_username, note, verified_starter_id',
-  $$ values ('Bob''s line'::text, 'Bo'::text, 'bob'::text, null::text, null::smallint) $$,
+  $$ values ('Bob''s line'::text, 'Bo'::text, 'bob'::text, null::text, null::integer) $$,
   'A forwards a quote message B sent to C: the quote and its creator, not B''s note'
 );
 select results_eq(
   tests.forward(102, 'p', tests.pid(2), 'c') || ' returning body, creator_id, creator_username, verified_starter_id',
-  $$ select body, null::uuid, null::text, 1::smallint from public.starter_quotes where id = 1 $$,
+  $$ select body, null::uuid, null::text, 1::integer from public.starter_quotes where id = 1 $$,
   'a verified post goes as "Quoted Catalog": no creator'
 );
 select results_eq(
   tests.forward(103, 'm', tests.mid(2), 'c') || ' returning body, creator_id, edited_from_id, verified_starter_id',
-  $$ select body, null::uuid, null::uuid, 1::smallint from public.starter_quotes where id = 1 $$,
+  $$ select body, null::uuid, null::uuid, 1::integer from public.starter_quotes where id = 1 $$,
   'so does a verified message'
 );
 select tests.clear_authentication();
@@ -196,7 +196,7 @@ update public.posts set creator_id = tests.uid('b'), creator_username = 'bob', e
 select tests.authenticate_as('a');
 select results_eq(
   tests.forward(104, 'p', tests.pid(2), 'c') || ' returning creator_id, edited_from_id, verified_starter_id',
-  $$ values (null::uuid, null::uuid, 1::smallint) $$,
+  $$ values (null::uuid, null::uuid, 1::integer) $$,
   'a forwarded verified snapshot keeps neither pair, whatever its source holds'
 );
 select results_eq(
@@ -222,9 +222,9 @@ select tests.clear_authentication();
 select results_eq(
   $$ select id, source_post_id, source_message_id, source_quote_id, starter_quote_id from public.messages
      where id in (tests.mid(100), tests.mid(101), tests.mid(106)) order by id $$,
-  $$ values (tests.mid(100), tests.pid(1), null::uuid, null::uuid, null::smallint),
-            (tests.mid(101), null::uuid, tests.mid(1), null::uuid, null::smallint),
-            (tests.mid(106), null::uuid, tests.mid(101), null::uuid, null::smallint) $$,
+  $$ values (tests.mid(100), tests.pid(1), null::uuid, null::uuid, null::integer),
+            (tests.mid(101), null::uuid, tests.mid(1), null::uuid, null::integer),
+            (tests.mid(106), null::uuid, tests.mid(101), null::uuid, null::integer) $$,
   'each forward records its one source'
 );
 
@@ -450,7 +450,7 @@ select throws_ok(
 );
 select results_eq(
   tests.forward(141, 'p', tests.pid(7), 'c') || ' returning verified_starter_id',
-  $$ values (3::smallint) $$,
+  $$ values (3::integer) $$,
   'a verified quote is not filtered ("fearless" is in catalog quote 3)'
 );
 
@@ -479,7 +479,7 @@ select throws_ok(
 select results_eq(
   format('insert into public.messages (conversation_id, sender_id, kind, starter_quote_id) values (%L, %L, ''quote'', 1) returning verified_starter_id',
          tests.cid('c'), tests.uid('a')),
-  $$ values (1::smallint) $$,
+  $$ values (1::integer) $$,
   'while service_role still sends a catalog quote'
 );
 select tests.clear_authentication();
@@ -491,41 +491,50 @@ select throws_ok(
 );
 
 -- ---- the catalog changes after the post or message ------------------------------
--- B's own words, posted and sent to A, later become catalog quote 900: a
--- forward goes as "Quoted Catalog" and never names whoever typed them, as
--- saving and then sending would. A post of catalog quote 2 whose wording the
--- catalog corrects afterwards loses its seal when forwarded.
+-- B's own words, posted and sent to A, later become catalog quote 900 (a
+-- batch row, not a starter): a forward goes as "Quoted Catalog" and never
+-- names whoever typed them, as saving and then sending would. The forward
+-- checks the catalog itself, so this holds even before a reseal reaches the
+-- post and the message. A post of catalog quote 2, which the catalog
+-- withdraws afterwards (its wording was wrong; catalog text never changes),
+-- loses its seal when forwarded.
 select tests.authenticate_as('b');
 insert into public.quotes (id, body, author, source) values (tests.qid(14), 'A wording nobody has catalogued yet', 'Ann Author', 'Some Book');
 insert into public.posts (id, source_quote_id) values (tests.pid(8), tests.qid(14));
 insert into public.posts (id, starter_quote_id) values (tests.pid(9), 2);
 insert into public.messages (id, conversation_id, kind, source_quote_id) values (tests.mid(8), tests.cid('b'), 'quote', tests.qid(14));
 select tests.clear_authentication();
-insert into public.starter_quotes (id, body, author, source, sort_order, source_location, source_url)
-  values (900, 'A wording nobody has catalogued yet', 'Ann Author', 'Some Book', 900, 'p. 1', 'https://example.invalid/');
-update public.starter_quotes set body = body || ' (corrected)' where id = 2;
+insert into public.catalog_authors (id, slug, name, died_year) values (900, 'ann-author', 'Ann Author', 1850);
+insert into public.catalog_works (id, author_id, citation, edition_year, gutenberg_id) values (900, 900, 'Some Book', 1890, 900);
+insert into public.catalog_quotes (id, body, author, source, source_location, source_url, themes, author_id, work_id,
+                                   checked_ebook_id, checked_body_sha256, checked_start, checked_end, match_kind,
+                                   checked_at, verifier_version)
+  values (900, 'A wording nobody has catalogued yet', 'Ann Author', 'Some Book', 'p. 1',
+          'https://www.gutenberg.org/ebooks/900', array['calm'], 900, 900, 900, repeat('a', 64), 0, 35, 'exact',
+          now(), 'abcdef1');
+select private.catalog_withdraw(2, 'Test: the wording turned out wrong.');
 insert into private.blocked_terms (term) values ('catalogued');
 select tests.authenticate_as('a');
 select results_eq(
   tests.forward(150, 'p', tests.pid(8), 'c') || ' returning verified_starter_id, creator_id, creator_username',
-  $$ values (900::smallint, null::uuid, null::text) $$,
+  $$ values (900::integer, null::uuid, null::text) $$,
   'a post of words the catalog took in later goes as "Quoted Catalog", without B''s name and past the word filter'
 );
 select results_eq(
   tests.forward(151, 'm', tests.mid(8), 'c') || ' returning verified_starter_id, creator_id, creator_username',
-  $$ values (900::smallint, null::uuid, null::text) $$,
+  $$ values (900::integer, null::uuid, null::text) $$,
   'so does a message of them'
 );
 select results_eq(
   tests.forward(152, 'p', tests.pid(9), 'c') || ' returning verified_starter_id, creator_id',
-  $$ values (null::smallint, null::uuid) $$,
-  'a post of a catalog wording the catalog has since corrected loses its seal'
+  $$ values (null::integer, null::uuid) $$,
+  'a post of a catalog wording the catalog has since withdrawn loses its seal'
 );
 select tests.authenticate_as('c');
 select results_eq(
   $$ select id, verified_starter_id, creator_username from public.messages
      where id in (tests.mid(150), tests.mid(151)) order by id $$,
-  $$ values (tests.mid(150), 900::smallint, null::text), (tests.mid(151), 900::smallint, null::text) $$,
+  $$ values (tests.mid(150), 900::integer, null::text), (tests.mid(151), 900::integer, null::text) $$,
   'C, a stranger to B, never learns who typed the words'
 );
 select tests.clear_authentication();

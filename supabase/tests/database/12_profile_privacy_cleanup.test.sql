@@ -2,11 +2,11 @@
 -- profiles readable only when linked, exact lookup and availability RPCs,
 -- reserved and immutable usernames, server-owned last_active_at and
 -- purge_exempt, touch_activity, and the purge of abandoned anonymous accounts.
--- Ported to 20261029090000_provenance_and_accounts: clients cannot write
+-- Ported to 20261030030000_provenance_and_accounts: clients cannot write
 -- username, last_active_at or purge_exempt at all (column grants, 42501), the
 -- friend request needs accepted terms, and a purged account's username is
 -- retired for good instead of becoming free again.
--- Ported to 20261029090300_conversations_and_messages: a conversation (either
+-- Ported to 20261030030300_conversations_and_messages: a conversation (either
 -- member) links two profiles where a share (either side) did; the purged
 -- account's share with B became a conversation with a message. Removed: none.
 begin;

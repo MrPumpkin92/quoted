@@ -48,7 +48,7 @@ How I applied it (my calls, so you can overrule them later):
 
 **2026-10-28, design.** Five designers specced the new screens, a critic reviewed them, and the result is now the UI contract (`docs/ui-spec.md`, commit "Spec the social redesign screens"). The critique changed two council rules for first-time users. The app opens on Feed only once a friend has posted, so new users don't land on an empty "quote of the day". With no friends yet, the quote screen's main button is Share Image instead of a Send that leads nowhere.
 
-**2026-10-29, Stage 1 server.** Five migrations (`20261029090000` to `090400`):
+**2026-10-29, Stage 1 server.** Five migrations (`20261030030000` to `030400`):
 - **Provenance and accounts:** a server-owned "Added by" on every quote, plus Undo that keeps it.
 - **Safety:** versioned terms, suspensions, the word filter, retired usernames and the 150-friend cap.
 - **Social data:** playlists, posts, and 1:1 conversations and messages (shares moved in, then dropped). Reports now cover every target, with an auto-hold after two reporters. Plus `profile_view`.
@@ -72,8 +72,8 @@ Left for you (no change made):
 - **Not built yet:** report alert emails (need an email provider), the age check and Apple-identity bans. All wait for Public.
 
 **2026-10-29, Stage 1b: forwarding, the data layer, the app on the new server.**
-- **Forwarding (`090500`):** a friend's post, or a quote someone sent you, can be sent on without saving it first. The server copies only what you can still read; anything else gets "This quote is not available."
-- **Review fixes (`090600`):**
+- **Forwarding (`030500`):** a friend's post, or a quote someone sent you, can be sent on without saving it first. The server copies only what you can still read; anything else gets "This quote is not available."
+- **Review fixes (`030600`):**
   - Read marks stop at the newest message the app actually showed.
   - Reports about deleted items are no longer lost as duplicates. One person can file at most 3 profile reports a day about the same person.
   - A playlist reorder is saved in one statement.
@@ -105,7 +105,8 @@ My calls:
 - At most 3 profile reports a day by one person about the same person (easy to change).
 
 For you:
-- **Deploy order.** The new server breaks TestFlight build 6 and earlier: they read a column, write a table and use quote types that no longer exist. Upload the redesign build, expire builds 6 and earlier, then run `scripts/deploy-backend.sh`.
+- **Deploy order.** The new server breaks every build without the redesign client. Builds 6 and earlier read a column, write a table and use quote types that no longer exist. Any later build cut from main with the catalog client (Verified Quotes) breaks too: it adds catalog quotes by writing their origin itself, which the new server refuses, and it reads and writes shares, which the new server drops. Upload the redesign build, expire every older build, then run `scripts/deploy-backend.sh`.
+- **Migration order.** When main's catalog was merged in, the redesign migrations were renamed from `20261029090000`–`090600` to `20261030030000`–`030600`, after the newest catalog migration (`20261030022806_catalog_repin_001`), so `supabase db push` applies them in order. If another catalog migration reaches hosted first, rename them again to sort after it: they have never been deployed, and `db push` refuses local migrations older than the newest one on hosted. A local stack that applied the old names needs `supabase db reset`.
 - **Docker memory.** Four Supabase stacks share a 4 GB Docker VM. It runs out of memory and requests time out. Raising the limit in Docker Desktop (Settings > Resources) to 8 GB fixes it.
 
 Known, for later stages: text and playlist messages have no screen until the Inbox (Stage 5). The Terms sheet's footnote overlaps the faded last row at the bottom (Stage 7).

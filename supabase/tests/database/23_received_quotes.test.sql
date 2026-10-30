@@ -1,4 +1,4 @@
--- received_quotes (supabase/migrations/20261029090600_read_marks_reports_playlist_order.sql,
+-- received_quotes (supabase/migrations/20261030030600_read_marks_reports_playlist_order.sql,
 -- section 4): the quote messages other people sent the caller, across their
 -- conversations, newest first (created_at desc, id), in keyset pages. It
 -- returns what a direct read of messages returns under RLS, no more: never

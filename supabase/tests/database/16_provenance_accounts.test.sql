@@ -1,4 +1,4 @@
--- Provenance and accounts (supabase/migrations/20261029090000_provenance_and_accounts.sql):
+-- Provenance and accounts (supabase/migrations/20261030030000_provenance_and_accounts.sql):
 -- private profile columns and my_account, terms, suspension, the 150-friend
 -- cap, the word filter (QR003), who added a quote (creator and edited-from,
 -- server-owned on insert and update, kept through Undo, never forgeable),
@@ -461,7 +461,7 @@ select tests.clear_authentication();
 insert into public.quotes (id, owner_id, body, origin, creator_id, creator_username)
   values (tests.qid(4), tests.uid('a'), 'Delta', 'shared', tests.uid('d'), 'dan');
 select tests.authenticate_as('a');
-select id from public.add_catalog_quotes(array[2]::smallint[], array[tests.qid(5)]);
+select id from public.add_catalog_quotes(array[2]::integer[], array[tests.qid(5)]);
 update public.quotes set is_favorite = true where id in (tests.qid(1), tests.qid(2), tests.qid(3), tests.qid(4), tests.qid(5), tests.qid(90));
 select tests.authenticate_as('b');
 
@@ -469,9 +469,9 @@ select results_eq(
   $$ select body, verified_starter_id, creator_username, edited_from_username
      from public.friend_favorites(tests.uid('a')) order by body $$,
   $$ select body, verified_starter_id, creator_username, edited_from_username from (values
-       ('Alpha'::text, null::smallint, 'alice'::text, null::text), ('Beta', null, 'alice', null),
+       ('Alpha'::text, null::integer, 'alice'::text, null::text), ('Beta', null, 'alice', null),
        ('Delta', null, 'dan', null), ('Gamma', null, 'alice', null),
-       ((select body from public.starter_quotes where id = 2), 2::smallint, null, null)
+       ((select body from public.starter_quotes where id = 2), 2::integer, null, null)
      ) v (body, verified_starter_id, creator_username, edited_from_username) order by body $$,
   'a friend sees creator usernames on unverified favorites, none on verified ones, and no unverified blocked term'
 );
@@ -496,7 +496,7 @@ select tests.authenticate_as('b');
 select results_eq(
   $$ select rotation_position, verified_starter_id
      from public.save_from_favorite(tests.uid('a'), tests.handle(5, 'b'), tests.qid(42), true) $$,
-  $$ values (5, 2::smallint) $$,
+  $$ values (5, 2::integer) $$,
   'p_in_reminders puts the saved quote at the end of the Reminders; a catalog favorite stays verified'
 );
 
@@ -509,7 +509,7 @@ select tests.authenticate_as('b');
 select results_eq(
   $$ select verified_starter_id, creator_id, edited_from_id
      from public.save_from_favorite(tests.uid('a'), tests.handle(6, 'b'), tests.qid(43)) $$,
-  $$ values (1::smallint, null::uuid, null::uuid) $$,
+  $$ values (1::integer, null::uuid, null::uuid) $$,
   'a verified favorite is saved with no creator: the name in A''s own row stays there'
 );
 
@@ -578,7 +578,7 @@ select is(tests.prov(11), 'shared|bob|alice', 'changing someone else''s words ma
 update public.quotes set author = 'Anne' where id = tests.qid(11);
 select is(tests.prov(11), 'shared|bob|alice', 'editing your own version changes nothing more');
 
-select id from public.add_catalog_quotes(array[3]::smallint[], array[tests.qid(12)]);
+select id from public.add_catalog_quotes(array[3]::integer[], array[tests.qid(12)]);
 update public.quotes set author = 'M. Shelley' where id = tests.qid(12);
 select is(tests.prov(12), 'starter|bob|-', 'editing a verified catalog quote makes you the creator with no edited-from');
 
@@ -637,7 +637,7 @@ insert into public.quotes (id, body, author, origin) values (tests.qid(16), 'Wor
 select is(tests.prov(16), 'shared|bob|alice',
   'an Undo with new words cannot put them under the old creator: it follows the edit rule');
 
-select id from public.add_catalog_quotes(array[4]::smallint[], array[tests.qid(18)]);
+select id from public.add_catalog_quotes(array[4]::integer[], array[tests.qid(18)]);
 delete from public.quotes where id = tests.qid(18);
 insert into public.quotes (id, body, author, origin)
   select tests.qid(18), body, 'Lucius Annaeus Seneca', 'starter' from public.starter_quotes where id = 4;
@@ -745,39 +745,39 @@ insert into public.quotes (body, rotation_position) values ('Dan''s first', 0);
 
 select results_eq(
   $$ select id, owner_id, origin, creator_id, verified_starter_id, rotation_position
-     from public.add_catalog_quotes(array[1, 2]::smallint[], array[tests.qid(31), tests.qid(32)], true) $$,
-  $$ values (tests.qid(31), tests.uid('d'), 'starter'::text, null::uuid, 1::smallint, 1),
-            (tests.qid(32), tests.uid('d'), 'starter', null, 2::smallint, 2) $$,
+     from public.add_catalog_quotes(array[1, 2]::integer[], array[tests.qid(31), tests.qid(32)], true) $$,
+  $$ values (tests.qid(31), tests.uid('d'), 'starter'::text, null::uuid, 1::integer, 1),
+            (tests.qid(32), tests.uid('d'), 'starter', null, 2::integer, 2) $$,
   'catalog quotes come back in order: origin starter, no creator, verified, at the end of the Reminders'
 );
 
 select results_eq(
-  $$ select id, rotation_position from public.add_catalog_quotes(array[1, 2]::smallint[], array[tests.qid(31), tests.qid(32)], true) $$,
+  $$ select id, rotation_position from public.add_catalog_quotes(array[1, 2]::integer[], array[tests.qid(31), tests.qid(32)], true) $$,
   $$ values (tests.qid(31), 1), (tests.qid(32), 2) $$,
   'a retry with the same ids returns the same quotes'
 );
 select is((select count(*)::int from public.quotes), 3, 'and adds nothing');
 
 select results_eq(
-  $$ select origin, creator_id, rotation_position, verified_starter_id from public.add_catalog_quotes(array[3]::smallint[]) $$,
-  $$ values ('starter'::text, null::uuid, null::integer, 3::smallint) $$,
+  $$ select origin, creator_id, rotation_position, verified_starter_id from public.add_catalog_quotes(array[3]::integer[]) $$,
+  $$ values ('starter'::text, null::uuid, null::integer, 3::integer) $$,
   'without ids or reminders the server picks the id and leaves it out of the Reminders'
 );
 
 select throws_ok(
-  $$ select * from public.add_catalog_quotes(array[32767]::smallint[]) $$,
+  $$ select * from public.add_catalog_quotes(array[32767]::integer[]) $$,
   '23503', null,
   'an unknown catalog id is refused with 23503'
 );
 select throws_ok(
-  $$ select * from public.add_catalog_quotes(array[1, 2]::smallint[], array[tests.qid(33)]) $$,
+  $$ select * from public.add_catalog_quotes(array[1, 2]::integer[], array[tests.qid(33)]) $$,
   '22023', null,
   'p_ids needs one id per catalog id'
 );
 
 select tests.authenticate_as('c');
 select throws_ok(
-  $$ select * from public.add_catalog_quotes(array[1]::smallint[], array[tests.qid(31)]) $$,
+  $$ select * from public.add_catalog_quotes(array[1]::integer[], array[tests.qid(31)]) $$,
   '23505', null,
   'an id that belongs to someone else fails like the primary key'
 );
@@ -790,7 +790,7 @@ select is_empty($$ select 1 from public.quotes where id = tests.qid(31) $$, 'and
 
 select tests.clear_authentication();
 set local role anon;
-select throws_ok($$ select * from public.add_catalog_quotes(array[1]::smallint[]) $$, '42501', null,
+select throws_ok($$ select * from public.add_catalog_quotes(array[1]::integer[]) $$, '42501', null,
   'anon cannot add catalog quotes');
 select tests.clear_authentication();
 

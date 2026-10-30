@@ -1,5 +1,5 @@
 -- Messages (formerly shares), reports and the block trigger.
--- Ported to 20261029090300_conversations_and_messages: shares moved into
+-- Ported to 20261030030300_conversations_and_messages: shares moved into
 -- messages in conversations, so the file keeps its name and its assertions
 -- now cover quote and text messages; the full endpoint-by-endpoint proof that
 -- a non-participant can neither read nor send is in 19_conversations_messages.
