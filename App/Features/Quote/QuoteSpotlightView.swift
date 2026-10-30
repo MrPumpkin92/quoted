@@ -15,7 +15,8 @@ import SwiftUI
 /// explanation and Close.
 ///
 /// Share is presented here, not through the router: the shell's sheet sits under this cover and can't
-/// be presented while it is up. While it is up, links wait (`ShareQuoteSheet` holds them).
+/// be presented while it is up. While it is up, links wait (`ShareQuoteSheet` holds them), and it
+/// brings its own Terms sheet for Send.
 ///
 /// The cover brings one toast host for all its states, so "Sent to Maya · Undo" shows over the
 /// cover and never covers the buttons.
@@ -61,7 +62,11 @@ struct QuoteSpotlightView: View {
         }
         .accessibilityAction(.escape) { dismiss() }
         .sheet(item: $sharing) { quote in
+            // Send asks for the Terms of Use first: the sheet stacks over this one (the root's copy
+            // can't present while the cover is up).
             ShareQuoteSheet(quote: quote)
+                .termsSheet()
+                .environment(\.isInShellSheet, true)
                 .toastHost()
         }
     }

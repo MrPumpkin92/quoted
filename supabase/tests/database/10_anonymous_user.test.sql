@@ -4,10 +4,19 @@
 -- in. G is that user: an auth.users row with is_anonymous and no email, and a
 -- JWT with is_anonymous true and amr "anonymous". B and C are email users.
 -- The helpers say "guest" because "anon" means the anon role (see 04).
+-- Social writes need accepted terms (20261030030000_provenance_and_accounts):
+-- G accepts them through public.accept_terms like any account.
+-- Ported to 20261030030300_conversations_and_messages: shares became messages
+-- in a conversation G opens with open_conversation; B's share to G became a
+-- text (clients no longer send snapshots), so the report keeps it in
+-- content_note; "seen and saved" became G's read mark; a block now closes the
+-- conversation and deletes no message. Reporters no longer read the server's
+-- copy back (column grants), so G's report is read with definer rights
+-- (tests.own_reports). Removed: none.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(45);
+select plan(46);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -68,6 +77,24 @@ begin
   perform set_config('request.jwt.claims', '', true);
 end
 $$;
+
+-- The caller's own reports with every column, read with definer rights:
+-- reporters may not select the server's copy (20261030030300), so the tests
+-- read it as the founder does.
+create function tests.own_reports() returns setof public.reports language sql stable security definer as $$
+  select * from public.reports where reporter_id = auth.uid()
+$$;
+
+-- The user has accepted the current terms (social writes need them).
+create function tests.accept_terms(who text) returns void language sql security definer as $$
+  update public.profiles set terms_version = private.current_terms_version(), terms_accepted_at = now()
+  where id = tests.uid(who)
+$$;
+-- G and B's conversation, read with definer rights.
+create function tests.gb() returns uuid language sql stable security definer as $$
+  select c.id from public.conversations c
+  where c.user_a = least(tests.uid('g'), tests.uid('b')) and c.user_b = greatest(tests.uid('g'), tests.uid('b'))
+$$;
 -- ---------------------------------------------------------------------------
 
 -- B has a profile and a quote in their Rotation. C has no profile yet. G has
@@ -76,6 +103,7 @@ select tests.create_user('b');
 select tests.create_user('c');
 select tests.create_guest_user();
 insert into public.profiles (id, username) values (tests.uid('b'), 'bob');
+select tests.accept_terms('b');
 insert into public.quotes (id, owner_id, body, rotation_position)
 values ('b0000000-0000-4000-8000-000000000001', tests.uid('b'), 'B quote', 0);
 
@@ -183,6 +211,11 @@ select throws_ok(
 
 -- ---- friendship with an email user ----------------------------------------
 select lives_ok(
+  $$ select public.accept_terms(1::smallint) $$,
+  'G accepts the terms of use'
+);
+
+select lives_ok(
   $$ insert into public.friendships (addressee_id) values (tests.uid('b')) $$,
   'G can send B a friend request'
 );
@@ -210,62 +243,64 @@ select results_eq(
   'G sees the accepted friendship'
 );
 
--- ---- shares both ways -----------------------------------------------------
+-- ---- messages both ways -----------------------------------------------------
+select public.open_conversation(tests.uid('b'));
+
 select lives_ok(
-  $$ insert into public.shares (id, recipient_id, quote_id, body, author, note)
-     values ('5e000000-0000-4000-8000-000000000001', tests.uid('b'), 'e0000000-0000-4000-8000-000000000001',
-             'First, edited', 'Gail', 'for you') $$,
-  'G can share their own quote with friend B'
+  $$ insert into public.messages (id, conversation_id, kind, source_quote_id, note)
+     values ('5e000000-0000-4000-8000-000000000001', tests.gb(), 'quote',
+             'e0000000-0000-4000-8000-000000000001', 'for you') $$,
+  'G can send their own quote to friend B'
 );
 
 select tests.authenticate_as('b');
 
 select results_eq(
-  $$ select sender_id, quote_id, body, note from public.shares where id = '5e000000-0000-4000-8000-000000000001' $$,
-  $$ values (tests.uid('g'), 'e0000000-0000-4000-8000-000000000001'::uuid, 'First, edited', 'for you') $$,
-  'B sees the share from G'
+  $$ select sender_id, body, author, creator_username, note from public.messages where id = '5e000000-0000-4000-8000-000000000001' $$,
+  $$ values (tests.uid('g'), 'First, edited'::text, 'Gail'::text, 'quiet_reader'::text, 'for you'::text) $$,
+  'B sees the message from G, credited to G'
 );
 
 select is_empty(
   $$ select 1 from public.quotes where owner_id = tests.uid('g') $$,
-  'receiving G''s share does not expose G''s quotes to B'
+  'receiving G''s quote does not expose G''s quotes to B'
 );
 
 select lives_ok(
-  $$ insert into public.shares (id, recipient_id, body, author)
-     values ('5b000000-0000-4000-8000-000000000001', tests.uid('g'), 'From B', 'Ben') $$,
-  'B can share with G'
+  $$ insert into public.messages (id, conversation_id, kind, text)
+     values ('5b000000-0000-4000-8000-000000000001', tests.gb(), 'text', 'From B') $$,
+  'B can text G'
 );
 
 select tests.authenticate_as_guest();
 
 select results_eq(
-  $$ select sender_id, body from public.shares where recipient_id = tests.uid('g') $$,
+  $$ select sender_id, text from public.messages where sender_id <> tests.uid('g') $$,
   $$ values (tests.uid('b'), 'From B') $$,
-  'G sees the share from B'
+  'G sees the text from B'
 );
 
 select results_eq(
-  $$ update public.shares set seen_at = now(), saved_at = now()
-     where id = '5b000000-0000-4000-8000-000000000001'
-     returning seen_at = now(), saved_at = now() $$,
-  $$ values (true, true) $$,
-  'G can mark the share seen and saved'
+  $$ update public.conversation_members set last_read_at = now()
+     where conversation_id = tests.gb()
+     returning user_id, last_read_at = now() $$,
+  $$ values (tests.uid('g'), true) $$,
+  'G can mark the conversation read'
 );
 
 -- ---- report and block -----------------------------------------------------
 select lives_ok(
-  $$ insert into public.reports (id, share_id, reported_user_id, reason, details)
+  $$ insert into public.reports (id, message_id, reported_user_id, reason, details)
      values ('7e000000-0000-4000-8000-000000000001', '5b000000-0000-4000-8000-000000000001', tests.uid('b'),
              'harassment', 'unwanted') $$,
-  'G can report the share from B'
+  'G can report the text from B'
 );
 
 select results_eq(
-  $$ select reporter_id, reported_username, content_body, content_verified
-     from public.reports where id = '7e000000-0000-4000-8000-000000000001' $$,
+  $$ select reporter_id, reported_username, content_note, content_verified
+     from tests.own_reports() where id = '7e000000-0000-4000-8000-000000000001' $$,
   $$ values (tests.uid('g'), 'bob'::text, 'From B'::text, true) $$,
-  'the report names G as reporter and keeps a verified copy of B''s share'
+  'the report names G as reporter and keeps a verified copy of B''s text'
 );
 
 select lives_ok(
@@ -286,9 +321,10 @@ select is_empty(
      where least(requester_id, addressee_id) = least(tests.uid('g'), tests.uid('b'))
        and greatest(requester_id, addressee_id) = greatest(tests.uid('g'), tests.uid('b'))
      union all
-     select 1 from public.shares
-     where (sender_id, recipient_id) in ((tests.uid('g'), tests.uid('b')), (tests.uid('b'), tests.uid('g'))) $$,
-  'the block removed the G-B friendship and the shares in both directions'
+     select 1 from public.conversations where id = tests.gb() and closed_at is null
+     union all
+     select 1 where (select count(*) from public.messages where conversation_id = tests.gb()) <> 2 $$,
+  'the block removed the G-B friendship and closed the conversation, keeping both messages'
 );
 
 select tests.authenticate_as('b');
@@ -326,12 +362,16 @@ select is(
 );
 
 -- ---- deleting G's auth user (delete account) ------------------------------
--- C joins as a friend of G with shares both ways, so every table has a G row.
+-- C joins as a friend of G with messages both ways, so every table has a G row.
 insert into public.profiles (id, username) values (tests.uid('c'), 'cara');
 insert into public.friendships (requester_id, addressee_id, status) values (tests.uid('c'), tests.uid('g'), 'accepted');
-insert into public.shares (id, sender_id, recipient_id, quote_id, body) values
-  ('5e000000-0000-4000-8000-000000000002', tests.uid('g'), tests.uid('c'), null, 'G to C'),
-  ('5c000000-0000-4000-8000-000000000001', tests.uid('c'), tests.uid('g'), null, 'C to G');
+insert into public.conversations (id, user_a, user_b) values
+  ('c0a00000-0000-4000-8000-0000000000cc', tests.uid('c'), tests.uid('g'));
+insert into public.conversation_members (conversation_id, user_id) values
+  ('c0a00000-0000-4000-8000-0000000000cc', tests.uid('c')), ('c0a00000-0000-4000-8000-0000000000cc', tests.uid('g'));
+insert into public.messages (id, conversation_id, sender_id, kind, text) values
+  ('5e000000-0000-4000-8000-000000000002', 'c0a00000-0000-4000-8000-0000000000cc', tests.uid('g'), 'text', 'G to C'),
+  ('5c000000-0000-4000-8000-000000000001', 'c0a00000-0000-4000-8000-0000000000cc', tests.uid('c'), 'text', 'C to G');
 
 select lives_ok(
   $$ delete from auth.users where id = tests.uid('g') $$,
@@ -345,10 +385,14 @@ select is_empty(
   'G''s friendships are gone'
 );
 select is_empty($$ select 1 from public.blocks where tests.uid('g') in (blocker_id, blocked_id) $$, 'G''s blocks are gone');
-select is_empty($$ select 1 from public.shares where tests.uid('g') in (sender_id, recipient_id) $$, 'shares to and from G are gone');
+select is_empty(
+  $$ select 1 from public.conversations where tests.uid('g') in (user_a, user_b)
+     union all select 1 from public.messages where sender_id = tests.uid('g') or id = '5c000000-0000-4000-8000-000000000001' $$,
+  'G''s conversations and every message in them are gone'
+);
 
 select results_eq(
-  $$ select reporter_id is null, reported_user_id, content_body, content_verified
+  $$ select reporter_id is null, reported_user_id, content_note, content_verified
      from public.reports where id = '7e000000-0000-4000-8000-000000000001' $$,
   $$ values (true, tests.uid('b'), 'From B'::text, true) $$,
   'G''s report survives without G''s id, still about B and still verified'

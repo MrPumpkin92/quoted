@@ -6,6 +6,10 @@
 -- The rules run first over whatever the migrations loaded (the 60 starters plus any batches), then
 -- the lifecycle runs on fixture rows with ids from 900001, rolled back with the transaction.
 --
+-- Ported to 20261030030300_conversations_and_messages: shares became quote messages, so the reseal
+-- and the withdrawal recheck a message where they rechecked a share (and posts, which hold quote
+-- snapshots too). Removed: none. The seal on messages and posts in depth: 24_catalog_social.
+--
 -- The public-domain cutoffs are computed from an as-of date: set quoted.as_of (for example
 -- `set quoted.as_of = '2027-01-01'` before a Public Domain Day batch) or it defaults to today.
 -- The starters' own authors, works and provenance arrive with M2; until then they are exempt from
@@ -393,8 +397,11 @@ select is(tests.verified(3), null::integer, 'a different author is not verified'
 select is(tests.verified(5), null::integer, 'a line not yet in the catalog is not verified');
 
 -- ---- a batch arrives: reseal -------------------------------------------------------
-insert into public.shares (id, sender_id, recipient_id, body, author, source)
-  values (tests.qid(31), tests.uid('a'), tests.uid('b'), 'A line that reaches the catalog later.', 'Test Author', 'Test Work');
+-- A quote message the server writes (as the move of shares did), so its snapshot is exactly this.
+insert into public.conversations (id, user_a, user_b) values (tests.qid(30), tests.uid('a'), tests.uid('b'));
+insert into public.messages (id, conversation_id, sender_id, kind, body, author, source)
+  values (tests.qid(31), tests.qid(30), tests.uid('a'), 'quote', 'A line that reaches the catalog later.', 'Test Author',
+          'Test Work');
 create table tests.before_reseal as select updated_at from public.quotes where id = tests.qid(5);
 
 select tests.add_quote(900004, 'A line that reaches the catalog later.');
@@ -402,12 +409,12 @@ select is(tests.verified(5), null::integer, 'inserting a catalog row does not to
 
 select results_eq(
   $$ select * from private.catalog_reseal(array[900004]) $$,
-  $$ values (1, 1) $$,
-  'catalog_reseal rechecks the one matching quote and the one matching share'
+  $$ values (1, 1, 0) $$,
+  'catalog_reseal rechecks the one matching quote and the one matching message (no post matches)'
 );
 select is(tests.verified(5), 900004, 'after the reseal, the earlier copy is verified');
-select is((select verified_starter_id from public.shares where id = tests.qid(31)), 900004,
-  'after the reseal, the earlier share is verified');
+select is((select verified_starter_id from public.messages where id = tests.qid(31)), 900004,
+  'after the reseal, the earlier message is verified');
 select is((select updated_at from public.quotes where id = tests.qid(5)), (select updated_at from tests.before_reseal),
   'a reseal does not look like an edit (updated_at unchanged)');
 
@@ -422,6 +429,10 @@ select throws_ok($$ update public.catalog_quotes set id = 900099 where id = 9000
   'a catalog id never changes');
 select throws_ok($$ delete from public.catalog_quotes where id = 900001 $$, '42501', null,
   'catalog rows are never deleted');
+-- The message above queued its deferred foreign key checks (20261030030300), and TRUNCATE refuses a
+-- table with pending trigger events before any trigger runs; run the checks first, as a fresh
+-- transaction would have none.
+set constraints all immediate;
 select throws_ok($$ truncate public.catalog_quotes cascade $$, '42501', null,
   'catalog rows are never truncated');
 select lives_ok($$ update public.catalog_quotes set themes = array['calm', 'time'] where id = 900001 $$,
@@ -430,7 +441,7 @@ select lives_ok($$ update public.catalog_quotes set themes = array['calm', 'time
 -- ---- a correction: same body, corrected author --------------------------------------
 select results_eq(
   $$ select * from private.catalog_withdraw(900003, 'Credited to the wrong person: the line is Corrected Author''s.') $$,
-  $$ values (1, 0) $$,
+  $$ values (1, 0, 0) $$,
   'withdrawing a row rechecks its copies'
 );
 select is(tests.verified(4), null::integer, 'withdrawing a catalog row takes the seal off its copies');

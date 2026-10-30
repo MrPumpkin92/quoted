@@ -36,6 +36,95 @@ struct ErrorMappingTests {
             == .validation("You've reached the limit of \(Limits.quotesPerAccount.formatted()) quotes."))
     }
 
+    /// The server names its limits for people; the ui-spec words a few of them its own way.
+    @Test(arguments: [
+        ("QR001", "You can post at most 20 quotes a day.", "You can post at most 20 quotes a day."),
+        ("QR001", "You can send at most 300 messages a day.", "You can send at most 300 messages a day."),
+        ("QR001", "You can send at most 20 friend requests a day.", "You can send at most 20 friend requests a day."),
+        ("QR001", "You can make at most 20 playlists a day.", "You can make 20 playlists a day. Try again tomorrow."),
+        ("QR002", "Quoted keeps circles to 150 friends.", "Quoted keeps circles to 150 friends."),
+        ("QR002", "You can keep at most 100 playlists.", "You can keep up to 100 playlists. Delete one to make another."),
+        ("QR002", "A playlist can hold at most 200 quotes.", "A playlist holds up to 200 quotes."),
+    ])
+    func namedLimits(code: String, message: String, expected: String) {
+        #expect(QuotedError(PostgrestError(code: code, message: message)) == .validation(expected))
+    }
+
+    @Test func wordFilterAndTextsOff() {
+        let qr003 = PostgrestError(code: "QR003", message: "Quoted doesn't allow some words in posts and messages.")
+        #expect(QuotedError(qr003) == .blockedWords("Quoted doesn't allow some words in posts and messages."))
+        #expect(QuotedError(qr003).userMessage == QuotedError.blockedWordsInPostsAndMessages)
+        // The same refusal names its field where the field is known.
+        #expect(QuotedError.map(qr003, postgrest: ProfilesRepository.profileError) == .blockedWords("Quoted doesn't allow some words in names."))
+        #expect(QuotedError.map(qr003, postgrest: PlaylistsRepository.playlistError)
+            == .blockedWords("Quoted doesn't allow some words in playlist titles."))
+        #expect(QuotedError(PostgrestError(code: "QR004", message: "This friend receives quotes only.")) == .textsOff)
+        // The composer knows the friend: the ui-spec toast names them (Conversation, Texts off).
+        #expect(QuotedError.textsOffMessage(handle: "@alice") == "@alice receives quotes only. Attach a quote to send it with a note.")
+        #expect(QuotedError.textsOffMessage(handle: "alice") == "@alice receives quotes only. Attach a quote to send it with a note.")
+        // Without a handle (an error mapped far from the composer), the generic wording.
+        #expect(QuotedError.textsOff.userMessage == "This friend receives quotes only. Attach a quote to send it with a note.")
+    }
+
+    @Test func termsAndSuspensionComeFirstForEveryCall() {
+        let terms = PostgrestError(code: "42501", message: "Accept the Terms of use first.")
+        let suspended = PostgrestError(code: "42501", message: "This account is suspended.")
+        #expect(QuotedError(terms) == .termsRequired)
+        #expect(QuotedError(suspended) == .suspended)
+        // Even where 42501 otherwise reads as "no such user" (a friend request to a blocked pair).
+        #expect(QuotedError.map(terms, postgrest: SocialRepository.friendRequestError) == .termsRequired)
+        #expect(QuotedError.map(suspended, postgrest: SocialRepository.friendRequestError) == .suspended)
+        #expect(QuotedError.map(terms, postgrest: PostsRepository.postError) == .termsRequired)
+        #expect(QuotedError.suspended.userMessage == "You can't send messages right now. Contact support in Settings.")
+        #expect(QuotedError.termsRequired.userMessage == "Accept the Terms of Use first.")
+    }
+
+    /// The server's own 42501 refusals are written for people and reach them as they are.
+    @Test(arguments: [
+        ("This conversation is closed.", QuotedError.conversationClosed),
+        ("This conversation is not available.", .unavailable("This conversation is not available.")),
+        ("This quote is not available.", .unavailable("This quote is not available.")),
+        ("This person is not available.", .unavailable("This person is not available.")),
+        ("This playlist is not available.", .unavailable("This playlist is not available.")),
+        ("You can send only your own playlists that friends can see.", .validation("You can send only your own playlists that friends can see.")),
+        ("This playlist is hidden while it is reviewed.", .validation("This playlist is hidden while it is reviewed.")),
+        ("Sign in to save quotes.", .notSignedIn),
+    ])
+    func serverRefusals(message: String, expected: QuotedError) {
+        #expect(QuotedError(PostgrestError(code: "42501", message: message)) == expected)
+    }
+
+    @Test func postgresOwnRefusalsStayDiagnostics() {
+        for message in [
+            "permission denied for table posts",
+            #"origin "starter" is set by the server"#,
+            "Permission denied",
+        ] {
+            guard case .server = QuotedError(PostgrestError(code: "42501", message: message)) else {
+                Issue.record("expected .server for \(message)")
+                continue
+            }
+        }
+        #expect(QuotedError.isWrittenForPeople("This quote is not available."))
+        #expect(!QuotedError.isWrittenForPeople("new row violates row-level security policy for table \"messages\""))
+    }
+
+    @Test func aDeletedSourceQuoteReadsAsGoneFromTheLibrary() {
+        let post = PostgrestError(code: "42501", message: "You can post only quotes from your Library or the Quoted Catalog.")
+        #expect(QuotedError.map(post, postgrest: PostsRepository.postError) == .unavailable("That quote is no longer in your library."))
+        let message = PostgrestError(code: "42501", message: "You can send only quotes from your Library or the Quoted Catalog.")
+        #expect(QuotedError.map(message, postgrest: MessagesRepository.sendError) == .unavailable("That quote is no longer in your library."))
+        let item = PostgrestError(code: "42501", message: #"new row violates row-level security policy for table "playlist_items""#)
+        #expect(QuotedError.map(item, postgrest: PlaylistsRepository.itemError) == .unavailable("That quote is no longer in your library."))
+    }
+
+    @Test func termsVersionErrors() {
+        #expect(QuotedError.map(PostgrestError(code: "22023", message: "Unknown terms version."), postgrest: ProfilesRepository.termsError)
+            == .validation("The Terms of Use were just updated. Read them again, then accept."))
+        #expect(QuotedError.map(PostgrestError(code: "P0002", message: "Choose a username before accepting the terms."), postgrest: ProfilesRepository.termsError)
+            == .validation("Choose a username first."))
+    }
+
     @Test func rlsViolationIsAServerErrorByDefault() {
         let error = PostgrestError(code: "42501", message: #"new row violates row-level security policy for table "shares""#)
         guard case .server(let detail) = QuotedError(error) else {
@@ -52,13 +141,16 @@ struct ErrorMappingTests {
             message: #"duplicate key value violates unique constraint "profiles_username_key""#
         )
         #expect(taken.constraintName == "profiles_username_key")
-        #expect(QuotedError.map(taken, postgrest: SocialRepository.profileError) == .usernameTaken)
+        #expect(QuotedError.map(taken, postgrest: ProfilesRepository.profileError) == .usernameTaken)
 
         let existing = PostgrestError(code: "23505", message: #"duplicate key value violates unique constraint "profiles_pkey""#)
-        #expect(QuotedError.map(existing, postgrest: SocialRepository.profileError) == .validation("You already have a username."))
+        #expect(QuotedError.map(existing, postgrest: ProfilesRepository.profileError) == .validation("You already have a username."))
+        // A reserved or retired name reads as taken.
+        let reserved = PostgrestError(code: "23505", message: #"username "support" is reserved"#)
+        #expect(QuotedError.map(reserved, postgrest: ProfilesRepository.profileError) == .usernameTaken)
 
         // Other codes fall through to the defaults.
-        #expect(QuotedError.map(PostgrestError(code: "PGRST116", message: ""), postgrest: SocialRepository.profileError) == .notFound)
+        #expect(QuotedError.map(PostgrestError(code: "PGRST116", message: ""), postgrest: ProfilesRepository.profileError) == .notFound)
     }
 
     @Test func friendRequestOverride() {
@@ -69,11 +161,6 @@ struct ErrorMappingTests {
         #expect(QuotedError.map(PostgrestError(code: "42501", message: ""), postgrest: override) == .notFound)
         #expect(QuotedError.map(PostgrestError(code: "23514", message: ""), postgrest: override)
             == .validation("You can't add yourself."))
-    }
-
-    @Test func shareOverride() {
-        #expect(QuotedError.map(PostgrestError(code: "42501", message: ""), postgrest: SocialRepository.shareError)
-            == .validation("You can only share with friends."))
     }
 
     @Test func authErrors() {
@@ -113,6 +200,7 @@ struct ErrorMappingTests {
     @Test func validationAndDecodingErrors() {
         #expect(QuotedError(QuoteDraftError.emptyBody) == .validation("Write the quote first."))
         #expect(QuotedError(UsernameError.tooShort(minimum: 3)) == .validation("Usernames need at least 3 characters."))
+        #expect(QuotedError(SocialTextError.captionTooLong(maximum: 280)) == .validation("Shorten the caption to 280 characters."))
         #expect(QuotedError(QuotedError.usernameTaken) == .usernameTaken)
         let decoding = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "bad"))
         guard case .server = QuotedError(decoding) else {
@@ -136,7 +224,10 @@ struct ErrorMappingTests {
     @Test func userMessages() {
         #expect(QuotedError.validation("Custom").userMessage == "Custom")
         #expect(QuotedError.usernameTaken.errorDescription == QuotedError.usernameTaken.userMessage)
-        for error in [QuotedError.network, .notSignedIn, .usernameTaken, .notFound, .rateLimited, .server("x")] {
+        for error in [
+            QuotedError.network, .notSignedIn, .usernameTaken, .notFound, .rateLimited, .server("x"), .termsRequired,
+            .suspended, .blockedWords("b"), .textsOff, .conversationClosed, .unavailable("u"),
+        ] {
             #expect(!error.userMessage.isEmpty)
         }
     }

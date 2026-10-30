@@ -2,10 +2,15 @@
 -- quotes; favorited_at is server-owned; a friend sees the owner's favorites only
 -- through public.friend_favorites, only when accepted friends, not blocked, and
 -- the owner opted in; quotes stay owner-only otherwise.
+-- Ported to 20261030030000_provenance_and_accounts: shows_favorites became
+-- favorites_visibility ('private' or 'friends'), friend_favorites also returns
+-- the creator and edited-from usernames, and a client cannot send favorited_at
+-- at all (column grants, 42501), so the "re-dating" and "client-sent date"
+-- checks became 42501 checks.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(33);
+select plan(36);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -81,20 +86,29 @@ select tests.clear_authentication();
 
 -- ---- defaults and the server-owned timestamp ----------------------------------
 select is((select is_favorite from public.quotes where id = tests.qid(1)), false, 'quotes are not favorites by default');
-select is((select shows_favorites from public.profiles where id = tests.uid('a')), false, 'profiles keep favorites private by default');
+select is((select favorites_visibility from public.profiles where id = tests.uid('a')), 'private', 'profiles keep favorites private by default');
 
 select tests.authenticate_as('a');
--- A client claims an old favorited_at; the server stamps now().
-update public.quotes set is_favorite = true, favorited_at = '2001-01-01' where id = tests.qid(1);
+-- A client cannot send favorited_at; the server stamps now().
+select throws_ok(
+  $$ update public.quotes set is_favorite = true, favorited_at = '2001-01-01' where id = tests.qid(1) $$,
+  '42501', null,
+  'a client cannot send favorited_at'
+);
+update public.quotes set is_favorite = true where id = tests.qid(1);
 select tests.clear_authentication();
 select ok((select favorited_at > now() - interval '1 minute' from public.quotes where id = tests.qid(1)),
   'favorited_at is stamped by the server');
 
 select tests.authenticate_as('a');
-update public.quotes set favorited_at = '2001-01-01' where id = tests.qid(3);
+select throws_ok(
+  $$ update public.quotes set favorited_at = '2001-01-01' where id = tests.qid(3) $$,
+  '42501', null,
+  'favorited_at cannot be set without a favorite either'
+);
 select tests.clear_authentication();
 select is((select favorited_at from public.quotes where id = tests.qid(3)), null::timestamptz,
-  'favorited_at cannot be set without a favorite');
+  'a quote that is not a favorite has no favorited_at');
 
 -- now() is fixed inside this transaction, so a re-stamp would look like a kept
 -- stamp. Give quote 1 an older time first, so keeping it is distinguishable.
@@ -106,29 +120,34 @@ create table tests.stamp as select favorited_at from public.quotes where id = te
 select tests.authenticate_as('a');
 update public.quotes set body = 'One again' where id = tests.qid(1);
 update public.quotes set is_favorite = true where id = tests.qid(1);
-update public.quotes set favorited_at = '2001-01-01' where id = tests.qid(1);
 select tests.clear_authentication();
 select is((select favorited_at from public.quotes where id = tests.qid(1)), (select favorited_at from tests.stamp),
-  'editing, re-hearting or re-dating a favorite keeps favorited_at');
+  'editing or re-hearting a favorite keeps favorited_at');
 
 -- The upsert behind Undo and retries takes the same path.
 select tests.authenticate_as('a');
-insert into public.quotes (id, body, author, is_favorite, favorited_at)
-  values (tests.qid(1), 'One again', 'Ann', true, '2001-01-01')
+insert into public.quotes (id, body, author, is_favorite)
+  values (tests.qid(1), 'One again', 'Ann', true)
   on conflict (id) do update
-  set body = excluded.body, is_favorite = excluded.is_favorite, favorited_at = excluded.favorited_at;
+  set body = excluded.body, is_favorite = excluded.is_favorite;
 select tests.clear_authentication();
 select is((select favorited_at from public.quotes where id = tests.qid(1)), (select favorited_at from tests.stamp),
   'an upsert of a favorite keeps favorited_at');
 
 -- An insert can't date itself either.
 select tests.authenticate_as('a');
-insert into public.quotes (id, body, author, is_favorite, favorited_at) values
-  (tests.qid(4), 'Four', 'Dee', true, '2001-01-01'),
-  (tests.qid(5), 'Five', 'Eve', false, '2001-01-01');
+select throws_ok(
+  $$ insert into public.quotes (id, body, author, is_favorite, favorited_at)
+     values (tests.qid(4), 'Four', 'Dee', true, '2001-01-01') $$,
+  '42501', null,
+  'a client cannot send favorited_at on insert'
+);
+insert into public.quotes (id, body, author, is_favorite) values
+  (tests.qid(4), 'Four', 'Dee', true),
+  (tests.qid(5), 'Five', 'Eve', false);
 select tests.clear_authentication();
 select is((select favorited_at from public.quotes where id = tests.qid(4)), now(),
-  'a new favorite gets the server time, whatever the client sends');
+  'a new favorite gets the server time');
 select is((select favorited_at from public.quotes where id = tests.qid(5)), null::timestamptz,
   'a new quote that is not a favorite has no favorited_at');
 delete from public.quotes where id in (tests.qid(4), tests.qid(5));
@@ -146,15 +165,15 @@ select is(tests.favorite_count('b', 'a'), 0, 'a friend sees nothing while favori
 
 -- B cannot turn it on for A.
 select tests.authenticate_as('b');
-update public.profiles set shows_favorites = true where id = tests.uid('a');
+update public.profiles set favorites_visibility = 'friends' where id = tests.uid('a');
 select tests.clear_authentication();
-select is((select shows_favorites from public.profiles where id = tests.uid('a')), false,
+select is((select favorites_visibility from public.profiles where id = tests.uid('a')), 'private',
   'another user cannot change your setting');
 
 select tests.authenticate_as('a');
-update public.profiles set shows_favorites = true where id = tests.uid('a');
+update public.profiles set favorites_visibility = 'friends' where id = tests.uid('a');
 select tests.clear_authentication();
-select is((select shows_favorites from public.profiles where id = tests.uid('a')), true, 'you can show your favorites');
+select is((select favorites_visibility from public.profiles where id = tests.uid('a')), 'friends', 'you can show your favorites to friends');
 
 -- ---- what a friend sees -------------------------------------------------------
 -- Three favorites whose time order (2, 1, 3) matches neither id order nor the
@@ -179,7 +198,8 @@ select tests.authenticate_as('b');
 select is(
   (select array_agg(f.body order by f.n)
    from public.friend_favorites(tests.uid('a'))
-     with ordinality as f(id, body, body_format, author, source, verified_starter_id, favorited_at, n)),
+     with ordinality as f(id, body, body_format, author, source, verified_starter_id, creator_username,
+                          edited_from_username, favorited_at, n)),
   array['Two', 'One again', 'Three'],
   'favorites come newest first, in the order the function returns them'
 );
@@ -200,11 +220,11 @@ select is(
 );
 select tests.clear_authentication();
 
--- Only these columns: no rotation, owner or timestamps beyond favorited_at.
+-- Only these columns: no rotation, owner, ids or timestamps beyond favorited_at.
 select is(
   (select string_agg(x, ',') from unnest((select proargnames from pg_proc where oid = 'public.friend_favorites(uuid)'::regprocedure)) x),
-  'p_user,id,body,body_format,author,source,verified_starter_id,favorited_at',
-  'friend_favorites returns only the quote''s text, attribution, verification and favorited_at'
+  'p_user,id,body,body_format,author,source,verified_starter_id,creator_username,edited_from_username,favorited_at',
+  'friend_favorites returns only the quote''s text, attribution, verification, creator usernames and favorited_at'
 );
 
 -- ---- who sees nothing --------------------------------------------------------
@@ -224,12 +244,12 @@ select is(tests.favorite_count('d', 'a'), 0, 'a pending request sees nothing');
 select is(tests.favorite_count('a', 'a'), 0, 'the RPC never answers for yourself');
 
 select tests.authenticate_as('a');
-update public.profiles set shows_favorites = false where id = tests.uid('a');
+update public.profiles set favorites_visibility = 'private' where id = tests.uid('a');
 select tests.clear_authentication();
 select is(tests.favorite_count('b', 'a'), 0, 'turning it off hides favorites again');
 
 select tests.authenticate_as('a');
-update public.profiles set shows_favorites = true where id = tests.uid('a');
+update public.profiles set favorites_visibility = 'friends' where id = tests.uid('a');
 insert into public.blocks (blocked_id) values (tests.uid('b'));
 select tests.clear_authentication();
 select is(tests.favorite_count('b', 'a'), 0, 'a blocked friend sees nothing');
@@ -273,7 +293,8 @@ select is(tests.favorite_count('b', 'a'), 100, 'at most 100 favorites come back'
 select tests.authenticate_as('b');
 select is(
   (select f.body from public.friend_favorites(tests.uid('a'))
-     with ordinality as f(id, body, body_format, author, source, verified_starter_id, favorited_at, n)
+     with ordinality as f(id, body, body_format, author, source, verified_starter_id, creator_username,
+                          edited_from_username, favorited_at, n)
    order by f.n desc limit 1),
   'Bulk 98',
   'beyond 100, the newest 100 come back, in order'

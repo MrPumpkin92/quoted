@@ -48,8 +48,8 @@ final class LibraryStore {
     @ObservationIgnored private var refreshAfterWrites = false
     @ObservationIgnored private var refreshTask: Task<RefreshOutcome, Never>?
     @ObservationIgnored private var refreshSerial = 0
-    /// New quote IDs for catalog quotes (by catalog ID, which a starter shares) and saved shares (by
-    /// share ID), kept for the session so a retry after a lost answer finds the first insert
+    /// New quote IDs for catalog quotes (by catalog ID, which a starter shares) and saved messages (by
+    /// message ID), kept for the session so a retry after a lost answer finds the first insert
     /// (`QuotesRepository`).
     @ObservationIgnored private var catalogImportIDs: [Int: UUID] = [:]
     @ObservationIgnored private var sharedSaveIDs: [UUID: UUID] = [:]
@@ -58,7 +58,7 @@ final class LibraryStore {
     @ObservationIgnored private var rotationSerial = 0
     /// Deletes whose Undo was tapped (a failed delete then needs no error toast).
     @ObservationIgnored private var undoneDeletes: Set<UUID> = []
-    /// `saveShared` calls in flight by share ID, so a double tap saves once.
+    /// `saveShared` calls in flight by message ID, so a double tap saves once.
     @ObservationIgnored private var sharesBeingSaved: [UUID: Task<Quote?, Never>] = [:]
     /// Each quote's queued heart writes (`setFavorite`), so one quote's writes run in order.
     @ObservationIgnored private var favoriteWrites: [UUID: FavoriteWrite] = [:]
@@ -129,7 +129,7 @@ final class LibraryStore {
         }
         guard !hasLoaded, let cache = appGroup?.readLibraryCache(for: userID) else { return }
         quotes = Self.sorted(cache.quotes)
-        social?.restoreCachedInbox(cache.shared)
+        social?.restoreCachedInbox(messages: cache.messages, conversations: cache.conversations)
         hasLoaded = true
         Logger.library.debug("Restored \(cache.quotes.count, privacy: .public) cached quotes")
     }
@@ -461,18 +461,18 @@ final class LibraryStore {
         Task { await reorderReminders(ids) }
     }
 
-    // MARK: Verified quotes and shares
+    // MARK: Verified quotes, received quotes and favorites
 
-    /// Copies starter quotes (onboarding) into the library and the end of the reminders; see
+    /// Adds starter quotes (onboarding) to the library and the end of the reminders; see
     /// `importCatalog(_:)`.
     @discardableResult
     func importStarter(_ starters: [StarterQuote]) async -> Bool {
         await importCatalog(starters.map(CatalogQuote.init(starter:)))
     }
 
-    /// Copies catalog quotes into the library and the end of the reminders, in the given order (origin
-    /// `starter` for a starter, `catalog` for the rest). Waits for the server; on failure shows a
-    /// toast and returns false.
+    /// Adds Quoted Catalog quotes to the library and the end of the reminders, in the given order
+    /// (`add_catalog_quotes`: the server gives a starter origin `starter` and the rest `catalog`, with
+    /// no creator). Waits for the server; on failure shows a toast and returns false.
     @discardableResult
     func importCatalog(_ picked: [CatalogQuote]) async -> Bool {
         guard !picked.isEmpty else { return true }
@@ -492,7 +492,7 @@ final class LibraryStore {
                 catalogImportIDs[quote.id] = id
                 return id
             }
-            let inserted = try await backend.quotes.importCatalog(picked, ids: ids, addToRotation: true)
+            let inserted = try await backend.quotes.addCatalogQuotes(picked.map(\.id), ids: ids, inReminders: true)
             guard userID == owner else { return false }
             for quote in inserted { upsertLocal(quote) }
             hasLoaded = true
@@ -508,22 +508,19 @@ final class LibraryStore {
         }
     }
 
-    /// Saves a quote a friend shared into the library (optionally into reminders) and marks the
-    /// share saved. Shows "Saved to your library". Returns the quote, or nil on failure.
+    /// Saves a quote a friend sent into the library (optionally into reminders) with
+    /// `save_from_message`, which keeps who added it. Shows "Saved to your library". Returns the
+    /// quote, or nil on failure.
     ///
     /// Never creates a duplicate: when the library already holds the same text and author, that quote
-    /// is returned (added to reminders if asked) with "Already in your library" and the share is
-    /// marked saved on the server (`SocialRepository.markSaved`); a second call while a save is
-    /// running waits for it instead of inserting again.
+    /// is returned (added to reminders if asked) with "Already in your library"; a second call while
+    /// a save is running waits for it instead of saving again.
     @discardableResult
-    func saveShared(_ share: SharedQuote, addToReminders: Bool) async -> Quote? {
+    func saveShared(_ share: InboxQuote, addToReminders: Bool) async -> Quote? {
         if let running = sharesBeingSaved[share.id] {
             return await running.value
         }
-        if let existing = existingCopy(of: share) {
-            social?.markSavedLocally(share.id)
-            writeCache()
-            if !share.isSaved { stampSaved(share.id) }
+        if let existing = existingCopy(of: QuoteDraft(snapshot: share.quote)) {
             if addToReminders, !existing.isInRotation {
                 await self.addToReminders([existing.id])
             }
@@ -543,30 +540,58 @@ final class LibraryStore {
         existingCopy(of: QuoteDraft(favorite: favorite)) != nil
     }
 
-    /// Saves a friend's favorite (from their profile) into the library, outside reminders, and shows
-    /// "Saved to your library". Never adds a duplicate: when the same text and author are already
-    /// here, it says so and returns that quote. `id` is the new quote's ID; the profile keeps one per
-    /// favorite, so Save after a lost answer returns the first copy instead of adding another.
+    /// Whether the library already holds a quote a friend sent (same text and author): its card shows
+    /// "Saved" instead of Save.
+    func containsCopy(of share: InboxQuote) -> Bool {
+        existingCopy(of: QuoteDraft(snapshot: share.quote)) != nil
+    }
+
+    /// Saves a friend's favorite (from their profile) into the library, outside reminders, with
+    /// `save_from_favorite` (it keeps who added it), and shows "Saved to your library". Never adds a
+    /// duplicate: when the same text and author are already here, it says so and returns that quote.
+    /// `id` is the new quote's ID; the profile keeps one per favorite, so Save after a lost answer
+    /// returns the first copy instead of adding another.
     @discardableResult
-    func saveFavorite(_ favorite: FriendFavorite, id: UUID) async -> Quote? {
-        let draft = QuoteDraft(favorite: favorite)
-        if let existing = existingCopy(of: draft) {
+    func saveFavorite(_ favorite: FriendFavorite, of friendID: UUID, id: UUID) async -> Quote? {
+        if let existing = existingCopy(of: QuoteDraft(favorite: favorite)) {
             toasts.show("Already in your library")
             return existing
         }
-        guard let quote = await create(draft: draft, id: id, includeInReminders: false, origin: .shared) else {
+        let owner = userID
+        beginWrite()
+        let assertion = BackgroundTaskAssertion("Save favorite")
+        defer {
+            assertion.end()
+            endWrite()
+        }
+        do {
+            let quote = try await backend.quotes.save(.favorite(friendID: friendID, handle: favorite.id), id: id)
+            guard userID == owner else { return nil }
+            upsertLocal(quote)
+            writeCache()
+            Haptics.success()
+            toasts.show("Saved to your library", style: .success)
+            return quote
+        } catch {
+            guard userID == owner else { return nil }
+            refreshAfterWrites = true
+            toasts.show(error: error)
             return nil
         }
-        toasts.show("Saved to your library", style: .success)
-        return quote
     }
 
     // MARK: Cache
 
-    /// Writes the library and the shared inbox to the App Group cache, off the main thread, in order.
+    /// Writes the library and the received quotes (with their conversations, for the senders' names)
+    /// to the App Group cache, off the main thread, in order.
     func writeCache() {
         guard let appGroup, let userID, hasLoaded else { return }
-        let cache = LibraryCache(userID: userID, quotes: quotes, shared: social?.inbox ?? [])
+        let cache = LibraryCache(
+            userID: userID,
+            quotes: quotes,
+            messages: social?.inbox.map(\.message) ?? [],
+            conversations: social?.conversations ?? []
+        )
         let previous = cacheWrite
         cacheWrite = Task.detached(priority: .utility) {
             await previous?.value
@@ -755,11 +780,6 @@ final class LibraryStore {
         }
     }
 
-    /// The library copy of a share, if the library already holds the same text and author.
-    private func existingCopy(of share: SharedQuote) -> Quote? {
-        existingCopy(of: QuoteDraft(shared: share))
-    }
-
     /// The library's quote with the same text and author as `draft`, compared the way a save cleans
     /// them.
     private func existingCopy(of draft: QuoteDraft) -> Quote? {
@@ -769,44 +789,20 @@ final class LibraryStore {
         }
     }
 
-    /// Stamps `saved_at` on the server for a share whose quote the library already holds (no copy is
-    /// made). Counted as a social write, so an overlapping refresh can't flip it back to "Save".
-    /// Best effort: on failure the share shows "Saved" here until the next refresh.
-    private func stampSaved(_ shareID: UUID) {
-        let social = self.social
-        social?.noteWriteStarted()
-        let assertion = BackgroundTaskAssertion("Mark shared quote saved")
-        let backend = self.backend
-        Task {
-            defer {
-                assertion.end()
-                social?.noteWriteEnded()
-            }
-            do {
-                try await backend.social.markSaved([shareID])
-            } catch {
-                Logger.library.error("Marking a share saved failed: \(String(describing: QuotedError(error)), privacy: .public)")
-            }
-        }
-    }
-
-    private func insertShared(_ share: SharedQuote, addToReminders: Bool) async -> Quote? {
+    private func insertShared(_ share: InboxQuote, addToReminders: Bool) async -> Quote? {
         let owner = userID
         beginWrite()
-        social?.noteWriteStarted()
         let assertion = BackgroundTaskAssertion("Save shared quote")
         defer {
             assertion.end()
-            social?.noteWriteEnded()
             endWrite()
         }
         do {
             let quoteID = sharedSaveIDs[share.id] ?? UUID()
             sharedSaveIDs[share.id] = quoteID
-            let quote = try await backend.quotes.saveShared(share, id: quoteID, addToRotation: addToReminders)
+            let quote = try await backend.quotes.save(.message(share.id), id: quoteID, inReminders: addToReminders)
             guard userID == owner else { return nil }
             upsertLocal(quote)
-            social?.markSavedLocally(share.id)
             writeCache()
             if quote.isInRotation { reminders.replan() }
             Haptics.success()

@@ -359,17 +359,8 @@ final class QuotedUITests: XCTestCase {
         try waitFor(element(in: app, labelContaining: "Saved to your library"))
         snapshot("qa-03-inbox-saved")
 
-        // Swipe to delete the share, then Undo: the card comes back.
-        let card = element(in: app, labelContaining: Self.seededShareStart)
-        try waitFor(card)
-        card.swipeLeft()
-        let swipeDelete = app.buttons["Delete"]
-        if swipeDelete.waitForExistence(timeout: 2) {
-            swipeDelete.tap()
-        }
-        try tapUndo(in: app, toast: "Deleted the quote from", snapshotName: "qa-03b-inbox-delete-toast")
+        // The quote is a message now: it stays in the inbox (only its sender can unsend it).
         try waitFor(element(in: app, labelContaining: Self.seededShareStart))
-        snapshot("qa-03c-inbox-after-undo")
         tapBack(in: app, from: "Shared with you")
         try waitFor(app.navigationBars["Library"])
 
@@ -380,6 +371,13 @@ final class QuotedUITests: XCTestCase {
         try waitFor(accept, timeout: 15)
         snapshot("qa-04-friends-request")
         accept.tap()
+        // The first social write asks for the Community Terms (docs/ui-spec.md §22) unless the account
+        // already accepted them.
+        let acceptTerms = app.buttons["Accept"]
+        if acceptTerms.waitForExistence(timeout: 5) {
+            snapshot("qa-04b-terms-sheet")
+            acceptTerms.tap()
+        }
         try waitFor(app.staticTexts["Friends"])
         XCTAssertTrue(accept.waitForNonExistence(timeout: 10), "The request should leave Requests once accepted")
         snapshot("qa-05-friends-accepted")

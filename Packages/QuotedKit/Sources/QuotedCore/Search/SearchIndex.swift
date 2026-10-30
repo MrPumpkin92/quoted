@@ -1,44 +1,54 @@
 import Foundation
 
-/// The result of one search over the library and shared quotes.
+/// The result of one search over the library and the loaded messages.
 public struct SearchResults: Hashable, Sendable {
     /// Matching library quotes, best first.
     public var library: [Quote]
-    /// Matching shared quotes, best first.
-    public var shared: [SharedQuote]
+    /// Matching messages (quotes, texts and playlists), best first.
+    public var inbox: [Message]
     /// The cleaned-up term for the "Search the web for '<term>' quotes" row. Empty for an empty query.
     public var webQuery: String
 
-    public init(library: [Quote], shared: [SharedQuote], webQuery: String) {
+    public init(library: [Quote], inbox: [Message], webQuery: String) {
         self.library = library
-        self.shared = shared
+        self.inbox = inbox
         self.webQuery = webQuery
     }
 
     /// Whether neither section has a match.
-    public var isEmpty: Bool { library.isEmpty && shared.isEmpty }
+    public var isEmpty: Bool { library.isEmpty && inbox.isEmpty }
 
     /// The Google link-out for ``webQuery``.
     public var webURL: URL { SearchIndex.googleURL(for: webQuery) }
 }
 
-/// Client-side search over the cached library and received shares.
+/// Client-side search over the cached library and the loaded messages.
 ///
-/// Matching is case-, diacritic- and width-insensitive over body, author and source, with curly
+/// Matching is case-, diacritic- and width-insensitive over body, author and source (for a message:
+/// a quote's body, author, source and note, a text, or a playlist's title), with curly
 /// quotes treated as straight ones. The query is trimmed and split on whitespace; every word must
 /// appear in at least one field. Ranking: body starts with the query, then every word starts a word
 /// in the body, then every word appears in the body, then author word matches, then author
 /// substrings, then anything else. Ties keep the input order.
 ///
 /// Build an index once per data change and call ``search(_:)`` per keystroke; the static
-/// ``search(_:quotes:shared:)`` does both.
+/// ``search(_:quotes:inbox:)`` does both.
 public struct SearchIndex: Sendable {
     private let quotes: [Entry<Quote>]
-    private let shared: [Entry<SharedQuote>]
+    private let inbox: [Entry<Message>]
 
-    public init(quotes: [Quote], shared: [SharedQuote]) {
+    public init(quotes: [Quote], inbox: [Message] = []) {
         self.quotes = quotes.map { Entry(item: $0, body: $0.body, author: $0.author, source: $0.source) }
-        self.shared = shared.map { Entry(item: $0, body: $0.body, author: $0.author, source: $0.source) }
+        self.inbox = inbox.map { message in
+            switch message.content {
+            case .text(let text):
+                Entry(item: message, body: text, author: nil, source: nil)
+            case .quote(let quote, let note):
+                Entry(item: message, body: quote.body, author: quote.author, source: quote.source, extra: note)
+            case .playlist(_, let title):
+                Entry(item: message, body: title, author: nil, source: nil)
+            }
+        }
     }
 
     /// Searches the index. An empty or whitespace-only query returns everything in input order.
@@ -47,18 +57,18 @@ public struct SearchIndex: Sendable {
         let folded = Self.fold(webQuery)
         let tokens = folded.split(separator: " ").map(String.init)
         guard !tokens.isEmpty else {
-            return SearchResults(library: quotes.map(\.item), shared: shared.map(\.item), webQuery: "")
+            return SearchResults(library: quotes.map(\.item), inbox: inbox.map(\.item), webQuery: "")
         }
         return SearchResults(
             library: Self.rank(quotes, query: folded, tokens: tokens),
-            shared: Self.rank(shared, query: folded, tokens: tokens),
+            inbox: Self.rank(inbox, query: folded, tokens: tokens),
             webQuery: webQuery
         )
     }
 
     /// Builds an index and runs one search.
-    public static func search(_ query: String, quotes: [Quote], shared: [SharedQuote]) -> SearchResults {
-        SearchIndex(quotes: quotes, shared: shared).search(query)
+    public static func search(_ query: String, quotes: [Quote], inbox: [Message] = []) -> SearchResults {
+        SearchIndex(quotes: quotes, inbox: inbox).search(query)
     }
 
     /// `https://www.google.com/search?q=<term>%20quotes`, percent-encoded (everything but RFC 3986
@@ -115,12 +125,15 @@ public struct SearchIndex: Sendable {
         let body: String
         let author: String
         let source: String
+        /// Also searched, ranked last (a message's note).
+        let extra: String
 
-        init(item: Item, body: String, author: String?, source: String?) {
+        init(item: Item, body: String, author: String?, source: String?, extra: String? = nil) {
             self.item = item
             self.body = SearchIndex.fold(body)
             self.author = SearchIndex.fold(author ?? "")
             self.source = SearchIndex.fold(source ?? "")
+            self.extra = SearchIndex.fold(extra ?? "")
         }
     }
 
@@ -136,7 +149,9 @@ public struct SearchIndex: Sendable {
     }
 
     private static func tier<Item>(of entry: Entry<Item>, query: String, tokens: [String]) -> Int? {
-        for token in tokens where !entry.body.contains(token) && !entry.author.contains(token) && !entry.source.contains(token) {
+        for token in tokens
+        where !entry.body.contains(token) && !entry.author.contains(token) && !entry.source.contains(token)
+            && !entry.extra.contains(token) {
             return nil
         }
         if entry.body.hasPrefix(query) { return 0 }

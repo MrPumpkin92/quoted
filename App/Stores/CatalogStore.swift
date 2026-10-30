@@ -4,7 +4,8 @@ import QuotedCore
 import QuotedKit
 
 /// The verified catalog (`catalog_quotes`): every live quote for Verified Quotes, loaded once per
-/// session, and any catalog quote by id for the Verified sheet, kept per session.
+/// session (and again after a failed add, which may mean a quote was retired since), and any catalog
+/// quote by id for the Verified sheet, kept per session.
 /// Inject with `@Environment(CatalogStore.self)`.
 ///
 /// Onboarding doesn't use it: it offers only the starters, through `StarterStore`.

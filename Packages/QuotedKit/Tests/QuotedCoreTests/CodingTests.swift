@@ -116,8 +116,10 @@ struct ModelCodingTests {
         let object = try Fixture.jsonObject(quote)
         #expect(Set(object.keys) == [
             "id", "body", "body_format", "author", "source", "origin", "rotation_position", "created_at", "updated_at",
-            "verified_starter_id", "is_favorite", "favorited_at",
+            "verified_starter_id", "is_favorite", "favorited_at", "creator_id", "creator_username", "edited_from_id",
+            "edited_from_username",
         ])
+        #expect(object["creator_username"] is NSNull)
         #expect(object["is_favorite"] as? Bool == false)
         #expect(object["favorited_at"] is NSNull)
         #expect(object["verified_starter_id"] is NSNull)
@@ -176,34 +178,14 @@ struct ModelCodingTests {
         #expect(CatalogTheme.allCases.map(\.rawValue) == ["courage", "calm", "time", "love", "nature", "purpose", "self"])
         #expect(CatalogTheme.allCases.map(\.title) == ["Courage", "Calm", "Time", "Love", "Nature", "Purpose", "Self"])
         #expect(CatalogStatus.allCases.map(\.rawValue) == ["live", "retired", "withdrawn"])
-        #expect(ReportReason.allCases.map(\.rawValue) == ["spam", "harassment", "inappropriate", "other"])
+        #expect(ReportReason.allCases.map(\.rawValue) == ["spam", "harassment", "inappropriate", "copyright", "wrong_wording", "other"])
+        #expect(ReportReason.personReasons.map(\.title) == ["Spam", "Harassment", "Inappropriate", "Copyright", "Other"])
+        #expect(Audience.allCases.map(\.rawValue) == ["private", "friends", "public"])
+        #expect(FavoritesVisibility.allCases.map(\.rawValue) == ["private", "friends"])
+        #expect(MessageKind.allCases.map(\.rawValue) == ["text", "quote", "playlist"])
+        #expect(Relationship.allCases.map(\.rawValue) == ["self", "friend", "incoming", "outgoing", "none", "you_blocked"])
         #expect(FriendshipStatus.allCases.map(\.rawValue) == ["pending", "accepted"])
         #expect(ReportReason.allCases.allSatisfy { !$0.title.isEmpty })
-    }
-
-    @Test func decodesShareWithEmbeddedSender() throws {
-        let json = """
-        {"id":"0a6f1b9c-0000-4000-8000-000000000001","sender_id":"0a6f1b9c-0000-4000-8000-0000000000aa",
-         "recipient_id":"0a6f1b9c-0000-4000-8000-0000000000bb","quote_id":null,
-         "body":"Stay hungry 🍎","body_format":[{"start":12,"length":2,"bold":true}],"author":"Steve Jobs",
-         "source":"Stanford, 2005","note":"thought of you","created_at":"2026-10-19T03:26:38.5+00:00",
-         "seen_at":"2026-10-19T04:00:00+00:00","saved_at":null,
-         "sender":{"id":"0a6f1b9c-0000-4000-8000-0000000000aa","username":"ada","display_name":null}}
-        """
-        let share = try Fixture.decode(SharedQuote.self, json)
-        #expect(share.sender?.username == "ada")
-        #expect(share.sender?.displayName == "ada")
-        #expect(share.recipient == nil)
-        #expect(share.quoteID == nil)
-        #expect(share.format == [TextRun(start: 12, length: 2, bold: true)])
-        #expect(share.note == "thought of you")
-        #expect(share.isSeen && !share.isSaved)
-        let object = try Fixture.jsonObject(share)
-        #expect(object["saved_at"] is NSNull)
-        #expect(object["quote_id"] is NSNull)
-        #expect(object["recipient"] == nil)
-        let data = try QuotedJSON.makeEncoder().encode(share)
-        #expect(try QuotedJSON.makeDecoder().decode(SharedQuote.self, from: data) == share)
     }
 
     @Test func decodesFriendshipAndFindsOtherParty() throws {
@@ -235,14 +217,17 @@ struct ModelCodingTests {
     }
 
     @Test func embeddedProfilesWithoutIDUseTheForeignKey() throws {
-        let share = try Fixture.decode(SharedQuote.self, """
-        {"id":"0a6f1b9c-0000-4000-8000-000000000001","sender_id":"0a6f1b9c-0000-4000-8000-0000000000aa",
-         "recipient_id":"0a6f1b9c-0000-4000-8000-0000000000bb","body":"x","created_at":"2026-10-19T03:26:38Z",
-         "sender":{"username":"ada","display_name":"Ada"},"recipient":{"display_name":"no username"}}
+        let post = try Fixture.decode(Post.self, """
+        {"id":"0a6f1b9c-0000-4000-8000-000000000001","author_id":"0a6f1b9c-0000-4000-8000-0000000000aa",
+         "body":"x","created_at":"2026-10-19T03:26:38Z","poster":{"username":"ada","display_name":"Ada"}}
         """)
-        #expect(share.sender == Profile(id: share.senderID, username: "ada", displayName: "Ada"))
-        #expect(share.recipient == nil) // malformed embed is dropped, the row still decodes
-        #expect(share.format.isEmpty && share.note == nil && share.seenAt == nil)
+        #expect(post.poster == Profile(id: post.posterID, username: "ada", displayName: "Ada"))
+        let malformed = try Fixture.decode(Post.self, """
+        {"id":"0a6f1b9c-0000-4000-8000-000000000001","author_id":"0a6f1b9c-0000-4000-8000-0000000000aa",
+         "body":"x","created_at":"2026-10-19T03:26:38Z","poster":{"display_name":"no username"}}
+        """)
+        #expect(malformed.poster == nil) // malformed embed is dropped, the row still decodes
+        #expect(malformed.quote.format.isEmpty && malformed.caption == nil && malformed.heldAt == nil)
 
         let friendship = try Fixture.decode(Friendship.self, """
         {"id":"0a6f1b9c-0000-4000-8000-000000000009","requester_id":"0a6f1b9c-0000-4000-8000-0000000000aa",
@@ -306,6 +291,11 @@ struct ModelCodingTests {
         #expect(quote.sourceLocation == "Apology")
         #expect(quote.sourceURL == starter.sourceURL)
         #expect(quote.libraryOrigin == .starter)
+        // The same Quoted Catalog provenance, status line and snapshot as the starter.
+        #expect(quote.provenance == starter.provenance)
+        #expect(quote.statusLine == starter.statusLine)
+        #expect(quote.snapshot == starter.snapshot)
+        #expect(quote.snapshot.provenance.isChecked)
         // A non-starter never keeps an onboarding position.
         #expect(CatalogQuote(id: 70, body: "x", sortOrder: 5).sortOrder == nil)
     }
@@ -331,6 +321,16 @@ struct ModelCodingTests {
         #expect(profile.displayName == "Ada Lovelace")
         #expect(profile.handle == "@ada")
         #expect(try Fixture.jsonObject(profile)["display_name"] as? String == "Ada Lovelace")
+        // accepts_text_messages is unknown (nil), never on, when a read leaves it out (profile_view).
+        #expect(profile.acceptsTextMessages == nil)
+        #expect(try Fixture.jsonObject(profile)["accepts_text_messages"] == nil)
+        let quiet = try Fixture.decode(Profile.self, #"{"id":"0a6f1b9c-0000-4000-8000-0000000000aa","username":"ada","display_name":null,"accepts_text_messages":false}"#)
+        #expect(quiet.acceptsTextMessages == false)
+        #expect(quiet.displayName == "ada")
+        // A cached profile from an older build (with shows_favorites) still decodes.
+        let older = try Fixture.decode(Profile.self, #"{"id":"0a6f1b9c-0000-4000-8000-0000000000aa","username":"ada","display_name":"Ada","shows_favorites":true}"#)
+        #expect(older == Profile(id: older.id, username: "ada", displayName: "Ada"))
+        #expect(try Fixture.decode(Profile.self, String(decoding: try QuotedJSON.makeEncoder().encode(quiet), as: UTF8.self)) == quiet)
 
         let starter = try Fixture.decode(StarterQuote.self, #"{"id":7,"body":"Know thyself.","body_format":[],"author":"Socrates","source":null,"sort_order":3}"#)
         #expect(starter.id == 7)
@@ -338,6 +338,8 @@ struct ModelCodingTests {
         #expect(starter.attribution == "Socrates")
         let data = try QuotedJSON.makeEncoder().encode(starter)
         #expect(try QuotedJSON.makeDecoder().decode(StarterQuote.self, from: data) == starter)
+        #expect(starter.provenance == .catalog(7))
+        #expect(starter.snapshot.provenance.isChecked)
     }
 
     @Test func textRunOmitsFalseFlags() throws {

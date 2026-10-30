@@ -5,9 +5,15 @@ import UniformTypeIdentifiers
 /// The share sheet (docs/ui-spec.md §11): a preview of the image card, then two ways to share.
 ///
 /// - **Send to a friend:** tap friends to select them, add an optional note (up to 280 characters) and
-///   Send. Send shows progress while `SocialStore.send` waits for the server; on success the sheet
-///   closes and the store shows "Sent to Maya" with Undo (Undo deletes the sent shares). On failure the
-///   store toasts and the sheet stays open with the selection and the note. A friend who is no longer
+///   Send. Each friend gets the quote as a message in your conversation with them. The first send
+///   shows the Terms sheet over this one until the terms are accepted (`SocialStore.requireTerms`).
+///   Send shows progress from the tap on, through the terms check and while `SocialStore.send` waits
+///   for the server, and the sheet can't be closed meanwhile. If it closes anyway, a terms check still
+///   waiting ends without a word and a send waiting on the Terms sheet is dropped with it
+///   (`SocialStore.dropTermsChecks(for:)`), so a send never goes out after its sheet closed. On
+///   success the sheet closes
+///   and the store shows "Sent to Maya" with Undo (Undo unsends the messages). When every send fails
+///   the store toasts and the sheet stays open with the selection and the note. A friend who is no longer
 ///   a friend after a refresh drops out of the selection. If friends can't load, the section says so
 ///   with Try again; "Other ways" works either way.
 /// - **Other ways:** the system share sheet with the `QuoteCard` image (light, 3x), or the plain text
@@ -29,6 +35,8 @@ struct ShareQuoteSheet: View {
     @State private var note = ""
     @State private var isSending = false
     @State private var isRetrying = false
+    /// This sheet, as the owner of its terms check (`SocialStore.requireTerms(for:then:)`).
+    @State private var termsOwner = UUID()
     @State private var detent: PresentationDetent = .large
     /// A small top crop of the card for the system share sheet's header, rendered after the sheet
     /// has opened.
@@ -66,11 +74,17 @@ struct ShareQuoteSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(isSending)
                 }
             }
         }
         .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
+        // A send (and the terms check before it) finishes before the sheet can close.
+        .interactiveDismissDisabled(isSending)
+        .onDisappear {
+            social.dropTermsChecks(for: termsOwner)
+        }
         .task {
             await social.refreshIfStale()
         }
@@ -377,19 +391,29 @@ struct ShareQuoteSheet: View {
         }
     }
 
-    /// Waits for the server: closes on success; on failure (already toasted) keeps the selection and
-    /// the note so the user can try again.
+    /// After the Terms sheet if needed, waits for the server: closes on success; on failure (already
+    /// toasted) keeps the selection and the note so the user can try again. Send shows progress from
+    /// the tap on, through the terms check (a server round trip when the account's answer isn't
+    /// cached as accepted).
     private func send() {
         guard !isSending else { return }
         isNoteFocused = false
         isSending = true
+        Task {
+            await social.requireTerms(for: termsOwner) { await deliver() }
+            isSending = false
+        }
+    }
+
+    /// The send itself: right away, or after Accept on the Terms sheet.
+    private func deliver() async {
+        isSending = true
+        // The friends selected now: someone may have dropped out while the Terms sheet was up.
         let friends = Set(friendIDs)
         let recipients = selected.filter { friends.contains($0) }
-        Task {
-            let sent = await social.send(quote, to: recipients, note: note)
-            isSending = false
-            if sent { dismiss() }
-        }
+        let sent = await social.send(quote, to: recipients, note: note)
+        isSending = false
+        if sent { dismiss() }
     }
 
     private func retry() {
@@ -500,7 +524,7 @@ private struct ShareCardPreview: View {
 
 #Preview("Share, no friends") {
     let model = AppModel.preview()
-    model.social.seedPreview(friendships: [], inbox: [], me: Samples.alex.id)
+    model.social.seedPreview(friendships: [], conversations: [], messages: [], me: Samples.alex.id)
     return Color.ground
         .sheet(isPresented: .constant(true)) {
             ShareQuoteSheet(quote: Samples.shelley)

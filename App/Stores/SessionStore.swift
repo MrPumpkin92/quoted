@@ -13,7 +13,7 @@ enum SessionPhase: Hashable, Sendable {
     case signedOut
     /// Signed in without a profile: `UsernameView`.
     case needsUsername
-    /// Profile done, starter pack not yet: `StarterFlowView(mode: .onboarding)`.
+    /// Profile done, starter pack not yet: `StarterFlowView()`.
     case needsStarter
     /// The main tabs.
     case ready
@@ -62,6 +62,9 @@ final class SessionStore {
     var canSignOut: Bool { AccountMode.current == .emailPassword && !isAnonymous }
     /// The signed-in user's profile (username and display name). Nil before a username is chosen.
     private(set) var profile: Profile?
+    /// The signed-in user's own account (`my_account()`): favorites visibility and the accepted Terms
+    /// of Use version, which `profiles` doesn't let anyone read. Nil until loaded (cached per user).
+    private(set) var account: MyAccount?
     /// Set after `signUp` when the server sent a confirmation email: show "Check your inbox".
     private(set) var pendingConfirmationEmail: String?
     /// A launch failure (offline, or the server did not answer). The launch screen shows it with Try
@@ -103,7 +106,7 @@ final class SessionStore {
     @ObservationIgnored private var listener: Task<Void, Never>?
     /// The user whose session is starting or started; guards against double starts.
     @ObservationIgnored private var activeUserID: UUID?
-    /// Profile writes (name, favorites setting), so a profile read that overlapped one is dropped.
+    /// Profile writes (name, favorites visibility), so a profile read that overlapped one is dropped.
     @ObservationIgnored private var profileWrites = WriteTracker()
     /// Set when a profile read was dropped or a profile write failed: read again once no write runs.
     @ObservationIgnored private var rereadProfileAfterWrites = false
@@ -321,7 +324,7 @@ final class SessionStore {
     /// Whether `username` is free. Throws `.validation` for an invalid username.
     func isUsernameAvailable(_ username: String) async throws(QuotedError) -> Bool {
         do {
-            return try await backend.social.isUsernameAvailable(username)
+            return try await backend.profiles.isUsernameAvailable(username)
         } catch {
             throw QuotedError(error)
         }
@@ -335,16 +338,20 @@ final class SessionStore {
         defer {
             profileWrites.end()
             assertion.end()
+            rereadProfileIfWritesSettled()
         }
         let created: Profile
         do {
-            created = try await backend.social.createProfile(username: username, displayName: displayName)
+            created = try await backend.profiles.createProfile(username: username, displayName: displayName)
         } catch {
             throw QuotedError(error)
         }
         profile = created
         preferences.cacheProfile(created)
         guard let id = userID else { return }
+        // The account's private fields (terms, favorites visibility) come from `my_account()`, read
+        // once this write settles.
+        rereadProfileAfterWrites = true
         await resolvePhaseAfterProfile(userID: id)
     }
 
@@ -359,7 +366,7 @@ final class SessionStore {
         }
         let updated: Profile
         do {
-            updated = try await backend.social.updateDisplayName(displayName)
+            updated = try await backend.profiles.updateDisplayName(displayName)
         } catch {
             // The change may have landed even though the answer was lost.
             rereadProfileAfterWrites = true
@@ -367,9 +374,20 @@ final class SessionStore {
         }
         profile = updated
         preferences.cacheProfile(updated)
+        if var account, account.id == updated.id {
+            account.displayName = updated.displayName == updated.username ? nil : updated.displayName
+            self.account = account
+            preferences.cacheAccount(account)
+        }
     }
 
-    /// Shows or hides your favorites from your friends (off by default).
+    /// Whether friends can see the quotes you heart (`favorites_visibility` is `friends`). Nil until
+    /// the account is loaded (the first launch after an update, before `my_account()` answers, or
+    /// offline then): show a neutral state, never "private".
+    var showsFavorites: Bool? { account.map { $0.favoritesVisibility == .friends } }
+
+    /// Shows or hides your favorites from your friends (off by default): sets `favorites_visibility`
+    /// to `friends` or `private`.
     func setShowsFavorites(_ shows: Bool) async throws(QuotedError) {
         let assertion = BackgroundTaskAssertion("Show favorites to friends")
         profileWrites.begin()
@@ -378,16 +396,44 @@ final class SessionStore {
             assertion.end()
             rereadProfileIfWritesSettled()
         }
-        let updated: Profile
+        let visibility: FavoritesVisibility = shows ? .friends : .onlyMe
         do {
-            updated = try await backend.social.setShowsFavorites(shows)
+            try await backend.profiles.setFavoritesVisibility(visibility)
         } catch {
             // The change may have landed even though the answer was lost.
             rereadProfileAfterWrites = true
             throw QuotedError(error)
         }
-        profile = updated
-        preferences.cacheProfile(updated)
+        if var account {
+            account.favoritesVisibility = visibility
+            self.account = account
+            preferences.cacheAccount(account)
+        } else {
+            // Not loaded yet: read the whole account once the write settles.
+            rereadProfileAfterWrites = true
+        }
+    }
+
+    /// Reads your account again (`my_account()`) and returns it: the Terms check (`SocialStore`)
+    /// needs the server's answer, not the cache. Applies it unless a profile write overlapped the
+    /// read. Nil before a username is chosen. Not retried: a write waits on it, and offline should
+    /// fail at once rather than after the SDK's retries.
+    func reloadAccount() async throws -> MyAccount? {
+        let token = profileWrites.token
+        let fetched = try await backend.profiles.myAccount(retry: false)
+        if let fetched, fetched.id == activeUserID, profileWrites.isQuiet(since: token) {
+            apply(fetched)
+        }
+        return fetched
+    }
+
+    /// Records that the server accepted Terms of Use `version` (`SocialStore.acceptTerms()`).
+    func noteTermsAccepted(version: Int) {
+        guard var account else { return }
+        account.termsVersion = max(account.termsVersion ?? 0, version)
+        account.termsAcceptedAt = .now
+        self.account = account
+        preferences.cacheAccount(account)
     }
 
     /// Re-reads your profile (name, favorites setting), for pull to refresh on Your profile. Quiet
@@ -647,6 +693,7 @@ final class SessionStore {
         pendingConfirmationEmail = nil
         library.prepare(for: id)
 
+        account = preferences.cachedAccount(userID: id)
         if let cached = preferences.cachedProfile(userID: id) {
             profile = cached
             await resolvePhaseAfterProfile(userID: id)
@@ -656,14 +703,14 @@ final class SessionStore {
         await loadProfile(userID: id)
     }
 
-    /// Fetches the profile at launch and decides the phase: Choose a username without one.
+    /// Fetches the profile (with the account's private fields) at launch and decides the phase:
+    /// Choose a username without one.
     private func loadProfile(userID id: UUID, mayRefreshSession: Bool = true) async {
         do {
-            let fetched = try await backend.social.myProfile()
+            let fetched = try await backend.profiles.myAccount()
             guard activeUserID == id else { return }
             if let fetched {
-                profile = fetched
-                preferences.cacheProfile(fetched)
+                apply(fetched)
                 await resolvePhaseAfterProfile(userID: id)
             } else {
                 phase = .needsUsername
@@ -730,20 +777,27 @@ final class SessionStore {
     private func refreshProfile(userID id: UUID) async {
         let token = profileWrites.token
         do {
-            guard let fetched = try await backend.social.myProfile(), activeUserID == id else { return }
+            guard let fetched = try await backend.profiles.myAccount(), activeUserID == id else { return }
             // A name or setting saved while this read was out wins; read again once writes settle.
             guard profileWrites.isQuiet(since: token) else {
                 rereadProfileAfterWrites = true
                 rereadProfileIfWritesSettled()
                 return
             }
-            profile = fetched
-            preferences.cacheProfile(fetched)
+            apply(fetched)
         } catch {
             if QuotedError(error) == .notSignedIn, activeUserID == id, shouldEndRejectedSession {
                 await endRejectedSession()
             }
         }
+    }
+
+    /// Shows and caches a freshly read account and the profile it holds.
+    private func apply(_ fetched: MyAccount) {
+        account = fetched
+        profile = fetched.profile
+        preferences.cacheProfile(fetched.profile)
+        preferences.cacheAccount(fetched)
     }
 
     /// Re-reads the profile when a read was dropped or a write failed, once no profile write runs.
@@ -774,6 +828,7 @@ final class SessionStore {
         email = nil
         isAnonymous = false
         profile = nil
+        account = nil
         launchError = nil
         phase = .signedOut
 
@@ -796,6 +851,9 @@ final class SessionStore {
     func seedPreview(phase: SessionPhase, profile: Profile?, email: String?) {
         self.phase = phase
         self.profile = profile
+        account = profile.map {
+            MyAccount(id: $0.id, username: $0.username, displayName: $0.displayName, termsVersion: 1, currentTermsVersion: 1)
+        }
         self.userID = profile?.id
         self.email = email
     }

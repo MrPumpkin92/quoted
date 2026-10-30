@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Seed a second LOCAL account that befriends a test user and shares a quote with them, so the
-# Friends tab and the Shared inbox can be exercised against the local Supabase stack.
+# Seed a second LOCAL account that befriends a test user and sends them a quote, so the Friends tab
+# and "Shared with you" can be exercised against the local Supabase stack. The friend accepts the
+# Terms of Use (a friend request and sending need them), and the quote goes as a quote message in
+# their conversation (open_conversation, then a message made from a quote in the friend's library).
 #
 # LOCAL STACK ONLY. It uses the local demo secret key and refuses any URL that is not
 # http://127.0.0.1 or http://localhost. Never point it at the hosted project.
@@ -14,15 +16,17 @@
 #                         tapping Accept in the app
 #   --wait <seconds>      wait up to this long for the request to be accepted in the app (default 0)
 #   --no-share            only send the friend request
-#   --quote <text>        the shared quote's body (default: a Jane Austen line)
+#   --quote <text>        the sent quote's body (default: a Jane Austen line)
 #   --author <name>       its author (default: Jane Austen)
 #   --source <title>      its source (default: Pride and Prejudice)
 #   --note <text>         an optional note (default: "Thought of you")
-#   --remove              delete the friend's account instead (cascades friendships and shares)
+#   --remove              delete the friend's account instead (cascades friendships, conversations
+#                         and messages)
 #
 # Re-running is safe: an existing friend account is reused (its password is reset to a new random
-# one that is never printed), an existing request is reused, and the quote is shared only once the
-# friendship is accepted. Without --accept or --wait, run it again after accepting in the app.
+# one that is never printed), an existing request is reused, the quote is reused from the friend's
+# library, and it is sent only once the friendship is accepted (each run sends it again). Without
+# --accept or --wait, run it again after accepting in the app.
 #
 # Environment:
 #   SUPABASE_URL       default http://127.0.0.1:54321
@@ -91,7 +95,8 @@ admin() {
     -H "Prefer: return=representation" ${body:+--data "$body"}
 }
 
-# as_friend METHOD PATH [JSON]: PostgREST as the friend (RLS applies).
+# as_friend METHOD PATH [JSON]: PostgREST as the friend (RLS applies). Prints the body, a newline
+# and the HTTP status.
 as_friend() {
   local method="$1" path="$2" body="${3-}"
   curl --silent --show-error --max-time 15 -X "$method" "$SUPABASE_URL$path" \
@@ -152,11 +157,22 @@ FRIEND_TOKEN="$(curl --silent --show-error --fail-with-body --max-time 15 \
 # Profile (insert own row; reuse when it exists).
 EXISTING_PROFILE="$(admin GET "/rest/v1/profiles?id=eq.$FRIEND_ID&select=username" | jq -r '.[0].username // empty')"
 if [[ -z "$EXISTING_PROFILE" ]]; then
-  response="$(as_friend POST /rest/v1/profiles \
+  response="$(as_friend POST "/rest/v1/profiles?select=id" \
     "$(jq -n --arg id "$FRIEND_ID" --arg u "$FRIEND" --arg n "$NAME" '{id: $id, username: $u, display_name: $n}')")"
   [[ "${response##*$'\n'}" == 201 ]] || die "could not create the @$FRIEND profile: ${response%$'\n'*}"
 elif [[ "$EXISTING_PROFILE" != "$FRIEND" ]]; then
   die "$FRIEND_EMAIL already has the username @$EXISTING_PROFILE"
+fi
+
+# --- Terms of Use (friend requests and messages need the current version) -----------------------
+response="$(as_friend POST /rest/v1/rpc/my_account '{}')"
+[[ "${response##*$'\n'}" == 200 ]] || die "could not read @$FRIEND's account: ${response%$'\n'*}"
+ACCOUNT="${response%$'\n'*}"
+CURRENT_TERMS="$(jq -r '.[0].current_terms_version' <<<"$ACCOUNT")"
+if [[ "$(jq -r '.[0].terms_version // 0' <<<"$ACCOUNT")" != "$CURRENT_TERMS" ]]; then
+  response="$(as_friend POST /rest/v1/rpc/accept_terms "$(jq -n --argjson v "$CURRENT_TERMS" '{p_version: $v}')")"
+  [[ "${response##*$'\n'}" =~ ^20[04]$ ]] || die "could not accept the terms as @$FRIEND: ${response%$'\n'*}"
+  log "@$FRIEND accepted the Terms of Use (version $CURRENT_TERMS)."
 fi
 
 # --- Friend request -----------------------------------------------------------------------------
@@ -165,7 +181,7 @@ friendship() { admin GET "/rest/v1/friendships?$pair_filter&select=id,status"; }
 
 FRIENDSHIP="$(friendship)"
 if [[ "$(jq 'length' <<<"$FRIENDSHIP")" == 0 ]]; then
-  response="$(as_friend POST /rest/v1/friendships "$(jq -n --arg a "$TARGET_ID" '{addressee_id: $a}')")"
+  response="$(as_friend POST "/rest/v1/friendships?select=id" "$(jq -n --arg a "$TARGET_ID" '{addressee_id: $a}')")"
   [[ "${response##*$'\n'}" == 201 ]] || die "could not send the friend request: ${response%$'\n'*}"
   FRIENDSHIP="$(friendship)"
   log "@$FRIEND sent @$TARGET a friend request."
@@ -201,12 +217,31 @@ case "$STATUS" in
   *) die "the request was declined or removed." ;;
 esac
 
-# --- Share --------------------------------------------------------------------------------------
+# --- Send a quote -------------------------------------------------------------------------------
 if [[ $SHARE -eq 1 ]]; then
-  payload="$(jq -n --arg r "$TARGET_ID" --arg b "$QUOTE_BODY" --arg a "$QUOTE_AUTHOR" --arg s "$QUOTE_SOURCE" --arg n "$NOTE" \
+  # The quote, from the friend's library (added once; the server makes the friend its creator).
+  response="$(as_friend GET "/rest/v1/quotes?select=id,body,author,source")"
+  [[ "${response##*$'\n'}" == 200 ]] || die "could not read @$FRIEND's library: ${response%$'\n'*}"
+  QUOTE_ID="$(jq -r --arg b "$QUOTE_BODY" --arg a "$QUOTE_AUTHOR" --arg s "$QUOTE_SOURCE" \
     'def opt: if . == "" then null else . end;
-     {recipient_id: $r, body: $b, body_format: [], author: ($a | opt), source: ($s | opt), note: ($n | opt)}')"
-  response="$(as_friend POST /rest/v1/shares "$payload")"
-  [[ "${response##*$'\n'}" == 201 ]] || die "could not share the quote: ${response%$'\n'*}"
-  log "@$FRIEND shared a quote with @$TARGET."
+     [.[] | select(.body == $b and .author == ($a | opt) and .source == ($s | opt))][0].id // empty' <<<"${response%$'\n'*}")"
+  if [[ -z "$QUOTE_ID" ]]; then
+    payload="$(jq -n --arg b "$QUOTE_BODY" --arg a "$QUOTE_AUTHOR" --arg s "$QUOTE_SOURCE" \
+      'def opt: if . == "" then null else . end;
+       {body: $b, body_format: [], author: ($a | opt), source: ($s | opt), origin: "manual"}')"
+    response="$(as_friend POST "/rest/v1/quotes?select=id" "$payload")"
+    [[ "${response##*$'\n'}" == 201 ]] || die "could not add the quote to @$FRIEND's library: ${response%$'\n'*}"
+    QUOTE_ID="$(jq -r '.[0].id' <<<"${response%$'\n'*}")"
+  fi
+
+  # Their conversation (made, or reopened, for accepted friends), then the quote message.
+  response="$(as_friend POST "/rest/v1/rpc/open_conversation?select=id" "$(jq -n --arg f "$TARGET_ID" '{p_friend: $f}')")"
+  [[ "${response##*$'\n'}" == 200 ]] || die "could not open the conversation: ${response%$'\n'*}"
+  CONVERSATION_ID="$(jq -r 'if type == "array" then .[0].id else .id end' <<<"${response%$'\n'*}")"
+  payload="$(jq -n --arg c "$CONVERSATION_ID" --arg q "$QUOTE_ID" --arg n "$NOTE" \
+    'def opt: if . == "" then null else . end;
+     {conversation_id: $c, kind: "quote", source_quote_id: $q} + (if ($n | opt) == null then {} else {note: $n} end)')"
+  response="$(as_friend POST "/rest/v1/messages?select=id" "$payload")"
+  [[ "${response##*$'\n'}" == 201 ]] || die "could not send the quote: ${response%$'\n'*}"
+  log "@$FRIEND sent @$TARGET a quote."
 fi

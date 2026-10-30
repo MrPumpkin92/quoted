@@ -90,8 +90,25 @@ struct AppGroupStoreTests {
         LibraryCache(
             userID: user,
             savedAt: created,
-            quotes: [Quote(id: Fixture.id(1), body: "Cached", author: "Me", origin: .pasted, createdAt: created)],
-            shared: [SharedQuote(id: Fixture.id(2), senderID: Fixture.id(3), sender: Profile(id: Fixture.id(3), username: "ada"), recipientID: user, body: "Shared", note: "hi", createdAt: created)]
+            quotes: [
+                Quote(
+                    id: Fixture.id(1), body: "Cached", author: "Me", origin: .pasted, createdAt: created,
+                    creatorID: user, creatorUsername: "me", editedFromID: Fixture.id(3), editedFromUsername: "ada"
+                ),
+            ],
+            messages: [
+                Message(
+                    id: Fixture.id(2), conversationID: Fixture.id(4), senderID: Fixture.id(3), kind: .quote, note: "hi",
+                    quote: QuoteSnapshot(body: "Shared", creatorID: Fixture.id(3), creatorUsername: "ada"), createdAt: created
+                ),
+            ],
+            conversations: [
+                InboxConversation(
+                    id: Fixture.id(4), otherID: Fixture.id(3), other: Profile(id: Fixture.id(3), username: "ada", displayName: "Ada L."),
+                    lastMessageAt: created, lastMessageKind: .quote, lastMessagePreview: "Shared",
+                    lastMessageSenderID: Fixture.id(3), unreadCount: 1
+                ),
+            ]
         )
     }
 
@@ -142,6 +159,51 @@ struct AppGroupStoreTests {
         // The file uses the database column names.
         let text = try String(contentsOf: temp.store.libraryCacheURL, encoding: .utf8)
         #expect(text.contains("\"body_format\"") && text.contains("\"sender_id\"") && text.contains("\"origin\":\"pasted\""))
+        // Provenance is cached, so "Added by" reads offline.
+        #expect(text.contains("\"creator_username\":\"me\"") && text.contains("\"edited_from_username\":\"ada\""))
+        #expect(temp.store.readLibraryCache()?.quotes.first?.provenance.editedFromUsername == "ada")
+        // The senders of cached messages read offline too.
+        #expect(text.contains("\"other_username\":\"ada\"") && text.contains("\"unread_count\":1"))
+        #expect(temp.store.readLibraryCache()?.conversations.first?.other?.displayName == "Ada L.")
+    }
+
+    /// A conversation list that no longer decodes costs only itself: the library and messages stay.
+    @Test func undecodableConversationsDropOnlyThemselves() throws {
+        let temp = TemporaryStore()
+        try temp.store.writeLibraryCache(cache())
+        var json = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: temp.store.libraryCacheURL)) as? [String: Any]
+        )
+        json["conversations"] = [["conversation_id": "not a uuid"]]
+        try JSONSerialization.data(withJSONObject: json).write(to: temp.store.libraryCacheURL)
+        let read = try #require(temp.store.readLibraryCache(for: Fixture.id(42)))
+        #expect(read.quotes == cache().quotes)
+        #expect(read.messages == cache().messages)
+        #expect(read.conversations.isEmpty)
+    }
+
+    /// The file the current App Store build writes: shares in `shared`, quotes without provenance.
+    @Test func cacheWrittenBeforeTheRedesignStillDecodes() throws {
+        let temp = TemporaryStore()
+        try FileManager.default.createDirectory(at: temp.directory, withIntermediateDirectories: true)
+        let legacy = """
+        {"quotes":[{"author":"Me","body":"Cached","body_format":[],"created_at":"2026-10-19T03:26:38.000000Z",
+          "favorited_at":null,"id":"00000000-0000-4000-8000-000000000001","is_favorite":true,"origin":"pasted",
+          "rotation_position":0,"source":null,"updated_at":"2026-10-19T03:26:38.000000Z","verified_starter_id":null}],
+         "savedAt":"2026-10-19T03:26:38.000000Z",
+         "shared":[{"author":null,"body":"Shared","body_format":[],"created_at":"2026-10-19T03:26:38.000000Z",
+          "id":"00000000-0000-4000-8000-000000000002","note":"hi","quote_id":null,"recipient_id":"00000000-0000-4000-8000-00000000002A",
+          "saved_at":null,"seen_at":null,"sender":{"display_name":"ada","id":"00000000-0000-4000-8000-000000000003","shows_favorites":false,"username":"ada"},
+          "sender_id":"00000000-0000-4000-8000-000000000003","source":null,"verified_starter_id":null}],
+         "userID":"00000000-0000-4000-8000-00000000002A","version":1}
+        """
+        try Data(legacy.utf8).write(to: temp.store.libraryCacheURL)
+        let cache = try #require(temp.store.readLibraryCache(for: Fixture.id(42)))
+        #expect(cache.quotes.map(\.body) == ["Cached"])
+        #expect(cache.quotes.first?.isFavorite == true)
+        #expect(cache.quotes.first?.provenance == Provenance())
+        #expect(cache.messages.isEmpty, "shares are not carried over; the next refresh brings the messages")
+        #expect(cache.conversations.isEmpty)
     }
 
     @Test func settingsAndRotationLiveInDefaults() {

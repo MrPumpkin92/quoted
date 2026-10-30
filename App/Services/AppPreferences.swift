@@ -4,8 +4,9 @@ import QuotedCore
 
 /// Small device-local flags, kept in the App Group `UserDefaults` suite (falling back to `.standard`).
 ///
-/// - Per user: whether onboarding (the starter pack) is done, and the cached profile that lets a
-///   signed-in launch go straight to the library while offline.
+/// - Per user: whether onboarding (the starter pack) is done, the cached profile that lets a
+///   signed-in launch go straight to the library while offline, and the cached account (favorites
+///   visibility and the accepted Terms of Use version) so Account and the Terms check read offline.
 /// - Per device: whether the Library widget tip was dismissed.
 ///
 /// Inject with `@Environment(AppPreferences.self)`.
@@ -66,12 +67,30 @@ final class AppPreferences {
         defaults.set(data, forKey: Keys.profile(profile.id))
     }
 
+    // MARK: Cached account
+
+    /// The last `my_account()` row loaded for `userID`, if any.
+    func cachedAccount(userID: UUID) -> MyAccount? {
+        guard let data = defaults.data(forKey: Keys.account(userID)) else { return nil }
+        guard let account = try? QuotedJSON.makeDecoder().decode(MyAccount.self, from: data), account.id == userID else {
+            return nil
+        }
+        return account
+    }
+
+    /// Caches `account` for its user.
+    func cacheAccount(_ account: MyAccount) {
+        guard let data = try? QuotedJSON.makeEncoder().encode(account) else { return }
+        defaults.set(data, forKey: Keys.account(account.id))
+    }
+
     // MARK: Wipe
 
     /// Removes everything stored for `userID` (sign-out keeps the onboarding flag; account deletion
     /// removes it too).
     func removeUserData(userID: UUID, includingOnboarding: Bool) {
         defaults.removeObject(forKey: Keys.profile(userID))
+        defaults.removeObject(forKey: Keys.account(userID))
         if includingOnboarding {
             defaults.removeObject(forKey: Keys.onboarding(userID))
         }
@@ -82,5 +101,6 @@ final class AppPreferences {
         static let hadAnonymousSession = "quoted.hadAnonymousSession"
         static func onboarding(_ id: UUID) -> String { "quoted.onboardingComplete.\(id.uuidString.lowercased())" }
         static func profile(_ id: UUID) -> String { "quoted.profile.\(id.uuidString.lowercased())" }
+        static func account(_ id: UUID) -> String { "quoted.account.\(id.uuidString.lowercased())" }
     }
 }

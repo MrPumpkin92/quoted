@@ -2,7 +2,8 @@ import Foundation
 import QuotedCore
 import Supabase
 
-/// The public-domain starter pack offered during onboarding (`starter_quotes`, read-only).
+/// The onboarding starter pack (`starter_quotes`, read-only): the live starters of the Quoted Catalog
+/// (``CatalogRepository``).
 public struct StarterRepository: Sendable {
     let client: SupabaseClient
 

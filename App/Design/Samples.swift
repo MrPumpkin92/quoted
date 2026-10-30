@@ -50,7 +50,8 @@ enum Samples {
     // MARK: People
 
     static let alex = Profile(id: uuid(1), username: "alex", displayName: "Alex")
-    static let maya = Profile(id: uuid(2), username: "maya", displayName: "Maya Reyes", showsFavorites: true)
+    /// Maya shows her favorites to friends (`mayaFavorites`).
+    static let maya = Profile(id: uuid(2), username: "maya", displayName: "Maya Reyes")
     static let jordan = Profile(id: uuid(3), username: "jordan", displayName: "Jordan Lee")
     static let sam = Profile(id: uuid(4), username: "samk", displayName: "Sam Kim")
     static let riley = Profile(id: uuid(5), username: "riley", displayName: "Riley Park")
@@ -83,20 +84,44 @@ enum Samples {
         friendship(8, with: riley, status: .pending, incoming: false),
     ]
 
-    /// Quotes shared with Alex, newest first. Both unseen.
-    static let inbox: [SharedQuote] = [
-        SharedQuote(
-            id: uuid(20), senderID: maya.id, sender: maya, recipientID: alex.id,
-            body: austen.body, author: austen.author, source: austen.source,
-            note: "Thought of you.", createdAt: Date(timeIntervalSinceNow: -2 * 3600)
+    /// Alex's conversations with Maya and Jordan, newest first, each with one unread quote.
+    static let conversations: [InboxConversation] = [
+        InboxConversation(
+            id: uuid(30), otherID: maya.id, other: maya, lastMessageAt: inboxMessages[0].createdAt,
+            lastMessageKind: .quote, lastMessagePreview: austen.body, lastMessageSenderID: maya.id, unreadCount: 1
         ),
-        SharedQuote(
-            id: uuid(21), senderID: jordan.id, sender: jordan, recipientID: alex.id,
-            body: "But screw your courage to the sticking-place, and we\u{2019}ll not fail.",
-            author: "William Shakespeare", source: "Macbeth",
+        InboxConversation(
+            id: uuid(31), otherID: jordan.id, other: jordan, lastMessageAt: inboxMessages[1].createdAt,
+            lastMessageKind: .quote, lastMessagePreview: inboxMessages[1].quote?.body, lastMessageSenderID: jordan.id,
+            unreadCount: 1
+        ),
+    ]
+
+    /// Quotes Maya and Jordan sent Alex, newest first.
+    static let inboxMessages: [ConversationMessage] = [
+        ConversationMessage(
+            id: uuid(20), conversationID: uuid(30), senderID: maya.id, kind: .quote, note: "Thought of you.",
+            quote: QuoteSnapshot(
+                body: austen.body, author: austen.author, source: austen.source,
+                creatorID: maya.id, creatorUsername: maya.username
+            ),
+            createdAt: Date(timeIntervalSinceNow: -2 * 3600)
+        ),
+        ConversationMessage(
+            id: uuid(21), conversationID: uuid(31), senderID: jordan.id, kind: .quote,
+            quote: QuoteSnapshot(
+                body: "But screw your courage to the sticking-place, and we\u{2019}ll not fail.",
+                author: "William Shakespeare", source: "Macbeth"
+            ),
             createdAt: Date(timeIntervalSinceNow: -26 * 3600)
         ),
     ]
+
+    /// The quotes in `inboxMessages`, as "Shared with you" shows them.
+    static let inbox: [InboxQuote] = [
+        InboxQuote(message: inboxMessages[0], sender: maya),
+        InboxQuote(message: inboxMessages[1], sender: jordan),
+    ].compactMap { $0 }
 
     /// A few starter-pack quotes.
     static let starters: [StarterQuote] = [shelley, thoreau, emerson, dickinson, seneca, shakespeare]

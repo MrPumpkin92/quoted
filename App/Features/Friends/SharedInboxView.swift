@@ -1,25 +1,20 @@
 import QuotedCore
 import SwiftUI
 
-/// "Shared with you": every quote friends sent, newest first, as cards with the sender's note, Save
-/// (or Saved), and Report / Block / Delete in the "…" menu. Swipe right to save; swipe left to delete
-/// (a full swipe deletes), block or report. Opening it marks shares as seen. `Route.sharedInbox` maps
-/// to `SharedInboxView()`.
+/// "Shared with you": every quote friends sent (the quote messages you received in your
+/// conversations), newest first, as cards with the sender's note, Save (or Saved), and Report / Block
+/// in the "…" menu. Swipe right to save; swipe left to block or report. Opening it marks the
+/// conversations read. `Route.sharedInbox` maps to `SharedInboxView()`.
 ///
-/// Delete asks nothing and shows "Deleted" with Undo. Only the sender can create a share, so the
-/// server delete waits for the toast to close (`ToastCenter.showDeferred`): Undo just shows the card
-/// again. Leaving the screen, a newer toast, going to the background and signing out all commit it.
+/// A received message can't be deleted on its own (only its sender can unsend it), so there is no
+/// Delete; the conversation screens (Stage 5) bring "Delete Conversation".
 struct SharedInboxView: View {
     @Environment(SocialStore.self) private var social
     @Environment(LibraryStore.self) private var library
     @Environment(Router.self) private var router
-    @Environment(ToastCenter.self) private var toasts
 
     @State private var isVisible = false
     @State private var confirmation: SocialConfirmation?
-    /// Shares deleted on screen whose server delete waits for the Undo toast to close. A reference,
-    /// so the toast's closures can still update it after the view has gone.
-    @State private var pendingDeletion = PendingInboxDeletions()
 
     /// The inbox shows whole quotes, at every text size: a fixed cap (it was 40 lines) cut long
     /// quotes off at accessibility sizes, where a card has no detail view to read the rest in.
@@ -28,9 +23,6 @@ struct SharedInboxView: View {
     init() {}
 
     var body: some View {
-        // A stable container: lifecycle modifiers on the if/else itself would also fire when the
-        // last share is deleted and the list turns into the empty state, committing that delete
-        // before its Undo toast closes.
         ZStack {
             content
         }
@@ -47,27 +39,16 @@ struct SharedInboxView: View {
         }
         .onDisappear {
             isVisible = false
-            // Commit a delete still waiting on its Undo toast, so Friends never shows the share.
-            if !pendingDeletion.ids.isEmpty {
-                let toasts = self.toasts
-                Task { await toasts.flushPending() }
-            }
         }
         .onChange(of: social.unseenCount) {
-            // Shares that arrive while the inbox is on screen count as seen too.
+            // Quotes that arrive while the inbox is on screen count as seen too.
             if isVisible { markSharesSeen() }
         }
     }
 
-    /// The inbox minus shares deleted on screen.
-    private var visibleInbox: [SharedQuote] {
-        let hidden = pendingDeletion.ids
-        return hidden.isEmpty ? social.inbox : social.inbox.filter { !hidden.contains($0.id) }
-    }
-
     @ViewBuilder
     private var content: some View {
-        if visibleInbox.isEmpty {
+        if social.inbox.isEmpty {
             ScrollView {
                 emptyContent
                     .frame(maxWidth: .infinity)
@@ -75,16 +56,15 @@ struct SharedInboxView: View {
             .groundBackground()
         } else {
             List {
-                ForEach(visibleInbox) { share in
+                ForEach(social.inbox) { share in
                     SharedQuoteCard(
                         share: share,
                         lineLimit: Self.fullQuoteLineLimit,
-                        confirmation: $confirmation,
-                        onDelete: { delete(share) }
+                        confirmation: $confirmation
                     )
                     .marginCardRow(.single, outerSpacing: 6)
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        if !share.isSaved {
+                        if !library.containsCopy(of: share), !social.reportedMessageIDs.contains(share.id) {
                             Button {
                                 Task { await library.saveShared(share, addToReminders: true) }
                             } label: {
@@ -93,14 +73,7 @@ struct SharedInboxView: View {
                             .tint(Color.accentColor)
                         }
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        // The row goes away because `visibleInbox` drops it.
-                        Button(role: .destructive) {
-                            delete(share)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .tint(SwipeTint.destructive)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button {
                             confirmation = .blockSender(shareID: share.id)
                         } label: {
@@ -157,24 +130,6 @@ struct SharedInboxView: View {
         Task { await social.markInboxSeen() }
     }
 
-    /// Hides the share now and deletes it on the server once its Undo toast closes.
-    private func delete(_ share: SharedQuote) {
-        let id = share.id
-        let pending = pendingDeletion
-        guard !pending.ids.contains(id) else { return }
-        pending.ids.insert(id)
-        let social = self.social
-        let sender = share.sender?.displayName ?? "a friend"
-        toasts.showDeferred("Deleted the quote from \(sender)") {
-            pending.ids.remove(id)
-        } commit: {
-            // On failure the store puts the share back and toasts; either way the store is now the
-            // source of truth again.
-            await social.deleteShares([id])
-            pending.ids.remove(id)
-        }
-    }
-
     /// Goes to the Friends tab root, where "Add by username" is.
     private func showFriends() {
         router.popToRoot(.friends)
@@ -182,30 +137,22 @@ struct SharedInboxView: View {
     }
 }
 
-/// The shares `SharedInboxView` hides while their delete waits for the Undo toast.
-@Observable
-@MainActor
-private final class PendingInboxDeletions {
-    var ids: Set<UUID> = []
-}
-
 // MARK: - Shared quote card
 
-/// A quote a friend sent, as a card: the sender and when, a "…" menu (Report…, Block @x, and Delete
-/// when `onDelete` is set), the sender's note, the quote and its attribution, then Save (or Saved).
+/// A quote a friend sent, as a card: the sender and when, a "…" menu (Report…, Block @x), the
+/// sender's note, the quote and its attribution, then Save (or Saved, when the library already holds
+/// the same text and author).
 ///
 /// Used by `SharedInboxView`. Save sits under the quote at every text size, so the card reads who →
 /// what they said → the quote → act. Save adds the quote to the library and to reminders (the same
 /// default as Add). The Report and Block confirmations hang off the "…" button, so they point at this
-/// card; set `confirmation` to `.report` / `.blockSender` with this share's ID (from a swipe action,
-/// say) to show them.
+/// card; set `confirmation` to `.report` / `.blockSender` with this message's ID (from a swipe
+/// action, say) to show them.
 struct SharedQuoteCard: View {
-    let share: SharedQuote
+    let share: InboxQuote
     /// Line limit for the quote. Nil keeps the compact style's default (6 lines).
     var lineLimit: Int?
     @Binding var confirmation: SocialConfirmation?
-    /// Adds Delete to the "…" menu.
-    var onDelete: (() -> Void)?
 
     @Environment(LibraryStore.self) private var library
     @Environment(SocialStore.self) private var social
@@ -237,7 +184,11 @@ struct SharedQuoteCard: View {
                 AttributionLine(share)
             }
             .accessibilityElement(children: .combine)
-            saveControl
+            // A reported quote is gone for you on the server (Save would fail); its card stays
+            // only for the "Also block?" offer.
+            if !social.reportedMessageIDs.contains(share.id) {
+                saveControl
+            }
         }
         .padding(.vertical, Theme.Spacing.xxs)
     }
@@ -282,7 +233,7 @@ struct SharedQuoteCard: View {
 
     @ViewBuilder
     private var saveControl: some View {
-        if share.isSaved {
+        if library.containsCopy(of: share) {
             Label("Saved", systemImage: "checkmark")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -314,10 +265,6 @@ struct SharedQuoteCard: View {
             }
             Button("Block \(handle)", systemImage: "hand.raised", role: .destructive) {
                 confirmation = .blockSender(shareID: share.id)
-            }
-            if let onDelete {
-                Divider()
-                Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
             }
         } label: {
             MoreMenuLabel()
@@ -391,9 +338,9 @@ enum SwipeTint {
 /// attached to the row or button it belongs to (so iOS 26 points its popover there) and shows when
 /// the screen's `SocialConfirmation?` state equals its key.
 enum SocialConfirmation: Hashable, Sendable {
-    /// Report a share (reasons).
+    /// Report a quote a friend sent (reasons), by message ID.
     case report(shareID: UUID)
-    /// Block the sender of a share.
+    /// Block the sender of a quote, by message ID.
     case blockSender(shareID: UUID)
     /// Block a friend or someone with a pending request.
     case block(userID: UUID)
@@ -418,15 +365,13 @@ extension Binding where Value == SocialConfirmation? {
     }
 }
 
-/// "Report this quote?" with `ReportReason.allCases`. `SocialStore.report` files it and toasts
-/// "Thanks, we'll review it", then "Also block @x?" offers to block the sender.
-///
-/// The block is offered only once the report is on file: a block deletes the share, so blocking
-/// first (or at the same time) would leave the report with nothing to point at. The same order as
-/// `SocialStore.reportAndBlock`.
+/// "Report this quote?" with `ReportReason.personReasons`. `SocialStore.report` files it against the
+/// message and its sender and toasts "Thanks, we'll review it", then "Also block @x?" offers to block
+/// the sender. The server hides a reported message from its reporter at once: the card loses Save,
+/// and goes once the offer is answered (`SocialStore.hideReported(_:)`).
 private struct ReportShareConfirmation: ViewModifier {
     @Binding var isPresented: Bool
-    let share: SharedQuote
+    let share: InboxQuote
 
     @Environment(SocialStore.self) private var social
     @State private var isOfferingBlock = false
@@ -434,7 +379,7 @@ private struct ReportShareConfirmation: ViewModifier {
     func body(content: Content) -> some View {
         content
             .confirmationDialog("Report this quote?", isPresented: $isPresented, titleVisibility: .visible) {
-                ForEach(ReportReason.allCases) { reason in
+                ForEach(ReportReason.personReasons) { reason in
                     Button(reason.title) { file(reason) }
                 }
                 Button("Cancel", role: .cancel) {}
@@ -451,6 +396,9 @@ private struct ReportShareConfirmation: ViewModifier {
             } message: {
                 Text(BlockCopy.consequences(name: share.sender?.displayName ?? "They"))
             }
+            .onChange(of: isOfferingBlock) { _, isOffering in
+                if !isOffering { social.hideReported(share.id) }
+            }
     }
 
     private var handle: String {
@@ -462,8 +410,12 @@ private struct ReportShareConfirmation: ViewModifier {
         let share = self.share
         Task {
             guard await social.report(share, reason: reason) else { return }
-            // Still in the inbox (a block from elsewhere already removed it otherwise).
-            guard social.inbox.contains(where: { $0.id == share.id }) else { return }
+            // Still on screen (a refresh drops a reported quote, and the dialog with its card):
+            // offer to block. Otherwise there is no card left to keep.
+            guard social.inbox.contains(where: { $0.id == share.id }) else {
+                social.hideReported(share.id)
+                return
+            }
             isOfferingBlock = true
         }
     }
@@ -488,7 +440,7 @@ enum ReportUserContext: Sendable {
     }
 }
 
-/// "Report @maya?" with `ReportReason.allCases`, for a person rather than a quote (an offensive
+/// "Report @maya?" with `ReportReason.personReasons`, for a person rather than a quote (an offensive
 /// name, unwanted requests). `SocialStore.reportUser` files it and toasts "Thanks, we'll review it",
 /// then (unless they are already blocked) "Also block @maya?" offers to block them.
 ///
@@ -512,7 +464,7 @@ private struct ReportUserConfirmation: ViewModifier {
                 titleVisibility: .visible,
                 presenting: profile
             ) { profile in
-                ForEach(ReportReason.allCases) { reason in
+                ForEach(ReportReason.personReasons) { reason in
                     Button(reason.title) { file(reason, about: profile) }
                 }
                 Button("Cancel", role: .cancel) {}
@@ -548,7 +500,7 @@ private struct ReportUserConfirmation: ViewModifier {
         let offersBlock = context != .blockedUser
         Task {
             guard await social.reportUser(profile.id, reason: reason, details: details), offersBlock else { return }
-            guard !social.blockedProfiles.contains(where: { $0.id == profile.id }) else { return }
+            guard !social.blockedUsers.contains(where: { $0.id == profile.id }) else { return }
             blockCandidate = profile
         }
     }
@@ -558,18 +510,19 @@ private struct ReportUserConfirmation: ViewModifier {
     }
 }
 
-/// What blocking does, said the same way everywhere. Every claim holds on the server: the username
-/// lookup and friend requests ignore a blocked pair, shares need a friendship, and the block deletes
-/// the friendship and the shares in both directions.
+/// What blocking does, said the same way everywhere (docs/ui-spec.md, Report and block). Every claim
+/// holds on the server: the username lookup, friend requests and messages ignore a blocked pair,
+/// posts, playlists and the profile page are hidden from them, and the block ends the friendship and
+/// closes the conversation without deleting a message. "Account" until Settings replaces it.
 enum BlockCopy {
     static func consequences(name: String) -> String {
-        "\(name) won\u{2019}t be able to find you by username or send you requests or quotes. Your friendship and the quotes you\u{2019}ve shared with each other are removed. They aren\u{2019}t told. You can unblock them in Account."
+        "\(name) won\u{2019}t be able to find you or message you, and won\u{2019}t see your posts, playlists or profile. Your friendship ends. You keep your conversation, read only, so you can report from it. They aren\u{2019}t told. You can unblock them in Account."
     }
 }
 
 extension View {
-    /// Asks for a report reason, then reports `share`.
-    func reportShareConfirmation(isPresented: Binding<Bool>, share: SharedQuote) -> some View {
+    /// Asks for a report reason, then reports `share` (the message and its sender).
+    func reportShareConfirmation(isPresented: Binding<Bool>, share: InboxQuote) -> some View {
         modifier(ReportShareConfirmation(isPresented: isPresented, share: share))
     }
 
@@ -588,8 +541,8 @@ extension View {
         return modifier(ReportUserConfirmation(isPresented: isPresented, profile: item.wrappedValue, context: context))
     }
 
-    /// "Block @maya?" with what blocking does, then runs `block` (which removes the friendship,
-    /// requests and shares at once and toasts "Blocked @maya").
+    /// "Block @maya?" with what blocking does, then runs `block` (which removes the friendship and
+    /// requests at once and toasts "Blocked @maya").
     func blockConfirmation(
         isPresented: Binding<Bool>,
         name: String,
@@ -616,7 +569,7 @@ extension View {
 
 #Preview("Shared inbox empty") {
     let model = AppModel.preview()
-    model.social.seedPreview(friendships: Samples.friendships, inbox: [], me: Samples.alex.id)
+    model.social.seedPreview(friendships: Samples.friendships, conversations: [], messages: [], me: Samples.alex.id)
     return NavigationStack { SharedInboxView() }
         .previewEnvironment(model)
 }

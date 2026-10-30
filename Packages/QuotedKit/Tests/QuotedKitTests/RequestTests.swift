@@ -28,12 +28,13 @@ struct RequestTests {
         """
     }
 
-    static func shareJSON(_ id: UUID, sent: Bool = false) -> String {
-        let other = #"{"id":"\#(friend)","username":"bob","display_name":null}"#
-        return """
-        {"id":"\(id)","sender_id":"\(sent ? me : friend)","recipient_id":"\(sent ? friend : me)","quote_id":null,"body":"B",
-         "body_format":[],"author":null,"source":null,"note":null,"created_at":"2026-10-19T03:00:00Z","seen_at":null,
-         "saved_at":null,"\(sent ? "recipient" : "sender")":\(other)}
+    /// A `friendships` row with both embedded profiles.
+    static func friendshipJSON(_ id: UUID, other: UUID = friend) -> String {
+        """
+        {"id":"\(id)","requester_id":"\(other)","addressee_id":"\(me)","status":"accepted",
+         "created_at":"2026-10-19T03:00:00Z","responded_at":"2026-10-19T04:00:00Z",
+         "requester":{"id":"\(other)","username":"bob","display_name":null,"accepts_text_messages":true},
+         "addressee":{"id":"\(me)","username":"me","display_name":null,"accepts_text_messages":true}}
         """
     }
 
@@ -41,7 +42,11 @@ struct RequestTests {
         let server = StubServer { .notFound($0) }
         let backend = server.makeBackend()
         await #expect(throws: QuotedError.notSignedIn) { try await backend.quotes.fetchMine() }
-        await #expect(throws: QuotedError.notSignedIn) { try await backend.social.inbox() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.messages.inbox() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.posts.feed() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.profiles.myAccount() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.playlists.mine() }
+        await #expect(throws: QuotedError.notSignedIn) { try await backend.reports.report(.catalogQuote(1), reason: .wrongWording) }
         await #expect(throws: QuotedError.notSignedIn) { try await backend.account.deleteAccount() }
         await #expect(throws: QuotedError.notSignedIn) { try await backend.catalog.fetchLive() }
         await #expect(throws: QuotedError.notSignedIn) { try await backend.catalog.quote(id: 1) }
@@ -99,14 +104,13 @@ struct RequestTests {
         let ids = (0..<250).map { _ in UUID() }
         let server = StubServer { request in
             let offset = Int(request.query["offset"] ?? "") ?? 0
-            let rows = ids.dropFirst(offset).prefix(100).map { Self.shareJSON($0) }
+            let rows = ids.dropFirst(offset).prefix(100).map { Self.friendshipJSON($0) }
             return .page(Array(rows), offset: offset, total: ids.count)
         }
         let backend = try await server.makeSignedInBackend()
-        let inbox = try await backend.social.inbox()
-        #expect(inbox.map(\.id) == ids)
-        #expect(server.requests(table: "shares").map { $0.query["offset"] } == ["0", "100", "200"])
-        #expect(server.requests(table: "shares").allSatisfy { $0.query["recipient_id"] == "eq.\(Self.me.uuidString)" })
+        let friendships = try await backend.social.friendships()
+        #expect(friendships.map(\.id) == ids)
+        #expect(server.requests(table: "friendships").map { $0.query["offset"] } == ["0", "100", "200"])
     }
 
     @Test func pagingDropsRowsRepeatedAcrossPages() async throws {
@@ -115,13 +119,13 @@ struct RequestTests {
         let server = StubServer { request in
             let offset = Int(request.query["offset"] ?? "") ?? 0
             let rows = offset == 0
-                ? ids.prefix(500).map { Self.shareJSON($0, sent: true) }
-                : [ids[499], ids[500]].map { Self.shareJSON($0, sent: true) }
+                ? ids.prefix(500).map { Self.friendshipJSON($0) }
+                : [ids[499], ids[500]].map { Self.friendshipJSON($0) }
             return .page(rows, offset: offset, total: offset == 0 ? 501 : 502)
         }
         let backend = try await server.makeSignedInBackend()
-        let sent = try await backend.social.sent()
-        #expect(sent.map(\.id) == ids)
+        let friendships = try await backend.social.friendships()
+        #expect(friendships.map(\.id) == ids)
         #expect(server.requests.count == 2)
     }
 
@@ -243,29 +247,83 @@ struct RequestTests {
         #expect(server.requests.isEmpty)
     }
 
-    @Test func restoreUpsertsTheSameRow() async throws {
+    @Test func restoreInsertsTheSameRow() async throws {
         let id = UUID()
         let server = StubServer { request in
-            request.path == "/rest/v1/quotes" ? .json(201, Self.quoteJSON(id, body: "Back", position: 2, inserted: true)) : .notFound(request)
+            request.path == "/rest/v1/quotes" ? .json(201, "[\(Self.quoteJSON(id, body: "Back", position: 2, inserted: true))]") : .notFound(request)
         }
         let backend = try await server.makeSignedInBackend()
-        let original = Quote(id: id, body: "Back", author: "Ada", origin: .pasted, rotationPosition: 2)
+        let original = Quote(id: id, body: "Back", author: "Ada", origin: .pasted, rotationPosition: 2, creatorUsername: "me")
         let restored = try await backend.quotes.restore(original)
         #expect(restored.id == id)
         let request = try #require(server.requests(table: "quotes").first)
         #expect(request.method == "POST")
-        #expect(request.query["on_conflict"] == "id")
-        #expect(request.header("Accept") == "application/vnd.pgrst.object+json")
+        // A plain insert: an upsert would name id and origin in its update, which the grant refuses.
+        #expect(request.query["on_conflict"] == nil)
+        #expect(request.header("Prefer")?.contains("resolution") == false)
         let body = try #require(request.json as? [String: Any])
+        #expect(Set(body.keys) == ["id", "body", "body_format", "author", "source", "origin", "rotation_position", "is_favorite"])
         #expect(body["id"] as? String == id.uuidString)
         #expect(body["author"] as? String == "Ada")
         #expect(body["origin"] as? String == "pasted")
         #expect(body["rotation_position"] as? Int == 2)
-        #expect(body["created_at"] == nil && body["updated_at"] == nil, "timestamps are server-owned")
+        #expect(body["creator_username"] == nil, "the server restores provenance from its tombstone")
 
         await #expect(throws: QuotedError.validation("Write the quote first.")) {
             try await backend.quotes.restore(Quote(body: "  "))
         }
+    }
+
+    @Test func restoringAQuoteThatStillExistsReturnsIt() async throws {
+        let id = UUID()
+        let server = StubServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/rest/v1/quotes"):
+                .json(409, #"{"code":"23505","details":null,"hint":null,"message":"duplicate key value violates unique constraint \"quotes_pkey\""}"#)
+            case ("GET", "/rest/v1/quotes"): .json(200, "[\(Self.quoteJSON(id, body: "Back"))]")
+            default: .notFound(request)
+            }
+        }
+        let backend = try await server.makeSignedInBackend()
+        #expect(try await backend.quotes.restore(Quote(id: id, body: "Back")).id == id)
+    }
+
+    @Test func restoreRetryOfASharedQuoteReadsItBack() async throws {
+        // The first Undo restored the shared quote and used up its tombstone; the retry is refused
+        // by the provenance trigger (42501, before the primary key) and must read the quote back.
+        let id = UUID()
+        let server = StubServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/rest/v1/quotes"):
+                .json(403, #"{"code":"42501","details":null,"hint":null,"message":"origin \"shared\" is set by the server"}"#)
+            case ("GET", "/rest/v1/quotes"): .json(200, "[\(Self.quoteJSON(id, body: "Back", origin: "shared"))]")
+            default: .notFound(request)
+            }
+        }
+        let backend = try await server.makeSignedInBackend()
+        let restored = try await backend.quotes.restore(Quote(id: id, body: "Back", origin: .shared))
+        #expect(restored.id == id && restored.origin == .shared)
+        #expect(server.requests.first { $0.method == "GET" }?.query["id"] == "in.(\(id.uuidString))")
+
+        // Its tombstone gone and the quote not there: the refusal stands.
+        server.setHandler { request in
+            request.method == "POST"
+                ? .json(403, #"{"code":"42501","details":null,"hint":null,"message":"origin \"shared\" is set by the server"}"#)
+                : .json(200, "[]")
+        }
+        await #expect(throws: QuotedError.server("Permission denied: origin \"shared\" is set by the server")) {
+            try await backend.quotes.restore(Quote(id: id, body: "Back", origin: .shared))
+        }
+    }
+
+    @Test func createDoesNotReadBackAfterARefusal() async throws {
+        // A new quote of your own is never refused by a BEFORE INSERT check; only 23505 reads back.
+        let server = StubServer { request in
+            .json(403, #"{"code":"42501","details":null,"hint":null,"message":"new row violates row-level security policy for table \"quotes\""}"#)
+        }
+        let backend = try await server.makeSignedInBackend()
+        await #expect(throws: (any Error).self) { try await backend.quotes.create(QuoteDraft(body: "Hello")) }
+        #expect(server.requests.allSatisfy { $0.method == "POST" })
     }
 
     @Test func preWriteLookupsFailFastOffline() async throws {
@@ -275,59 +333,58 @@ struct RequestTests {
         // With the SDK's GET retries these would take 1 + 2 + 4 s each.
         let start = ContinuousClock.now
         await #expect(throws: QuotedError.network) { try await backend.quotes.nextRotationPosition() }
-        await #expect(throws: QuotedError.network) {
-            try await backend.quotes.importStarter([StarterQuote(id: 1, body: "One", author: "A", sortOrder: 1)], addToRotation: true)
-        }
+        await #expect(throws: QuotedError.network) { try await backend.playlists.add([UUID()], to: UUID()) }
         await #expect(throws: QuotedError.network) { try await backend.social.sendFriendRequest(toUsername: "bob") }
         #expect(ContinuousClock.now - start < .seconds(1))
     }
 
-    @Test func importStarterAppendsToTheRotation() async throws {
+    @Test func addCatalogQuotesIsOneCallWithClientIDs() async throws {
+        let ids = [UUID(), UUID()]
         let server = StubServer { request in
-            guard request.path == "/rest/v1/quotes" else { return .notFound(request) }
-            if request.method == "GET" { return .json(200, #"[{"rotation_position":4}]"#) }
-            return .json(201, "[\(Self.quoteJSON(UUID(), position: 6, origin: "starter")),\(Self.quoteJSON(UUID(), position: 5, origin: "starter"))]")
+            guard request.path == "/rest/v1/rpc/add_catalog_quotes" else { return .notFound(request) }
+            return .json(200, "[\(Self.quoteJSON(ids[0], position: 5, origin: "starter")),\(Self.quoteJSON(ids[1], position: 6, origin: "starter"))]")
         }
         let backend = try await server.makeSignedInBackend()
-        let starters = [StarterQuote(id: 1, body: "One", author: "A", sortOrder: 1), StarterQuote(id: 2, body: "Two", author: "B", sortOrder: 2)]
-        let imported = try await backend.quotes.importStarter(starters, addToRotation: true)
-        #expect(imported.map(\.rotationPosition) == [5, 6])
-        #expect(imported.allSatisfy { $0.origin == .starter })
+        let added = try await backend.quotes.addCatalogQuotes([1, 2], ids: ids, inReminders: true)
+        #expect(added.map(\.rotationPosition) == [5, 6])
+        #expect(added.allSatisfy { $0.origin == .starter })
+        #expect(server.requests(table: "quotes").isEmpty, "never a direct insert of catalog words")
 
-        let requests = server.requests(table: "quotes")
-        #expect(requests[0].query["order"] == "rotation_position.desc.nullslast")
-        #expect(requests[0].query["rotation_position"] == "not.is.null")
-        let rows = try #require(requests[1].json as? [[String: Any]])
-        #expect(rows.map { $0["rotation_position"] as? Int } == [5, 6])
-        #expect(rows.map { $0["origin"] as? String } == ["starter", "starter"])
-        #expect(rows.map { $0["author"] as? String } == ["A", "B"])
+        let call = try #require(server.requests.first)
+        #expect(call.method == "POST")
+        #expect(call.query["select"] == Columns.quote.filter { !$0.isWhitespace })
+        let body = try #require(call.json as? [String: Any])
+        #expect(Set(body.keys) == ["p_starter_ids", "p_ids", "p_in_reminders"])
+        #expect(body["p_starter_ids"] as? [Int] == [1, 2])
+        #expect((body["p_ids"] as? [String])?.map { $0.lowercased() } == ids.map { $0.uuidString.lowercased() })
+        #expect(body["p_in_reminders"] as? Bool == true)
+
+        #expect(try await backend.quotes.addCatalogQuotes([]).isEmpty)
+        #expect(server.requests.count == 1)
     }
 
-    @Test func importCatalogRecordsStarterOrCatalogOrigin() async throws {
+    @Test func addCatalogQuotesTakesAnyCatalogIDAndKeepsTheServersOrigin() async throws {
+        let ids = [UUID(), UUID()]
         let server = StubServer { request in
-            guard request.path == "/rest/v1/quotes" else { return .notFound(request) }
-            if request.method == "GET" { return .json(200, "[]") }
-            return .json(201, "[\(Self.quoteJSON(UUID(), position: 0, origin: "starter")),\(Self.quoteJSON(UUID(), position: 1, origin: "catalog"))]")
+            guard request.path == "/rest/v1/rpc/add_catalog_quotes" else { return .notFound(request) }
+            return .json(200, "[\(Self.quoteJSON(ids[0], origin: "starter")),\(Self.quoteJSON(ids[1], origin: "catalog"))]")
         }
         let backend = try await server.makeSignedInBackend()
-        let ids = [UUID(), UUID()]
+        // A starter and a Verified Quotes pick past the old smallint range.
         let picked = [
-            CatalogQuote(id: 4, body: " Starter ", author: "A", source: "W", isStarter: true, sortOrder: 4),
-            CatalogQuote(id: 61, body: "Batch", author: "B", source: "V", speaker: "Hamlet", themes: [.calm]),
+            CatalogQuote(id: 4, body: "Starter", author: "A", source: "W", isStarter: true, sortOrder: 4),
+            CatalogQuote(id: 40_000, body: "Batch", author: "B", source: "V", speaker: "Hamlet", themes: [.calm]),
         ]
-        let imported = try await backend.quotes.importCatalog(picked, ids: ids, addToRotation: true)
-        #expect(imported.map(\.origin) == [.starter, .catalog])
+        let added = try await backend.quotes.addCatalogQuotes(picked.map(\.id), ids: ids)
+        #expect(added.map(\.origin) == picked.map(\.libraryOrigin))
+        #expect(added.map(\.origin) == [.starter, .catalog])
+        #expect(server.requests(table: "quotes").isEmpty, "never a direct insert of catalog words")
 
-        let post = try #require(server.requests(table: "quotes").last)
-        #expect(post.method == "POST")
-        let rows = try #require(post.json as? [[String: Any]])
-        #expect(rows.map { $0["id"] as? String } == ids.map(\.uuidString))
-        #expect(rows.map { $0["origin"] as? String } == ["starter", "catalog"])
-        #expect(rows.map { $0["rotation_position"] as? Int } == [0, 1])
-        #expect(rows.map { $0["body"] as? String } == ["Starter", "Batch"])
-        #expect(rows.map { $0["source"] as? String } == ["W", "V"])
-        // Only quote columns travel: nothing about the catalog row itself.
-        #expect(rows.allSatisfy { $0["speaker"] == nil && $0["themes"] == nil && $0["verified_starter_id"] == nil })
+        let body = try #require(server.requests.first?.json as? [String: Any])
+        // Only ids travel: nothing about the catalog rows themselves.
+        #expect(Set(body.keys) == ["p_starter_ids", "p_ids", "p_in_reminders"])
+        #expect(body["p_starter_ids"] as? [Int] == [4, 40_000])
+        #expect(body["p_in_reminders"] as? Bool == false)
     }
 
     @Test func fetchLiveReadsLiveCatalogRowsInPages() async throws {
@@ -387,26 +444,64 @@ struct RequestTests {
         #expect(request.header("Accept") == "application/vnd.pgrst.object+json")
     }
 
-    @Test func saveSharedCopiesThenStampsSavedAt() async throws {
-        let shareID = UUID()
-        let server = StubServer { request in
-            switch (request.method, request.path) {
-            case ("POST", "/rest/v1/quotes"): .json(201, "[\(Self.quoteJSON(UUID(), body: "Gift", origin: "shared"))]")
-            case ("PATCH", "/rest/v1/shares"): .json(500, #"{"code":"XX000","message":"boom"}"#)
-            default: .notFound(request)
+    @Test func createAcceptsOnlyYourOwnWords() async throws {
+        let server = StubServer { .notFound($0) }
+        let backend = try await server.makeSignedInBackend()
+        for origin in [QuoteOrigin.starter, .shared, .catalog] {
+            await #expect(throws: QuotedError.self) {
+                try await backend.quotes.create(QuoteDraft(body: "x"), origin: origin)
             }
         }
-        let backend = try await server.makeSignedInBackend()
-        let share = SharedQuote(id: shareID, senderID: Self.friend, recipientID: Self.me, body: "Gift", createdAt: Date())
-        // The stamp fails, but the copy exists, so the save still succeeds.
-        let quote = try await backend.quotes.saveShared(share, addToRotation: false)
-        #expect(quote.origin == .shared)
-        let patch = try #require(server.requests(table: "shares").first)
-        #expect(patch.query["id"] == "eq.\(shareID.uuidString)")
-        #expect((patch.json as? [String: Any])?["saved_at"] is String)
+        #expect(server.requests.isEmpty)
+    }
 
-        let notMine = SharedQuote(id: UUID(), senderID: Self.me, recipientID: Self.friend, body: "x", createdAt: Date())
-        await #expect(throws: QuotedError.notFound) { try await backend.quotes.saveShared(notMine, addToRotation: false) }
+    @Test(arguments: [
+        (SnapshotRef.post(UUID(uuidString: "33333333-3333-4333-8333-333333333333")!), "save_from_post", ["p_post"]),
+        (.message(UUID(uuidString: "33333333-3333-4333-8333-333333333333")!), "save_from_message", ["p_message"]),
+        (.favorite(friendID: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!, handle: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!),
+         "save_from_favorite", ["p_friend", "p_handle"]),
+        (.playlistItem(playlistID: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!, handle: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!),
+         "save_from_playlist", ["p_playlist", "p_handle"]),
+    ])
+    func saveGoesThroughTheSourcesFunction(source: SnapshotRef, function: String, sourceKeys: [String]) async throws {
+        let id = UUID()
+        let server = StubServer { request in
+            request.path == "/rest/v1/rpc/\(function)"
+                ? .json(200, Self.quoteJSON(id, body: "Gift", origin: "shared"))
+                : .notFound(request)
+        }
+        let backend = try await server.makeSignedInBackend()
+        let quote = try await backend.quotes.save(source, id: id, inReminders: true)
+        #expect(quote.origin == .shared)
+        let call = try #require(server.requests.first)
+        #expect(call.header("Accept") == "application/vnd.pgrst.object+json")
+        let body = try #require(call.json as? [String: Any])
+        #expect(Set(body.keys) == Set(sourceKeys + ["p_id", "p_in_reminders"]))
+        #expect(body["p_id"] as? String == id.uuidString)
+        #expect(body["p_in_reminders"] as? Bool == true)
+        #expect(server.requests(table: "quotes").isEmpty)
+    }
+
+    @Test func saveACatalogQuoteAddsIt() async throws {
+        let id = UUID()
+        let server = StubServer { request in
+            request.path == "/rest/v1/rpc/add_catalog_quotes" ? .json(200, "[\(Self.quoteJSON(id, origin: "starter"))]") : .notFound(request)
+        }
+        let backend = try await server.makeSignedInBackend()
+        #expect(try await backend.quotes.save(.catalog(4), id: id).id == id)
+        let body = try #require(server.requests.first?.json as? [String: Any])
+        #expect(body["p_starter_ids"] as? [Int] == [4])
+        #expect(body["p_in_reminders"] as? Bool == false)
+    }
+
+    @Test func savingSomethingYouCantSeeIsUnavailable() async throws {
+        let server = StubServer { _ in
+            .json(403, #"{"code":"42501","details":null,"hint":null,"message":"This post is not available."}"#)
+        }
+        let backend = try await server.makeSignedInBackend()
+        await #expect(throws: QuotedError.unavailable("This post is not available.")) {
+            try await backend.quotes.save(.post(UUID()))
+        }
     }
 
     @Test func friendRequestLooksUpTheUsernameFirst() async throws {
@@ -418,7 +513,7 @@ struct RequestTests {
                     : .json(200, "[]")
             case ("GET", "/rest/v1/profiles"):
                 // myProfile(), asked only when the lookup is empty (your own name is never found).
-                .json(200, #"{"id":"\#(Self.me)","username":"myname","display_name":null}"#)
+                .json(200, #"{"id":"\#(Self.me)","username":"myname","display_name":null,"accepts_text_messages":true}"#)
             case ("POST", "/rest/v1/friendships"):
                 .json(403, #"{"code":"42501","details":null,"hint":null,"message":"new row violates row-level security policy for table \"friendships\""}"#)
             default: .notFound(request)
@@ -436,7 +531,7 @@ struct RequestTests {
         let insert = try #require(server.requests(table: "friendships").first)
         #expect((insert.json as? [String: Any])?["addressee_id"] as? String == Self.friend.uuidString)
         #expect(insert.query["select"]?.contains("requester:profiles!friendships_requester_id_fkey") == true)
-        // Only the columns find_profile returns: asking for any other (shows_favorites) fails with 42703.
+        // Only the columns find_profile returns: asking for any other (accepts_text_messages) fails with 42703.
         let lookup = try #require(server.requests(table: "rpc/find_profile").first)
         #expect(lookup.query["select"]?.filter { !$0.isWhitespace } == "id,username,display_name")
     }
@@ -473,10 +568,9 @@ struct RequestTests {
                 {"id":"\(quoteID)","body":"Hi","created_at":"2026-10-25T09:00:00+00:00","is_favorite":true,
                  "favorited_at":"2026-10-25T09:00:00+00:00"}
                 """)
-            case ("PATCH", "/rest/v1/profiles"):
-                .json(200, #"{"id":"\#(Self.me)","username":"me","display_name":null,"shows_favorites":true}"#)
+            case ("PATCH", "/rest/v1/profiles"): .noContent
             case ("POST", "/rest/v1/rpc/friend_favorites"):
-                .json(200, #"[{"id":"\#(UUID())","body":"Hope","body_format":[],"author":"Emily Dickinson","source":null,"verified_starter_id":null,"favorited_at":null}]"#)
+                .json(200, #"[{"id":"\#(UUID())","body":"Hope","body_format":[],"author":"Emily Dickinson","source":null,"verified_starter_id":null,"creator_username":"emily","edited_from_username":null,"favorited_at":null}]"#)
             default: .notFound(request)
             }
         }
@@ -489,14 +583,17 @@ struct RequestTests {
         #expect((heart.json as? [String: Any]).map { Set($0.keys) } == ["is_favorite"])
         #expect(heart.query["id"] == "eq.\(quoteID.uuidString)")
 
-        let profile = try await backend.social.setShowsFavorites(true)
-        #expect(profile.showsFavorites)
+        try await backend.profiles.setFavoritesVisibility(.friends)
         let setting = try #require(server.requests(table: "profiles").first)
-        #expect((setting.json as? [String: Any]).map { Set($0.keys) } == ["shows_favorites"])
+        #expect((setting.json as? [String: Any]) as NSDictionary? == ["favorites_visibility": "friends"])
         #expect(setting.query["id"] == "eq.\(Self.me.uuidString)")
+        // The column isn't readable through profiles, so nothing is asked back.
+        #expect(setting.header("Prefer") == "return=minimal")
+        #expect(setting.query["select"] == nil)
 
-        let favorites = try await backend.social.favorites(of: Self.friend)
+        let favorites = try await backend.profiles.favorites(of: Self.friend)
         #expect(favorites.map(\.author) == ["Emily Dickinson"])
+        #expect(favorites.first?.provenance.who(viewer: "me") == .person("emily"))
         let call = try #require(server.requests.first { $0.path == "/rest/v1/rpc/friend_favorites" })
         #expect((call.json as? [String: Any])?["p_user"] as? String == Self.friend.uuidString)
     }
@@ -516,7 +613,7 @@ struct RequestTests {
         #expect(friendships.first?.isIncomingRequest(for: Self.me) == true)
         let request = try #require(server.requests.first)
         #expect(request.query["or"] == "(requester_id.eq.\(Self.me.uuidString),addressee_id.eq.\(Self.me.uuidString))")
-        #expect(request.query["select"]?.contains("addressee:profiles!friendships_addressee_id_fkey(id,username,display_name,shows_favorites)") == true)
+        #expect(request.query["select"]?.contains("addressee:profiles!friendships_addressee_id_fkey(id,username,display_name,accepts_text_messages)") == true)
     }
 
     @Test func createProfileMapsTheUniqueUsername() async throws {
@@ -525,17 +622,20 @@ struct RequestTests {
         }
         let backend = try await server.makeSignedInBackend()
         await #expect(throws: QuotedError.usernameTaken) {
-            try await backend.social.createProfile(username: "Ada", displayName: "Ada L.")
+            try await backend.profiles.createProfile(username: "Ada", displayName: "Ada L.")
         }
         await #expect(throws: QuotedError.validation("Usernames need at least 3 characters.")) {
-            try await backend.social.createProfile(username: "ab")
+            try await backend.profiles.createProfile(username: "ab")
         }
         let requests = server.requests(table: "profiles")
         #expect(requests.count == 1)
         let body = try #require(requests.first?.json as? [String: Any])
+        // Only the insert grant's columns.
+        #expect(Set(body.keys) == ["id", "username", "display_name"])
         #expect(body["id"] as? String == Self.me.uuidString)
         #expect(body["username"] as? String == "ada")
         #expect(body["display_name"] as? String == "Ada L.")
+        #expect(requests.first?.query["select"] == Columns.profile.filter { !$0.isWhitespace })
     }
 
     @Test func blockIsIdempotent() async throws {
@@ -551,136 +651,15 @@ struct RequestTests {
         #expect(insert.header("Prefer") == "return=minimal")
     }
 
-    @Test func shareSendsOneSnapshotPerFriendAndRetriesWithoutTheLink() async throws {
-        let quote = Quote(body: "Shared words", format: [TextRun(start: 0, length: 6, italic: true)], author: "Me")
-        let server = StubServer { request in
-            guard request.path == "/rest/v1/shares" else { return .notFound(request) }
-            let rows = request.json as? [[String: Any]] ?? []
-            if rows.first?["quote_id"] is String {
-                return .json(403, #"{"code":"42501","message":"new row violates row-level security policy for table \"shares\""}"#)
-            }
-            return .json(201, """
-            [{"id":"\(UUID())","sender_id":"\(Self.me)","recipient_id":"\(Self.friend)","quote_id":null,"body":"Shared words",
-              "body_format":[{"start":0,"length":6,"italic":true}],"author":"Me","source":null,"note":"hi",
-              "created_at":"2026-10-19T03:00:00Z","seen_at":null,"saved_at":null,
-              "recipient":{"id":"\(Self.friend)","username":"bob","display_name":null}}]
-            """)
-        }
-        let backend = try await server.makeSignedInBackend()
-        await #expect(throws: QuotedError.validation("Choose at least one friend.")) {
-            try await backend.social.share(quote, to: [Self.me])
-        }
-        let sent = try await backend.social.share(quote, to: [Self.friend, Self.me, Self.friend], note: "  hi ")
-        #expect(sent.first?.recipient?.username == "bob")
-
-        let requests = server.requests(table: "shares")
-        #expect(requests.count == 2)
-        let first = try #require(requests[0].json as? [[String: Any]])
-        #expect(first.count == 1)
-        #expect(first[0]["recipient_id"] as? String == Self.friend.uuidString)
-        #expect(first[0]["quote_id"] as? String == quote.id.uuidString)
-        #expect(first[0]["note"] as? String == "hi")
-        #expect(first[0]["body"] as? String == "Shared words")
-        #expect((first[0]["body_format"] as? [[String: Any]])?.first?["italic"] as? Bool == true)
-        let retry = try #require(requests[1].json as? [[String: Any]])
-        #expect(retry[0]["quote_id"] is NSNull)
-    }
-
-    @Test func markSeenSendsLargeListsInBatches() async throws {
-        let server = StubServer { request in
-            request.path == "/rest/v1/shares" ? .noContent : .notFound(request)
-        }
-        let backend = try await server.makeSignedInBackend()
-        let ids = (0..<(SocialRepository.deleteBatchSize + 50)).map { _ in UUID() }
-        try await backend.social.markSeen(ids)
-        let patches = server.requests(table: "shares")
-        #expect(patches.count == 2)
-        #expect(patches.allSatisfy { $0.method == "PATCH" && $0.query["seen_at"]?.lowercased() == "is.null" })
-    }
-
     @Test func usernameAvailabilityAsksTheServerFunction() async throws {
         let server = StubServer { request in
             request.path == "/rest/v1/rpc/is_username_available" ? .json(200, "false") : .notFound(request)
         }
         let backend = try await server.makeSignedInBackend()
-        #expect(try await backend.social.isUsernameAvailable("@Support") == false)
+        #expect(try await backend.profiles.isUsernameAvailable("@Support") == false)
         let call = try #require(server.requests.first)
         #expect(call.method == "POST")
         #expect((call.json as? [String: Any])?["p_username"] as? String == "support")
-    }
-
-    @Test func shareRetryAfterALostAnswerReturnsTheSentShares() async throws {
-        let shareID = UUID()
-        let server = StubServer { request in
-            switch (request.method, request.path) {
-            case ("POST", "/rest/v1/shares"):
-                .json(409, #"{"code":"23505","details":null,"hint":null,"message":"duplicate key value violates unique constraint \"shares_pkey\""}"#)
-            case ("GET", "/rest/v1/shares"):
-                .json(200, "[\(Self.shareJSON(shareID, sent: true))]")
-            default: .notFound(request)
-            }
-        }
-        let backend = try await server.makeSignedInBackend()
-        let sent = try await backend.social.share(Quote(body: "B"), to: [Self.friend], ids: [Self.friend: shareID])
-        #expect(sent.map(\.id) == [shareID])
-        let insert = try #require(server.requests.first { $0.method == "POST" })
-        #expect((insert.json as? [[String: Any]])?.first?["id"] as? String == shareID.uuidString)
-        let read = try #require(server.requests.first { $0.method == "GET" })
-        #expect(read.query["sender_id"] == "eq.\(Self.me.uuidString)")
-    }
-
-    @Test func markSeenOnlyStampsUnseenReceivedShares() async throws {
-        let server = StubServer { _ in .noContent }
-        let backend = try await server.makeSignedInBackend()
-        try await backend.social.markSeen([])
-        #expect(server.requests.isEmpty)
-        let id = UUID()
-        try await backend.social.markSeen([id, id])
-        let request = try #require(server.requests(table: "shares").first)
-        #expect(request.method == "PATCH")
-        #expect(request.query["id"] == "in.(\(id.uuidString))")
-        #expect(request.query["recipient_id"] == "eq.\(Self.me.uuidString)")
-        #expect(request.query["seen_at"]?.lowercased() == "is.null")
-    }
-
-    @Test func markSavedOnlyStampsUnsavedReceivedShares() async throws {
-        let server = StubServer { _ in .noContent }
-        let backend = try await server.makeSignedInBackend()
-        try await backend.social.markSaved([])
-        #expect(server.requests.isEmpty)
-        let id = UUID()
-        try await backend.social.markSaved([id, id])
-        let request = try #require(server.requests(table: "shares").first)
-        #expect(request.method == "PATCH")
-        #expect(request.query["id"] == "in.(\(id.uuidString))")
-        #expect(request.query["recipient_id"] == "eq.\(Self.me.uuidString)")
-        #expect(request.query["saved_at"]?.lowercased() == "is.null")
-        let body = try #require(request.json as? [String: Any])
-        #expect(Set(body.keys) == ["saved_at"])
-    }
-
-    @Test func reportFallsBackToTheUserWhenTheShareIsGone() async throws {
-        let server = StubServer { request in
-            let body = request.json as? [String: Any]
-            if body?["share_id"] is String {
-                return .json(403, #"{"code":"42501","message":"new row violates row-level security policy for table \"reports\""}"#)
-            }
-            return .json(201, "")
-        }
-        let backend = try await server.makeSignedInBackend()
-        let share = SharedQuote(id: UUID(), senderID: Self.friend, recipientID: Self.me, body: "x", createdAt: Date())
-        try await backend.social.report(share: share, reason: .spam, details: "  ")
-        let requests = server.requests(table: "reports")
-        #expect(requests.count == 2)
-        let retry = try #require(requests[1].json as? [String: Any])
-        #expect(retry["share_id"] is NSNull)
-        #expect(retry["reported_user_id"] as? String == Self.friend.uuidString)
-        #expect(retry["reason"] as? String == "spam")
-        #expect(retry["details"] is NSNull)
-
-        await #expect(throws: QuotedError.validation("Details can be at most 500 characters.")) {
-            try await backend.social.report(share: share, reason: .other, details: String(repeating: "x", count: 501))
-        }
     }
 
     @Test func webSearchTapNeverThrowsAndAsksForNothingBack() async throws {
@@ -771,7 +750,7 @@ struct RequestTests {
         // Remove the server so the protocol fails the load like a dropped connection. (A PATCH: the
         // SDK retries failed GETs with backoff, which would only slow the test down.)
         StubRegistry.shared.unregister(server.id)
-        await #expect(throws: QuotedError.network) { try await backend.social.markSeen([UUID()]) }
+        await #expect(throws: QuotedError.network) { try await backend.messages.markRead(conversationID: UUID(), upTo: .now) }
     }
 
     @Test func authCallbackLinks() async throws {
@@ -827,23 +806,6 @@ struct RequestTests {
         #expect(try auth.storage.retrieve(key: auth.storageKey) == nil)
         #expect(server.requests.isEmpty)
         await #expect(throws: QuotedError.notSignedIn) { try await backend.quotes.fetchMine() }
-    }
-
-    @Test func deleteSharesBatchesIDs() async throws {
-        let server = StubServer { _ in .noContent }
-        let backend = try await server.makeSignedInBackend()
-        try await backend.social.deleteShares(ids: [])
-        #expect(server.requests.isEmpty)
-
-        let ids = (0..<250).map { _ in UUID() }
-        try await backend.social.deleteShares(ids: ids + ids.prefix(10))
-        let requests = server.requests(table: "shares")
-        #expect(requests.map(\.method) == ["DELETE", "DELETE", "DELETE"])
-        #expect(requests.allSatisfy { $0.header("Prefer") == "return=minimal" })
-        let sent = requests.flatMap { request in
-            (request.query["id"] ?? "").dropFirst(4).dropLast().split(separator: ",").compactMap { UUID(uuidString: String($0)) }
-        }
-        #expect(sent == ids)
     }
 
     @Test func signUpReportsConfirmation() async throws {

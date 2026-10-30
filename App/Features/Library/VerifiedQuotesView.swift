@@ -9,7 +9,8 @@ import SwiftUI
 /// (`CatalogTheme`). Tapping a row toggles it (check circle); quotes already in the library are
 /// dimmed and can't be picked. **Add N quotes** copies the picks into the library and the end of the
 /// reminders, in list order (`LibraryStore.importCatalog`), then closes. A failed add keeps the sheet
-/// open (the store showed a toast).
+/// open (the store showed a toast) and reloads the catalog, so a quote retired since the list loaded
+/// leaves it instead of failing every retry.
 struct VerifiedQuotesView: View {
     @Environment(CatalogStore.self) private var catalog
     @Environment(LibraryStore.self) private var library
@@ -184,8 +185,15 @@ struct VerifiedQuotesView: View {
         isImporting = true
         Task {
             let imported = await library.importCatalog(quotes)
+            guard imported else {
+                // The server adds only live catalog quotes and fails the whole add for one retired
+                // since the list loaded (23503). Reload before the next tap: a retired pick leaves the
+                // list, and `pickedQuotes` stops counting it.
+                await catalog.load(force: true)
+                isImporting = false
+                return
+            }
             isImporting = false
-            guard imported else { return }
             toasts.show(quotes.count == 1 ? "Added 1 quote" : "Added \(quotes.count) quotes", style: .success)
             dismiss()
         }

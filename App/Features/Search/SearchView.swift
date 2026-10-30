@@ -36,7 +36,7 @@ struct SearchView: View {
     init() {}
 
     var body: some View {
-        let results = indexCache.index(quotes: library.quotes, shared: social.inbox).search(router.searchText)
+        let results = indexCache.index(quotes: library.quotes, inbox: social.inbox).search(router.searchText)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.group) {
@@ -123,7 +123,7 @@ struct SearchView: View {
 
     /// The web row: log the tap (no term is stored) and open Google in the in-app browser. The user
     /// copies a quote there and closes it; the copied-quote card then offers Paste.
-    private func searchWeb(_ results: SearchResults) {
+    private func searchWeb(_ results: SearchIndexCache.Results) {
         recents.add(results.webQuery)
         model.logWebSearchTap()
         hideCopiedQuote()
@@ -247,7 +247,7 @@ private struct SuggestionChipStyle: ButtonStyle {
 
 /// The results for a non-empty query: library matches, shared matches, then the web row.
 private struct SearchResultsContent: View {
-    let results: SearchResults
+    let results: SearchIndexCache.Results
     let isLoading: Bool
     let onOpen: (Quote, [Quote]) -> Void
     let onWebSearch: () -> Void
@@ -357,11 +357,11 @@ private struct LibraryResultRow: View {
     }
 }
 
-/// A shared match: "Jordan Lee · yesterday", a Save (bookmark) button, then the quote.
-/// Tapping the quote opens the shared inbox, where it can be reported or the sender blocked.
-/// Save works as it does in the inbox: the quote goes to the library and the reminders.
+/// A shared match (a quote a friend sent): "Jordan Lee · yesterday", a Save (bookmark) button, then
+/// the quote. Tapping the quote opens the shared inbox, where it can be reported or the sender
+/// blocked. Save works as it does in the inbox: the quote goes to the library and the reminders.
 private struct SharedResultRow: View {
-    let share: SharedQuote
+    let share: InboxQuote
     let terms: [String]
 
     @Environment(LibraryStore.self) private var library
@@ -416,7 +416,7 @@ private struct SharedResultRow: View {
 
     @ViewBuilder
     private var saveButton: some View {
-        if share.isSaved {
+        if library.containsCopy(of: share) {
             Label("Saved", systemImage: "bookmark.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -627,20 +627,50 @@ private struct FlowLayout: Layout {
 }
 
 /// Keeps one `SearchIndex` per library and inbox, so each keystroke only searches (folding every
-/// quote happens once per data change, not per keystroke).
+/// quote happens once per data change, not per keystroke). The index searches the received quote
+/// messages; their matches come back as the inbox's `InboxQuote`s, with their senders.
 @MainActor
 private final class SearchIndexCache {
-    private var quotes: [Quote] = []
-    private var shared: [SharedQuote] = []
-    private var index: SearchIndex?
+    /// One search: `SearchResults` with the shared matches as `InboxQuote`s.
+    struct Results {
+        var library: [Quote]
+        var shared: [InboxQuote]
+        var webQuery: String
+        var webURL: URL
 
-    func index(quotes: [Quote], shared: [SharedQuote]) -> SearchIndex {
-        if let index, quotes == self.quotes, shared == self.shared {
+        var isEmpty: Bool { library.isEmpty && shared.isEmpty }
+    }
+
+    /// The index with the inbox it was built from.
+    struct Index {
+        let index: SearchIndex
+        let inbox: [UUID: InboxQuote]
+
+        func search(_ query: String) -> Results {
+            let results = index.search(query)
+            return Results(
+                library: results.library,
+                shared: results.inbox.compactMap { inbox[$0.id] },
+                webQuery: results.webQuery,
+                webURL: results.webURL
+            )
+        }
+    }
+
+    private var quotes: [Quote] = []
+    private var inbox: [InboxQuote] = []
+    private var index: Index?
+
+    func index(quotes: [Quote], inbox: [InboxQuote]) -> Index {
+        if let index, quotes == self.quotes, inbox == self.inbox {
             return index
         }
-        let built = SearchIndex(quotes: quotes, shared: shared)
+        let built = Index(
+            index: SearchIndex(quotes: quotes, inbox: inbox.map(\.message)),
+            inbox: Dictionary(inbox.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        )
         self.quotes = quotes
-        self.shared = shared
+        self.inbox = inbox
         index = built
         return built
     }

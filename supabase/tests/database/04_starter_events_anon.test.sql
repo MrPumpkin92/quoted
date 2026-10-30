@@ -1,9 +1,12 @@
 -- The catalog and its starter_quotes view (read-only), events (insert-only, anonymous) and anon
 -- (no access at all).
+-- Ported to 20261030030300_conversations_and_messages: shares became
+-- messages, so anon's share checks now cover conversations, conversation_members
+-- and messages (reading; updating a member row instead of a share). Removed: none.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(35);
+select plan(37);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -180,7 +183,9 @@ select throws_ok($$ select 1 from public.profiles $$, '42501', null, 'anon canno
 select throws_ok($$ select 1 from public.quotes $$, '42501', null, 'anon cannot read quotes');
 select throws_ok($$ select 1 from public.friendships $$, '42501', null, 'anon cannot read friendships');
 select throws_ok($$ select 1 from public.blocks $$, '42501', null, 'anon cannot read blocks');
-select throws_ok($$ select 1 from public.shares $$, '42501', null, 'anon cannot read shares');
+select throws_ok($$ select 1 from public.conversations $$, '42501', null, 'anon cannot read conversations');
+select throws_ok($$ select 1 from public.conversation_members $$, '42501', null, 'anon cannot read conversation members');
+select throws_ok($$ select 1 from public.messages $$, '42501', null, 'anon cannot read messages');
 select throws_ok($$ select 1 from public.reports $$, '42501', null, 'anon cannot read reports');
 select throws_ok($$ select 1 from public.starter_quotes $$, '42501', null, 'anon cannot read starter quotes');
 select throws_ok($$ select 1 from public.catalog_quotes $$, '42501', null, 'anon cannot read catalog quotes');
@@ -207,9 +212,9 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$ update public.shares set seen_at = now() $$,
+  $$ update public.conversation_members set last_read_at = now() $$,
   '42501', null,
-  'anon cannot update shares'
+  'anon cannot update conversation members'
 );
 
 select throws_ok(

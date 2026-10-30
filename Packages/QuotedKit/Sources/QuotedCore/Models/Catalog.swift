@@ -44,9 +44,10 @@ public enum CatalogStatus: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
-/// One verified quote from `catalog_quotes`: the onboarding starters (`isStarter`) and the catalog
-/// batches. Every one was checked word for word against a pinned public-domain edition
-/// (docs/catalog-sources.md). Read-only for clients.
+/// One Quoted Catalog quote from `catalog_quotes`: the onboarding starters (`isStarter`) and the
+/// catalog batches. Every one was checked word for word against a pinned public-domain edition
+/// (docs/catalog-sources.md). Read-only for clients; saved to a library through
+/// `add_catalog_quotes`, and posted or sent by its `id` (`starter_quote_id`).
 ///
 /// A library quote whose body, author and source match one exactly carries its `id` as
 /// `Quote.verifiedStarterID` (the server's seal; the wire name predates the catalog).
@@ -115,6 +116,14 @@ public struct CatalogQuote: Identifiable, Hashable, Sendable, RichTextContent {
 
     /// "author, source", or nil when neither is set.
     public var attribution: String? { RichText.attribution(author: author, source: source) }
+    /// Always checked, with no creator: "Quoted Catalog".
+    public var provenance: Provenance { .catalog(id) }
+    /// The provenance block's status line: "Checked word for word against <work>, <location>".
+    public var statusLine: String { ProvenanceCopy.statusLine(checked: true, work: source, location: sourceLocation) }
+    /// The quote as a snapshot.
+    public var snapshot: QuoteSnapshot {
+        QuoteSnapshot(body: body, format: format, author: author, source: source, verifiedStarterID: id)
+    }
 
     /// The theme the Verified Quotes list files it under: its first.
     public var primaryTheme: CatalogTheme? { themes.first }

@@ -19,9 +19,23 @@ public final class Backend: Sendable {
 
     public let config: SupabaseConfig
     public let auth: AuthService
+    /// Your library, and saving other people's quotes into it.
     public let quotes: QuotesRepository
+    /// Your account, terms and other people's profiles and profile pages.
+    public let profiles: ProfilesRepository
+    /// Friends and blocks.
     public let social: SocialRepository
+    /// Posts and the Feed.
+    public let posts: PostsRepository
+    /// Playlists, yours and the ones you can view.
+    public let playlists: PlaylistsRepository
+    /// Conversations, messages and the Inbox.
+    public let messages: MessagesRepository
+    /// Reports.
+    public let reports: ReportsRepository
+    /// The onboarding starters (`starter_quotes`).
     public let starter: StarterRepository
+    /// The Quoted Catalog (`catalog_quotes`): the Verified Quotes list and the seal's sources.
     public let catalog: CatalogRepository
     public let events: EventsRepository
     public let account: AccountService
@@ -73,7 +87,13 @@ public final class Backend: Sendable {
         self.client = client
         auth = AuthService(client: client, storage: authStorage, storageKey: storageKey)
         quotes = QuotesRepository(client: client)
-        social = SocialRepository(client: client)
+        let profiles = ProfilesRepository(client: client)
+        self.profiles = profiles
+        social = SocialRepository(client: client, profiles: profiles)
+        posts = PostsRepository(client: client)
+        playlists = PlaylistsRepository(client: client)
+        messages = MessagesRepository(client: client)
+        reports = ReportsRepository(client: client)
         starter = StarterRepository(client: client)
         catalog = CatalogRepository(client: client)
         events = EventsRepository(client: client)
@@ -84,7 +104,7 @@ public final class Backend: Sendable {
 
     /// The configuration of the backend's URL session: ephemeral, with no `URLCache`, no cookies and
     /// no credential store, and every request loaded from the network. Auth responses carry tokens
-    /// and PostgREST responses carry the user's library, inbox and friends, so none of it may land
+    /// and PostgREST responses carry the user's library, messages and friends, so none of it may land
     /// in `Library/Caches` (`URLSession.shared` would write it to `Cache.db`).
     ///
     /// Requests time out after ``requestTimeout`` without data and ``resourceTimeout`` in all, instead
@@ -137,6 +157,19 @@ extension SupabaseClient {
     func requireUserID() throws(QuotedError) -> UUID {
         guard let id = signedInUserID else { throw .notSignedIn }
         return id
+    }
+
+    /// Calls a read-only (STABLE) function as GET, so the SDK retries it after a dropped connection
+    /// or a 5xx the way it retries table reads (it retries only GET and HEAD; an RPC goes as POST by
+    /// default). Arguments become query items. `SupabaseClient.rpc` has no `get` option, so this goes
+    /// through the database client for `public`, the schema `Backend` configures (the default).
+    func readRPC(_ function: String) throws -> PostgrestFilterBuilder {
+        try schema("public").rpc(function, get: true)
+    }
+
+    /// ``readRPC(_:)`` with arguments (each one becomes a query item; leave out nil ones).
+    func readRPC(_ function: String, params: some Encodable) throws -> PostgrestFilterBuilder {
+        try schema("public").rpc(function, params: params, get: true)
     }
 }
 

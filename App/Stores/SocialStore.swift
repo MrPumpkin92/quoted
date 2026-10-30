@@ -31,12 +31,59 @@ struct FriendRequestResult: Hashable, Sendable {
     let message: String
 }
 
-/// Friends, requests, the shared inbox, blocks and reports.
+/// A quote a friend sent you: one quote message you received, with the friend who sent it (from the
+/// Inbox row of its conversation). "Shared with you", Search and the inbox alerts show these.
+struct InboxQuote: Identifiable, Hashable, Sendable {
+    let message: ConversationMessage
+    /// The server-built snapshot the message carries.
+    let quote: QuoteSnapshot
+    /// The sender's profile, when the Inbox row has it.
+    let sender: Profile?
+
+    /// Nil for a text or playlist message.
+    init?(message: ConversationMessage, sender: Profile?) {
+        guard case .quote(let quote, _) = message.content else { return nil }
+        self.message = message
+        self.quote = quote
+        self.sender = sender
+    }
+
+    var id: UUID { message.id }
+    var senderID: UUID { message.senderID }
+    var conversationID: UUID { message.conversationID }
+    /// The sender's note, if any.
+    var note: String? { message.note }
+    var createdAt: Date { message.createdAt }
+}
+
+/// A social write that waits for the Terms of Use (`SocialStore.requireTerms(for:then:)`). The Terms
+/// sheet (`.termsSheet()`) shows while one is pending.
+struct TermsRequest: Identifiable {
+    let id = UUID()
+    /// The screen or sheet that asked (see `SocialStore.dropTermsChecks(for:)`), if it can go away.
+    let owner: UUID?
+    /// "Updated Terms": this account accepted an earlier version.
+    let isUpdate: Bool
+    /// The version Accept agrees to (`my_account().current_terms_version`).
+    var version: Int
+    /// The write to run once the terms are accepted.
+    let action: @MainActor () async -> Void
+}
+
+/// Friends, requests, the quotes friends sent you, blocks, reports and the Terms of Use gate.
 ///
-/// The signed-in user's own profile lives in `SessionStore.profile`. Mutations are optimistic, roll
-/// back only what they changed and toast on failure, and return whether they worked. Server writes
-/// run under a `BackgroundTaskAssertion`. Refreshes are single-flight, and one that overlapped a write
-/// is dropped and repeated once the writes settle (see `WriteTracker`).
+/// The quotes friends sent are quote messages: each refresh reads your conversations
+/// (`inbox_conversations()`, with your read mark in each) and every quote message sent to you
+/// (`MessagesRepository.receivedQuotes()`, one query across conversations, read to the end), so an
+/// older quote is never cut off and one its sender unsent leaves at the next refresh. A quote is
+/// unseen while it is newer than your read mark in its conversation. Sending a quote opens your
+/// conversation with each friend and sends it there.
+///
+/// The signed-in user's own profile and account live in `SessionStore`. Mutations are optimistic,
+/// roll back only what they changed and toast on failure, and return whether they worked. Server
+/// writes run under a `BackgroundTaskAssertion`. Refreshes are single-flight, and one that overlapped
+/// a write is dropped and repeated once the writes settle (see `WriteTracker`). Friend requests,
+/// accepting one and sending need the current Terms of Use: run them through `requireTerms(for:then:)`.
 /// Inject with `@Environment(SocialStore.self)`.
 @Observable
 @MainActor
@@ -49,34 +96,55 @@ final class SocialStore {
     private(set) var incomingRequests: [Connection] = []
     /// Requests you sent, newest first.
     private(set) var outgoingRequests: [Connection] = []
-    /// Quotes shared with you, newest first (also cached for offline search).
-    private(set) var inbox: [SharedQuote] = []
-    /// People you blocked (load with `loadBlocked()`).
-    private(set) var blockedProfiles: [Profile] = []
+    /// Your conversations (`inbox_conversations()`), newest first, with your unread counts.
+    private(set) var conversations: [InboxConversation] = []
+    /// Quotes friends sent you, newest first (also cached for offline search).
+    private(set) var inbox: [InboxQuote] = []
+    /// The quotes in `inbox` that arrived after your read mark in their conversation.
+    private(set) var unreadInboxIDs: Set<UUID> = []
+    /// Quote messages you reported. The server hides them from you at once: Save is off for them,
+    /// and their card leaves once the "Also block?" offer is answered (`hideReported(_:)`).
+    private(set) var reportedMessageIDs: Set<UUID> = []
+    /// People you blocked (load with `loadBlocked()`). One who blocked you back has no profile.
+    private(set) var blockedUsers: [BlockedUser] = []
     /// True once the server has answered (or the cache was restored for the inbox).
     private(set) var hasLoaded = false
     /// True while `refresh()` runs.
     private(set) var isRefreshing = false
     /// The last refresh error, cleared by the next success.
     private(set) var lastError: QuotedError?
+    /// A social write waiting for the Terms of Use. `.termsSheet()` shows the Terms sheet while set.
+    private(set) var termsRequest: TermsRequest?
 
     // MARK: Dependencies
 
     @ObservationIgnored weak var library: LibraryStore?
+    /// Holds your account (the accepted Terms of Use version).
+    @ObservationIgnored weak var session: SessionStore?
     @ObservationIgnored private let backend: Backend
     @ObservationIgnored private let toasts: ToastCenter
     @ObservationIgnored private var lastRefreshed: Date?
-    /// Server writes in flight that change friends, requests, the inbox or blocks.
+    /// Server writes in flight that change friends, requests, read marks or blocks.
     @ObservationIgnored private var writes = WriteTracker()
     @ObservationIgnored private var refreshAfterWrites = false
     @ObservationIgnored private var refreshTask: Task<RefreshOutcome, Never>?
     @ObservationIgnored private var refreshSerial = 0
     /// Bumped by `reset()`, so results that arrive after a sign-out are dropped.
     @ObservationIgnored private var generation = 0
-    /// Share IDs of a send that failed, by quote, recipients and note, so Send again reuses them:
-    /// if the first attempt landed and only its answer was lost, the retry finds those shares
-    /// instead of sending a second copy (`SocialRepository.share(_:to:note:ids:)`).
-    @ObservationIgnored private var retryShareIDs: [ShareKey: [UUID: UUID]] = [:]
+    /// Every quote message sent to you, newest first, as the last refresh (or the cache) had them.
+    @ObservationIgnored private var receivedMessages: [ConversationMessage] = []
+    /// Reported quotes whose card stays until the "Also block?" offer is answered.
+    @ObservationIgnored private var reportsOnScreen: Set<UUID> = []
+    /// Message IDs of a send that failed, by quote, recipients and note, so Send again reuses them:
+    /// if the first attempt landed and only its answer was lost, the retry finds those messages
+    /// instead of sending a second copy (`MessagesRepository.send(_:in:id:)`).
+    @ObservationIgnored private var retrySendIDs: [SendKey: [UUID: UUID]] = [:]
+    /// Set when a write was refused for the terms although the account said they were accepted (a
+    /// newer version came out): the next `requireTerms(for:then:)` asks the server.
+    @ObservationIgnored private var termsMayBeOutdated = false
+    /// Terms checks waiting for the server, by check, with the screen or sheet that asked. A check
+    /// whose owner went away meanwhile (`dropTermsChecks(for:)`) is no longer here when it answers.
+    @ObservationIgnored private var termsChecks: [UUID: UUID] = [:]
 
     init(backend: Backend, toasts: ToastCenter) {
         self.backend = backend
@@ -85,68 +153,34 @@ final class SocialStore {
 
     // MARK: Derived
 
-    /// Shares you have not opened yet.
-    var unseenShares: [SharedQuote] { inbox.filter { !$0.isSeen } }
-    /// The number of unseen shares.
-    var unseenCount: Int { inbox.reduce(0) { $0 + ($1.isSeen ? 0 : 1) } }
-    /// The Friends tab badge: incoming requests plus unseen shares.
+    /// Quotes you have not opened yet.
+    var unseenQuotes: [InboxQuote] { inbox.filter { unreadInboxIDs.contains($0.id) } }
+    /// The number of unseen quotes.
+    var unseenCount: Int { unreadInboxIDs.count }
+    /// The Friends tab badge: incoming requests plus unseen quotes.
     var badgeCount: Int { incomingRequests.count + unseenCount }
     /// Your friends' profiles, by name (the share sheet).
     var friendProfiles: [Profile] { friends.map(\.profile) }
 
-    /// "From Maya", "From Maya and Jordan" or "From Maya, Jordan and 2 others" for unseen shares, or nil.
+    /// "From Maya", "From Maya and Jordan" or "From Maya, Jordan and 2 others" for unseen quotes, or nil.
     var unseenSummary: String? {
-        var names: [String] = []
-        for share in unseenShares {
-            let name = Self.firstName(share.sender?.displayName ?? "a friend")
-            if !names.contains(name) { names.append(name) }
-        }
-        switch names.count {
-        case 0: return nil
-        case 1: return "From \(names[0])"
-        case 2: return "From \(names[0]) and \(names[1])"
-        default:
-            let others = names.count - 2
-            return "From \(names[0]), \(names[1]) and \(others) \(others == 1 ? "other" : "others")"
-        }
+        Self.fromSummary(Self.senderNames(unseenQuotes))
     }
 
-    /// The senders of unseen shares, newest first, without repeats (for `AvatarStack`).
+    /// The senders of unseen quotes, newest first, without repeats (for `AvatarStack`).
     var unseenSenders: [Profile] {
-        var seen: Set<UUID> = []
-        return unseenShares.compactMap(\.sender).filter { seen.insert($0.id).inserted }
+        Self.senders(unseenQuotes)
     }
 
-    /// "From Maya", "From Maya and Jordan" or "From Maya, Jordan and 2 others" for every share in the
+    /// "From Maya", "From Maya and Jordan" or "From Maya, Jordan and 2 others" for every quote in the
     /// inbox (seen or not), or nil when it is empty. Friends' "N shared with you" row.
     var inboxSummary: String? {
-        Self.fromSummary(inboxSenderNames)
+        Self.fromSummary(Self.senderNames(inbox))
     }
 
-    /// The senders of every share in the inbox, newest first, without repeats (for `AvatarStack`).
+    /// The senders of every quote in the inbox, newest first, without repeats (for `AvatarStack`).
     var inboxSenders: [Profile] {
-        var seen: Set<UUID> = []
-        return inbox.compactMap(\.sender).filter { seen.insert($0.id).inserted }
-    }
-
-    private var inboxSenderNames: [String] {
-        var names: [String] = []
-        for share in inbox {
-            let name = Self.firstName(share.sender?.displayName ?? "a friend")
-            if !names.contains(name) { names.append(name) }
-        }
-        return names
-    }
-
-    private static func fromSummary(_ names: [String]) -> String? {
-        switch names.count {
-        case 0: return nil
-        case 1: return "From \(names[0])"
-        case 2: return "From \(names[0]) and \(names[1])"
-        default:
-            let others = names.count - 2
-            return "From \(names[0]), \(names[1]) and \(others) \(others == 1 ? "other" : "others")"
-        }
+        Self.senders(inbox)
     }
 
     /// Your connection (friend or request) with a user, if any.
@@ -156,9 +190,10 @@ final class SocialStore {
 
     // MARK: Loading
 
-    /// Fetches friendships and the inbox together. Calls made while a refresh runs join it; a result
-    /// that overlapped a write is dropped and fetched again once the writes settle. Failures set
-    /// `lastError`; with `userInitiated` they also toast. Returns whether the server answered.
+    /// Fetches friendships, conversations and the quote messages sent to you: three reads, whatever
+    /// the number of conversations. Calls made while a refresh runs join it; a result that overlapped
+    /// a write is dropped and fetched again once the writes settle. Failures set `lastError`; with
+    /// `userInitiated` they also toast. Returns whether the server answered.
     @discardableResult
     func refresh(userInitiated: Bool = false) async -> Bool {
         let outcome = await sharedRefresh()
@@ -174,17 +209,19 @@ final class SocialStore {
         await refresh()
     }
 
-    /// Loads `blockedProfiles` (Blocked users screen). A block or unblock still in flight keeps its
-    /// local result.
+    /// Loads `blockedUsers` (Blocked users screen). A block or unblock still in flight keeps its
+    /// local result. Someone who blocked you back comes without a profile; the one this session
+    /// already knew stays.
     @discardableResult
     func loadBlocked(toastOnFailure: Bool = true) async -> Bool {
         let generation = self.generation
         let token = writes.token
         do {
-            let profiles = try await backend.social.blockedProfiles()
+            let users = try await backend.social.blockedUsers()
             guard self.generation == generation else { return false }
             if writes.isQuiet(since: token) {
-                blockedProfiles = profiles
+                let known = Dictionary(blockedUsers.compactMap { user in user.profile.map { (user.id, $0) } }) { first, _ in first }
+                blockedUsers = users.map { BlockedUser(id: $0.id, profile: $0.profile ?? known[$0.id]) }
             }
             return true
         } catch {
@@ -195,19 +232,104 @@ final class SocialStore {
 
     // MARK: Profiles
 
-    /// A friend's profile (nil if it can't be read) and their favorites, newest first. The favorites
-    /// are empty unless you are friends, neither has blocked the other and they show them
-    /// (`public.friend_favorites`). Throws, so `ProfileView` can show its own error.
-    func profileAndFavorites(of userID: UUID) async throws -> (profile: Profile?, favorites: [FriendFavorite]) {
-        async let profile = backend.social.profile(id: userID)
-        async let favorites = backend.social.favorites(of: userID)
-        return try await (profile, favorites)
+    /// Someone's profile page (`profile_view`): their profile as it is now, how you stand with them,
+    /// and their favorites when they share them with you (nil when they don't). Nil when the profile
+    /// is gone or they blocked you. Throws, so `ProfileView` can show its own error.
+    func profilePage(of profile: Profile) async throws -> ProfilePage? {
+        try await backend.profiles.profileView(username: profile.username)
+    }
+
+    // MARK: Terms of Use
+
+    /// Runs `action` (a friend request, accepting one, a send) once the current Terms of Use are
+    /// accepted (docs/ui-spec.md §22), and returns when it has run, the Terms sheet is up, or the
+    /// check failed (toasted). Accepted already: it runs now. Otherwise the Terms sheet stacks over
+    /// whatever asked; Accept runs it, Not Now drops it. The account's cached answer is trusted only
+    /// when it says yes; anything else asks the server first, so keep the control's progress on
+    /// while this awaits. A request still waiting is replaced by the newer one: a tap is never
+    /// dropped without a word.
+    ///
+    /// `owner` names the screen or sheet that asked: when it goes away (it calls
+    /// `dropTermsChecks(for:)` from `onDisappear`) before the server answers, the answer shows
+    /// nothing and runs nothing, so a send the user cancelled never comes back as a Terms sheet over
+    /// another screen. A cancelled task drops its check the same way.
+    func requireTerms(for owner: UUID? = nil, then action: @escaping @MainActor () async -> Void) async {
+        guard let session, termsMayBeOutdated || session.account?.hasAcceptedCurrentTerms != true else {
+            await action()
+            return
+        }
+        let generation = self.generation
+        let check = UUID()
+        if let owner { termsChecks[check] = owner }
+        let account: MyAccount?
+        do {
+            account = try await session.reloadAccount()
+        } catch {
+            guard takeTermsCheck(check, owner: owner), self.generation == generation else { return }
+            toasts.show(error: error)
+            return
+        }
+        guard takeTermsCheck(check, owner: owner), self.generation == generation, let account else { return }
+        termsMayBeOutdated = false
+        if account.hasAcceptedCurrentTerms {
+            await action()
+        } else {
+            termsRequest = TermsRequest(
+                owner: owner, isUpdate: account.needsUpdatedTerms, version: account.currentTermsVersion, action: action
+            )
+        }
+    }
+
+    /// The screen or sheet `owner` went away: its terms checks still waiting for the server end
+    /// without a word, and its write waiting on the Terms sheet is dropped (the sheet closes).
+    func dropTermsChecks(for owner: UUID) {
+        termsChecks = termsChecks.filter { $0.value != owner }
+        if termsRequest?.owner == owner { termsRequest = nil }
+    }
+
+    /// Ends a terms check: whether its answer still counts (its task was not cancelled, and its
+    /// owner, if any, is still there).
+    private func takeTermsCheck(_ check: UUID, owner: UUID?) -> Bool {
+        let ownerStayed = owner == nil || termsChecks.removeValue(forKey: check) != nil
+        return ownerStayed && !Task.isCancelled
+    }
+
+    /// Accept on the Terms sheet: `accept_terms(version)`, then closes the sheet and runs the waiting
+    /// write. A failure toasts and keeps the sheet (when the terms changed meanwhile, the next Accept
+    /// agrees to the new version). Returns whether it worked.
+    @discardableResult
+    func acceptTerms() async -> Bool {
+        guard let request = termsRequest else { return false }
+        let generation = self.generation
+        let assertion = BackgroundTaskAssertion("Accept terms")
+        defer { assertion.end() }
+        do {
+            try await backend.profiles.acceptTerms(version: request.version)
+            guard self.generation == generation, termsRequest?.id == request.id else { return false }
+            session?.noteTermsAccepted(version: request.version)
+            termsMayBeOutdated = false
+            termsRequest = nil
+            await request.action()
+            return true
+        } catch {
+            guard self.generation == generation else { return false }
+            toasts.show(error: error)
+            if let account = try? await session?.reloadAccount(), termsRequest?.id == request.id {
+                termsRequest?.version = account.currentTermsVersion
+            }
+            return false
+        }
+    }
+
+    /// Not Now on the Terms sheet (or a swipe down): drops the waiting write.
+    func cancelTerms() {
+        termsRequest = nil
     }
 
     // MARK: Requests
 
     /// Sends a friend request by exact username ("@maya" or "maya"), shows the result as a toast and
-    /// returns it.
+    /// returns it. Run it through `requireTerms(for:then:)`.
     @discardableResult
     func sendRequest(toUsername input: String) async -> FriendRequestResult {
         let handle = "@\(Username.normalize(input))"
@@ -230,6 +352,7 @@ final class SocialStore {
             Haptics.success()
         } catch {
             let mapped = QuotedError(error)
+            noteRefusal(mapped)
             let message = mapped == .notFound
                 ? "No user named \(handle)"
                 : (ToastCenter.message(for: mapped) ?? mapped.userMessage)
@@ -239,7 +362,7 @@ final class SocialStore {
         return result
     }
 
-    /// Accepts an incoming request.
+    /// Accepts an incoming request. Run it through `requireTerms(for:then:)`.
     @discardableResult
     func accept(_ request: Connection) async -> Bool {
         guard incomingRequests.contains(where: { $0.id == request.id }) else { return false }
@@ -259,6 +382,7 @@ final class SocialStore {
             return true
         } catch {
             guard self.generation == generation else { return false }
+            noteRefusal(QuotedError(error))
             // Undo only this accept: other requests may have changed meanwhile.
             friends.removeAll { $0.id == request.id }
             reinsert(request)
@@ -280,7 +404,7 @@ final class SocialStore {
         await removeConnection(request)
     }
 
-    /// Unfriends.
+    /// Unfriends. Your conversation stays, read only, until you are friends again.
     @discardableResult
     func removeFriend(_ friend: Connection) async -> Bool {
         await removeConnection(friend)
@@ -288,20 +412,19 @@ final class SocialStore {
 
     // MARK: Blocks and reports
 
-    /// Blocks a user. Their friendship, requests and shares disappear at once (the server deletes them
-    /// too). Shows "Blocked @name".
+    /// Blocks a user. Their friendship and requests disappear at once (the server ends them too and
+    /// closes your conversation; its messages stay, read only, so they can still be reported). Shows
+    /// "Blocked @name".
     @discardableResult
     func block(_ profile: Profile) async -> Bool {
         let generation = self.generation
         let removedConnections = (friends + incomingRequests + outgoingRequests).filter { $0.profile.id == profile.id }
-        let removedShares = inbox.filter { $0.senderID == profile.id }
-        let wasBlocked = blockedProfiles.contains { $0.id == profile.id }
+        let wasBlocked = blockedUsers.contains { $0.id == profile.id }
         friends.removeAll { $0.profile.id == profile.id }
         incomingRequests.removeAll { $0.profile.id == profile.id }
         outgoingRequests.removeAll { $0.profile.id == profile.id }
-        inbox.removeAll { $0.senderID == profile.id }
         if !wasBlocked {
-            blockedProfiles.insert(profile, at: 0)
+            blockedUsers.insert(BlockedUser(profile), at: 0)
         }
         beginWrite()
         let assertion = BackgroundTaskAssertion("Block user")
@@ -312,7 +435,6 @@ final class SocialStore {
         do {
             try await backend.social.block(userID: profile.id)
             guard self.generation == generation else { return false }
-            library?.writeCache()
             Haptics.warning()
             toasts.show("Blocked \(profile.handle)")
             return true
@@ -320,29 +442,28 @@ final class SocialStore {
             guard self.generation == generation else { return false }
             // Put back only what this block removed.
             for connection in removedConnections { reinsert(connection) }
-            let present = Set(inbox.map(\.id))
-            inbox = Self.newestFirst(inbox + removedShares.filter { !present.contains($0.id) })
-            if !wasBlocked { blockedProfiles.removeAll { $0.id == profile.id } }
+            if !wasBlocked { blockedUsers.removeAll { $0.id == profile.id } }
             refreshAfterWrites = true
             toasts.show(error: error)
             return false
         }
     }
 
-    /// Blocks the sender of a share (uses the embedded sender profile when there is one).
+    /// Blocks the sender of a quote (uses the Inbox row's profile when there is one).
     @discardableResult
-    func blockSender(of share: SharedQuote) async -> Bool {
-        let profile = share.sender ?? connection(with: share.senderID)?.profile
-            ?? Profile(id: share.senderID, username: "user")
+    func blockSender(of item: InboxQuote) async -> Bool {
+        let profile = item.sender ?? connection(with: item.senderID)?.profile
+            ?? Profile(id: item.senderID, username: "user")
         return await block(profile)
     }
 
-    /// Unblocks a user. Removed friendships and shares do not come back.
+    /// Unblocks a user (also one who blocked you back, whose profile you can't see). The friendship
+    /// the block ended does not come back.
     @discardableResult
-    func unblock(_ profile: Profile) async -> Bool {
+    func unblock(_ user: BlockedUser) async -> Bool {
         let generation = self.generation
-        let index = blockedProfiles.firstIndex { $0.id == profile.id }
-        blockedProfiles.removeAll { $0.id == profile.id }
+        let index = blockedUsers.firstIndex { $0.id == user.id }
+        blockedUsers.removeAll { $0.id == user.id }
         beginWrite()
         let assertion = BackgroundTaskAssertion("Unblock user")
         defer {
@@ -350,27 +471,36 @@ final class SocialStore {
             endWrite()
         }
         do {
-            try await backend.social.unblock(userID: profile.id)
+            try await backend.social.unblock(userID: user.id)
             guard self.generation == generation else { return false }
-            toasts.show("Unblocked \(profile.handle)")
+            toasts.show(user.profile.map { "Unblocked \($0.handle)" } ?? "Unblocked")
             return true
         } catch {
             guard self.generation == generation else { return false }
-            if let index, !blockedProfiles.contains(where: { $0.id == profile.id }) {
-                blockedProfiles.insert(profile, at: min(index, blockedProfiles.count))
+            if let index, !blockedUsers.contains(where: { $0.id == user.id }) {
+                blockedUsers.insert(user, at: min(index, blockedUsers.count))
             }
             toasts.show(error: error)
             return false
         }
     }
 
-    /// Reports a share you received. Shows "Thanks, we'll review it".
+    /// Reports a quote a friend sent you (the message and its sender; the server copies the content).
+    /// Shows "Thanks, we'll review it". The server hides the message from you at once: Save turns off
+    /// for it, and its card stays only until `hideReported(_:)` (after the "Also block?" offer).
     @discardableResult
-    func report(_ share: SharedQuote, reason: ReportReason, details: String? = nil) async -> Bool {
+    func report(_ item: InboxQuote, reason: ReportReason, details: String? = nil) async -> Bool {
         let assertion = BackgroundTaskAssertion("Report quote")
         defer { assertion.end() }
         do {
-            try await backend.social.report(share: share, reason: reason, details: details)
+            try await backend.reports.report(
+                .message(id: item.id, senderID: item.senderID),
+                reason: reason,
+                details: details,
+                seen: ReportContent(message: item.message)
+            )
+            reportedMessageIDs.insert(item.id)
+            reportsOnScreen.insert(item.id)
             toasts.show("Thanks, we\u{2019}ll review it", style: .success)
             return true
         } catch {
@@ -379,14 +509,14 @@ final class SocialStore {
         }
     }
 
-    /// Reports a user without a specific share (a friend or request row, a profile). Shows "Thanks,
+    /// Reports a user without a specific quote (a friend or request row, a profile). Shows "Thanks,
     /// we'll review it".
     @discardableResult
     func reportUser(_ userID: UUID, reason: ReportReason, details: String? = nil) async -> Bool {
         let assertion = BackgroundTaskAssertion("Report user")
         defer { assertion.end() }
         do {
-            try await backend.social.report(userID: userID, reason: reason, details: details)
+            try await backend.reports.report(.profile(userID: userID), reason: reason, details: details)
             toasts.show("Thanks, we\u{2019}ll review it", style: .success)
             return true
         } catch {
@@ -395,44 +525,43 @@ final class SocialStore {
         }
     }
 
-    /// Reports a share, then blocks its sender, in the order the server needs (a block deletes the
-    /// share, so the report must be filed first).
-    @discardableResult
-    func reportAndBlock(_ share: SharedQuote, reason: ReportReason, details: String? = nil) async -> Bool {
-        guard await report(share, reason: reason, details: details) else { return false }
-        return await blockSender(of: share)
-    }
+    // MARK: Sending
 
-    // MARK: Sharing
-
-    /// Sends `quote` to friends with an optional note (up to 280 characters) at once and shows "Sent to
-    /// Maya" with Undo for 5 seconds; Undo deletes the sent shares. Returns false (with a toast) when
-    /// there is no recipient or the note is too long; the sheet can dismiss on true. A send that then
-    /// fails shows "Couldn't send. …". Prefer `send(_:to:note:)` when the sheet should stay open on
-    /// failure.
-    @discardableResult
-    func share(_ quote: Quote, to recipientIDs: [UUID], note: String? = nil) -> Bool {
-        guard let outgoing = prepareShare(quote, to: recipientIDs, note: note) else { return false }
-        let attempt = ShareAttempt()
-        let sending = startSending(outgoing, attempt: attempt)
-        toasts.show(outgoing.message) { [weak self] in
-            await self?.unsend(sending, outgoing: outgoing, attempt: attempt)
-        }
-        Haptics.success()
-        return true
-    }
-
-    /// Like `share(_:to:note:)`, but waits for the server: on success shows "Sent to Maya" with Undo
-    /// and returns true (dismiss the sheet); on failure toasts "Couldn't send. …" and returns false, so
-    /// the sheet keeps the selection and the note. Show progress on Send while it runs.
+    /// Sends one of your quotes to friends with an optional note (up to 280 characters): one quote
+    /// message in your conversation with each friend (`open_conversation`, then the message), each
+    /// with its own ID. Waits for the server; show progress on Send while it runs. Run it through
+    /// `requireTerms(for:then:)`.
+    ///
+    /// - All sent: "Sent to Maya" with Undo for 5 seconds (Undo unsends them); returns true.
+    /// - Some failed: "Sent to Maya. Couldn't send to @sam." with Undo for the ones delivered; true.
+    /// - All failed: toasts the error and returns false, so the sheet keeps the selection and note.
+    ///   Send again reuses the message IDs, so a first try whose answer was lost isn't sent twice.
     @discardableResult
     func send(_ quote: Quote, to recipientIDs: [UUID], note: String? = nil) async -> Bool {
-        guard let outgoing = prepareShare(quote, to: recipientIDs, note: note) else { return false }
-        let attempt = ShareAttempt()
-        let sending = startSending(outgoing, attempt: attempt)
-        guard await sending.value != nil else { return false }
-        toasts.show(outgoing.message) { [weak self] in
-            await self?.unsend(sending, outgoing: outgoing, attempt: attempt)
+        guard let outgoing = prepareSend(quote, to: recipientIDs, note: note) else { return false }
+        let generation = self.generation
+        let assertion = BackgroundTaskAssertion("Send quote")
+        defer { assertion.end() }
+        let results = await Self.deliver(outgoing, backend: backend)
+        guard self.generation == generation else { return false }
+        let delivered = outgoing.recipients.compactMap { id in results.sent[id].map { (recipient: id, messageID: $0) } }
+        let failed = outgoing.recipients.filter { results.failed[$0] != nil }
+        for error in results.failed.values { noteRefusal(error) }
+        guard !delivered.isEmpty else {
+            retrySendIDs[outgoing.key] = outgoing.messageIDs
+            let error = outgoing.recipients.lazy.compactMap { results.failed[$0] }.first ?? .server("Nothing was sent")
+            Logger.social.error("Send failed: \(String(describing: error), privacy: .public)")
+            toasts.show(error: error, failure: "Couldn\u{2019}t send")
+            return false
+        }
+        retrySendIDs[outgoing.key] = nil
+        var message = Self.sentMessage(delivered.map { name(of: $0.recipient) })
+        if !failed.isEmpty {
+            message += ". " + Self.notSentMessage(failed.map { handle(of: $0) })
+        }
+        let sentIDs = delivered.map(\.messageID)
+        toasts.show(message) { [weak self] in
+            await self?.unsend(sentIDs, generation: generation)
         }
         Haptics.success()
         return true
@@ -440,84 +569,63 @@ final class SocialStore {
 
     // MARK: Inbox
 
-    /// Marks every unseen share as seen (opening Friends or the inbox). Optimistic; failures are logged.
+    /// Marks the conversations with an unseen quote read (opening Friends or the inbox), each up to
+    /// the newest quote the app shows from it (`InboxConversation.seenMarks`), so those quotes count
+    /// as seen. Nothing later: a message the app has not fetched or shown (a text, or a quote that
+    /// arrived after the last refresh) stays unread and comes up as new. Optimistic; failures are
+    /// logged.
     func markInboxSeen() async {
-        await markSeen(unseenShares)
-    }
-
-    /// Marks specific shares as seen.
-    func markSeen(_ shares: [SharedQuote]) async {
-        let ids = Set(shares.filter { !$0.isSeen }.map(\.id))
-        guard !ids.isEmpty else { return }
-        let generation = self.generation
-        let now = Date.now
-        for index in inbox.indices where ids.contains(inbox[index].id) {
-            inbox[index].seenAt = now
+        let shown = inbox.map(\.message)
+        let times = InboxConversation.seenMarks(conversations, shown: shown)
+        var marks: [(id: UUID, time: Date)] = []
+        for index in conversations.indices {
+            guard let time = times[conversations[index].id] else { continue }
+            marks.append((conversations[index].id, time))
+            conversations[index] = conversations[index].markedRead(upTo: time, shown: shown)
         }
+        guard !marks.isEmpty else { return }
+        let generation = self.generation
+        rebuildInbox()
         beginWrite()
         defer { endWrite() }
-        do {
-            try await backend.social.markSeen(Array(ids))
-            guard self.generation == generation else { return }
-            library?.writeCache()
-        } catch {
-            Logger.social.error("Marking shares seen failed: \(String(describing: QuotedError(error)), privacy: .public)")
+        let backend = self.backend
+        let failures = await withTaskGroup(of: Bool.self) { group in
+            for mark in marks {
+                group.addTask {
+                    do {
+                        try await backend.messages.markRead(conversationID: mark.id, upTo: mark.time)
+                        return false
+                    } catch {
+                        return !(error is CancellationError)
+                    }
+                }
+            }
+            var count = 0
+            for await failed in group where failed { count += 1 }
+            return count
         }
-    }
-
-    /// Deletes shares from your inbox (swipe to delete). They disappear at once; on failure they come
-    /// back with a toast. Returns whether the server deleted them.
-    @discardableResult
-    func deleteShares(_ ids: [UUID]) async -> Bool {
-        let targets = Set(ids)
-        guard !targets.isEmpty else { return true }
-        let generation = self.generation
-        let removed = inbox.filter { targets.contains($0.id) }
-        inbox.removeAll { targets.contains($0.id) }
-        library?.writeCache()
-        beginWrite()
-        let assertion = BackgroundTaskAssertion("Delete shared quotes")
-        defer {
-            assertion.end()
-            endWrite()
-        }
-        do {
-            try await backend.social.deleteShares(ids: ids)
-            return true
-        } catch {
-            guard self.generation == generation else { return false }
-            let present = Set(inbox.map(\.id))
-            inbox = Self.newestFirst(inbox + removed.filter { !present.contains($0.id) })
-            library?.writeCache()
+        guard self.generation == generation else { return }
+        if failures > 0 {
+            Logger.social.error("Marking \(failures, privacy: .public) conversations read failed")
             refreshAfterWrites = true
-            toasts.show(error: error, failure: "Couldn\u{2019}t delete")
-            return false
         }
+        library?.writeCache()
     }
 
-    /// Records locally that a share was saved (called by `LibraryStore.saveShared`).
-    func markSavedLocally(_ shareID: UUID) {
-        guard let index = inbox.firstIndex(where: { $0.id == shareID }) else { return }
-        let now = Date.now
-        if inbox[index].savedAt == nil { inbox[index].savedAt = now }
-        if inbox[index].seenAt == nil { inbox[index].seenAt = now }
+    /// The card of a reported quote can go now (the "Also block?" offer was answered).
+    func hideReported(_ messageID: UUID) {
+        guard reportsOnScreen.remove(messageID) != nil else { return }
+        rebuildInbox()
+        library?.writeCache()
     }
 
-    /// `LibraryStore.saveShared` stamps the share's `saved_at` on the server: count it as a write so
-    /// a refresh that overlaps it does not flip the share back to unsaved.
-    func noteWriteStarted() {
-        beginWrite()
-    }
-
-    /// The end of a write announced with `noteWriteStarted()`.
-    func noteWriteEnded() {
-        endWrite()
-    }
-
-    /// Shows the cached inbox before the first refresh (called by `LibraryStore.prepare`).
-    func restoreCachedInbox(_ shares: [SharedQuote]) {
+    /// Shows the cached inbox (with each conversation's read mark) before the first refresh (called
+    /// by `LibraryStore.prepare`). The first refresh replaces it.
+    func restoreCachedInbox(messages: [ConversationMessage], conversations: [InboxConversation]) {
         guard !hasLoaded else { return }
-        inbox = shares
+        self.conversations = conversations
+        receivedMessages = Self.newestFirst(messages)
+        rebuildInbox()
     }
 
     // MARK: Reset
@@ -527,23 +635,33 @@ final class SocialStore {
         friends = []
         incomingRequests = []
         outgoingRequests = []
+        conversations = []
         inbox = []
-        blockedProfiles = []
+        unreadInboxIDs = []
+        reportedMessageIDs = []
+        blockedUsers = []
         hasLoaded = false
         isRefreshing = false
         lastError = nil
+        termsRequest = nil
+        termsChecks = [:]
         lastRefreshed = nil
         refreshAfterWrites = false
         refreshTask = nil
         refreshSerial += 1
         generation += 1
-        retryShareIDs = [:]
+        receivedMessages = []
+        reportsOnScreen = []
+        retrySendIDs = [:]
+        termsMayBeOutdated = false
     }
 
     /// Seeds state for SwiftUI previews.
-    func seedPreview(friendships: [Friendship], inbox: [SharedQuote], me: UUID) {
+    func seedPreview(friendships: [Friendship], conversations: [InboxConversation], messages: [ConversationMessage], me: UUID) {
         apply(friendships, me: me)
-        self.inbox = inbox
+        self.conversations = conversations
+        receivedMessages = Self.newestFirst(messages.filter { $0.senderID != me })
+        rebuildInbox()
         hasLoaded = true
     }
 
@@ -573,8 +691,9 @@ final class SocialStore {
         defer { isRefreshing = false }
         do {
             async let friendships = backend.social.friendships()
-            async let shares = backend.social.inbox()
-            let (rows, received) = try await (friendships, shares)
+            async let inboxRows = backend.messages.inbox()
+            async let received = backend.messages.receivedQuotes()
+            let (rows, fetchedConversations, messages) = try await (friendships, inboxRows, received)
             // The user may have signed out (or switched) while the request was in flight.
             guard backend.auth.currentUserID == me, self.generation == generation else { return .skipped }
             guard writes.isQuiet(since: token) else {
@@ -584,7 +703,9 @@ final class SocialStore {
                 return .superseded
             }
             apply(rows, me: me)
-            inbox = received
+            conversations = fetchedConversations
+            receivedMessages = messages
+            rebuildInbox()
             hasLoaded = true
             lastError = nil
             lastRefreshed = .now
@@ -599,6 +720,24 @@ final class SocialStore {
             Logger.social.error("Social refresh failed: \(String(describing: mapped), privacy: .public)")
             return .failed(mapped)
         }
+    }
+
+    /// Rebuilds `inbox` and `unreadInboxIDs` from the received quote messages and the conversations
+    /// (the sender's profile, your read mark). A quote is unseen while it is newer than your read
+    /// mark in its conversation. A reported quote is left out once its card may go.
+    private func rebuildInbox() {
+        let byID = Dictionary(conversations.map { ($0.id, $0) }) { first, _ in first }
+        var items: [InboxQuote] = []
+        var unread: Set<UUID> = []
+        for message in receivedMessages {
+            if reportedMessageIDs.contains(message.id), !reportsOnScreen.contains(message.id) { continue }
+            let conversation = byID[message.conversationID]
+            guard let item = InboxQuote(message: message, sender: conversation?.other) else { continue }
+            items.append(item)
+            if conversation?.isUnread(message) ?? false { unread.insert(item.id) }
+        }
+        inbox = Self.newestFirst(items)
+        unreadInboxIDs = unread
     }
 
     private func beginWrite() {
@@ -616,29 +755,38 @@ final class SocialStore {
         Task { await self.refresh() }
     }
 
-    // MARK: Private: sharing
-
-    /// A validated send.
-    private struct OutgoingShare: Sendable {
-        let quote: Quote
-        let recipients: [UUID]
-        let note: String?
-        /// "Sent to Maya".
-        let message: String
-        /// The new shares' IDs by recipient, chosen before the insert.
-        let shareIDs: [UUID: UUID]
-        let key: ShareKey
+    /// A refusal for the terms means the cached account was out of date: ask the server next time.
+    private func noteRefusal(_ error: QuotedError) {
+        if error == .termsRequired { termsMayBeOutdated = true }
     }
 
-    /// One send's identity for ``retryShareIDs``.
-    private struct ShareKey: Hashable, Sendable {
+    // MARK: Private: sending
+
+    /// A validated send.
+    private struct OutgoingSend: Sendable {
+        let quoteID: UUID
+        let recipients: [UUID]
+        let note: String?
+        /// The new messages' IDs by recipient, chosen before sending.
+        let messageIDs: [UUID: UUID]
+        let key: SendKey
+    }
+
+    /// One send's identity for ``retrySendIDs``.
+    private struct SendKey: Hashable, Sendable {
         let quoteID: UUID
         let recipients: Set<UUID>
         let note: String?
     }
 
+    /// What each recipient's send came to.
+    private struct DeliveryResults: Sendable {
+        var sent: [UUID: UUID] = [:]
+        var failed: [UUID: QuotedError] = [:]
+    }
+
     /// Validates recipients and the note, toasting the problem and returning nil when invalid.
-    private func prepareShare(_ quote: Quote, to recipientIDs: [UUID], note: String?) -> OutgoingShare? {
+    private func prepareSend(_ quote: Quote, to recipientIDs: [UUID], note: String?) -> OutgoingSend? {
         let recipients = recipientIDs.reduce(into: [UUID]()) { result, id in
             if !result.contains(id) { result.append(id) }
         }
@@ -648,63 +796,78 @@ final class SocialStore {
         }
         let cleanNote: String?
         do {
-            cleanNote = try QuoteDraft.validatedNote(note ?? "")
+            cleanNote = try SocialText.note(note)
         } catch {
             toasts.show(error.errorDescription ?? "The note is too long.", style: .error)
             return nil
         }
-        let names = recipients.map { id in
-            friends.first { $0.profile.id == id }.map { Self.firstName($0.profile.displayName) } ?? "a friend"
-        }
-        let key = ShareKey(quoteID: quote.id, recipients: Set(recipients), note: cleanNote)
-        let shareIDs = retryShareIDs[key] ?? Dictionary(uniqueKeysWithValues: recipients.map { ($0, UUID()) })
-        return OutgoingShare(
-            quote: quote, recipients: recipients, note: cleanNote, message: Self.sentMessage(names),
-            shareIDs: shareIDs, key: key
-        )
+        let key = SendKey(quoteID: quote.id, recipients: Set(recipients), note: cleanNote)
+        let messageIDs = retrySendIDs[key] ?? Dictionary(uniqueKeysWithValues: recipients.map { ($0, UUID()) })
+        return OutgoingSend(quoteID: quote.id, recipients: recipients, note: cleanNote, messageIDs: messageIDs, key: key)
     }
 
-    /// Starts the insert now, under background time. The task returns the sent share IDs, or nil after
-    /// showing "Couldn't send. …" (unless the user already tapped Undo).
-    private func startSending(_ outgoing: OutgoingShare, attempt: ShareAttempt) -> Task<[UUID]?, Never> {
-        let assertion = BackgroundTaskAssertion("Send quote")
-        let backend = self.backend
-        return Task { () -> [UUID]? in
-            defer { assertion.end() }
-            do {
-                let sent = try await backend.social.share(
-                    outgoing.quote, to: outgoing.recipients, note: outgoing.note, ids: outgoing.shareIDs
-                )
-                self.retryShareIDs[outgoing.key] = nil
-                return sent.map(\.id)
-            } catch {
-                Logger.social.error("Share failed: \(String(describing: QuotedError(error)), privacy: .public)")
-                // The insert may have landed with its answer lost: Send again reuses these IDs.
-                self.retryShareIDs[outgoing.key] = outgoing.shareIDs
-                if !attempt.isUndone {
-                    self.toasts.show(error: error, failure: "Couldn\u{2019}t send")
+    /// Opens each recipient's conversation and sends the quote there, all at once.
+    nonisolated private static func deliver(_ outgoing: OutgoingSend, backend: Backend) async -> DeliveryResults {
+        await withTaskGroup(of: (UUID, Result<UUID, QuotedError>).self) { group in
+            for recipient in outgoing.recipients {
+                let messageID = outgoing.messageIDs[recipient] ?? UUID()
+                group.addTask {
+                    do {
+                        let conversation = try await backend.messages.openConversation(with: recipient)
+                        let sent = try await backend.messages.send(
+                            .quote(.quote(outgoing.quoteID), note: outgoing.note),
+                            in: conversation.id,
+                            id: messageID
+                        )
+                        return (recipient, .success(sent.id))
+                    } catch {
+                        return (recipient, .failure(QuotedError(error)))
+                    }
                 }
-                return nil
             }
+            var results = DeliveryResults()
+            for await (recipient, result) in group {
+                switch result {
+                case .success(let id): results.sent[recipient] = id
+                case .failure(let error): results.failed[recipient] = error
+                }
+            }
+            return results
         }
     }
 
-    /// Undo for a send: waits for the insert, then deletes the shares it created. When the insert's
-    /// answer was lost, the shares may still exist; their IDs were chosen up front, so those go.
-    private func unsend(_ sending: Task<[UUID]?, Never>, outgoing: OutgoingShare, attempt: ShareAttempt) async {
-        attempt.isUndone = true
-        let generation = self.generation
+    /// Undo for a send: unsends the messages it delivered.
+    private func unsend(_ messageIDs: [UUID], generation: Int) async {
         let assertion = BackgroundTaskAssertion("Undo send")
         defer { assertion.end() }
-        let ids = await sending.value ?? Array(outgoing.shareIDs.values)
-        guard !ids.isEmpty, self.generation == generation else { return }
-        retryShareIDs[outgoing.key] = nil
-        do {
-            try await backend.social.deleteShares(ids: ids)
-        } catch {
-            guard self.generation == generation else { return }
-            toasts.show(error: error, failure: "Couldn\u{2019}t undo")
+        let backend = self.backend
+        let failure = await withTaskGroup(of: QuotedError?.self) { group in
+            for id in messageIDs {
+                group.addTask {
+                    do {
+                        try await backend.messages.unsend(messageID: id)
+                        return nil
+                    } catch {
+                        return QuotedError(error)
+                    }
+                }
+            }
+            var first: QuotedError?
+            for await error in group where first == nil { first = error }
+            return first
         }
+        guard self.generation == generation, let failure else { return }
+        toasts.show(error: failure, failure: "Couldn\u{2019}t undo")
+    }
+
+    /// A friend's first name for "Sent to Maya".
+    private func name(of id: UUID) -> String {
+        friends.first { $0.profile.id == id }.map { Self.firstName($0.profile.displayName) } ?? "a friend"
+    }
+
+    /// A friend's handle for "Couldn't send to @sam".
+    private func handle(of id: UUID) -> String {
+        connection(with: id)?.profile.handle ?? "a friend"
     }
 
     // MARK: Private
@@ -772,10 +935,42 @@ final class SocialStore {
         connections.sorted { $0.createdAt > $1.createdAt }
     }
 
-    private static func newestFirst(_ shares: [SharedQuote]) -> [SharedQuote] {
-        shares.sorted { lhs, rhs in
+    private static func newestFirst(_ items: [InboxQuote]) -> [InboxQuote] {
+        items.sorted { lhs, rhs in
             if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
             return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    private static func newestFirst(_ messages: [ConversationMessage]) -> [ConversationMessage] {
+        messages.sorted { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    private static func senderNames(_ items: [InboxQuote]) -> [String] {
+        var names: [String] = []
+        for item in items {
+            let name = firstName(item.sender?.displayName ?? "a friend")
+            if !names.contains(name) { names.append(name) }
+        }
+        return names
+    }
+
+    private static func senders(_ items: [InboxQuote]) -> [Profile] {
+        var seen: Set<UUID> = []
+        return items.compactMap(\.sender).filter { seen.insert($0.id).inserted }
+    }
+
+    private static func fromSummary(_ names: [String]) -> String? {
+        switch names.count {
+        case 0: return nil
+        case 1: return "From \(names[0])"
+        case 2: return "From \(names[0]) and \(names[1])"
+        default:
+            let others = names.count - 2
+            return "From \(names[0]), \(names[1]) and \(others) \(others == 1 ? "other" : "others")"
         }
     }
 
@@ -790,10 +985,13 @@ final class SocialStore {
         default: "Sent to \(names.count) friends"
         }
     }
-}
 
-/// Whether the user tapped Undo on a send, so a failed insert needs no "Couldn't send" toast.
-@MainActor
-private final class ShareAttempt {
-    var isUndone = false
+    /// "Couldn't send to @sam." / "Couldn't send to @sam and @lee." / "Couldn't send to 3 friends."
+    private static func notSentMessage(_ handles: [String]) -> String {
+        switch handles.count {
+        case 1: "Couldn\u{2019}t send to \(handles[0])."
+        case 2: "Couldn\u{2019}t send to \(handles[0]) and \(handles[1])."
+        default: "Couldn\u{2019}t send to \(handles.count) friends."
+        }
+    }
 }

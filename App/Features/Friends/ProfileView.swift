@@ -5,9 +5,10 @@ import SwiftUI
 /// A person's profile: who they are and their favorite quotes.
 ///
 /// - **A friend's profile** (from the Friends list): their favorites, newest first, each with Save
-///   (or "In your library" when you already have that quote). Favorites are private unless the
-///   friend turned on "Show favorites to friends"; then only accepted friends see them, through
-///   `public.friend_favorites`. Otherwise the page says so.
+///   (or "In your library" when you already have that quote). The page comes from
+///   `public.profile_view`: favorites are private unless the friend shows them to friends
+///   (`favorites_visibility`); then only accepted friends get them, and the page says so otherwise.
+///   Saving one goes through `save_from_favorite`, which keeps who added it.
 /// - **Your own profile** (Account > Your profile): the switch that shows your favorites to friends,
 ///   and your favorites, which open the quote's detail.
 ///
@@ -17,8 +18,8 @@ import SwiftUI
 /// Cards follow the Friends tab (Margin cards). Pull to refresh.
 struct ProfileView: View {
     let profile: Profile
-    /// Favorites to show without loading (previews only).
-    private let seededFavorites: [FriendFavorite]?
+    /// A page to show without loading (previews only).
+    private let seededPage: ProfilePage?
 
     @Environment(SessionStore.self) private var session
     @Environment(SocialStore.self) private var social
@@ -26,9 +27,14 @@ struct ProfileView: View {
     @Environment(ToastCenter.self) private var toasts
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    /// A friend's favorites as last loaded, or nil before the first load.
+    /// A friend's favorites as last loaded (empty when they keep them private), or nil before the
+    /// first load.
     @State private var favorites: [FriendFavorite]?
-    /// The friend's profile as last loaded (their name and setting may have changed).
+    /// Whether the last load showed their favorites (nil from `profile_view`: kept private).
+    @State private var sharesFavorites = true
+    /// The last load found no profile: it's gone, or they blocked you.
+    @State private var isUnavailable = false
+    /// The friend's profile as last loaded (their name may have changed).
     @State private var current: Profile?
     @State private var loadError: QuotedError?
     @State private var isUpdatingSetting = false
@@ -42,10 +48,11 @@ struct ProfileView: View {
     @State private var isReporting = false
     @State private var isBlocking = false
 
-    init(profile: Profile, favorites: [FriendFavorite]? = nil) {
+    init(profile: Profile, page: ProfilePage? = nil) {
         self.profile = profile
-        seededFavorites = favorites
-        _favorites = State(initialValue: favorites)
+        seededPage = page
+        _favorites = State(initialValue: page.map { $0.favorites ?? [] })
+        _sharesFavorites = State(initialValue: page.map { $0.favorites != nil } ?? true)
     }
 
     var body: some View {
@@ -84,7 +91,7 @@ struct ProfileView: View {
             }
         }
         .task(id: profile.id) {
-            guard !isMe, seededFavorites == nil else { return }
+            guard !isMe, seededPage == nil else { return }
             // An unfriend or block from another device should show here, not a stale list.
             async let friendships: Void = social.refreshIfStale()
             await load()
@@ -118,14 +125,26 @@ struct ProfileView: View {
         social.friends.contains { $0.profile.id == profile.id }
     }
 
-    /// Loads the friend's profile and favorites. A failure with nothing on screen shows the error
-    /// card; with favorites already shown it keeps them, and toasts only when the user asked
+    /// Loads the friend's profile page (`profile_view`). A failure with nothing on screen shows the
+    /// error card; with favorites already shown it keeps them, and toasts only when the user asked
     /// (pull to refresh, Try Again), so coming back to the page stays quiet.
     private func load(userInitiated: Bool = false) async {
         do {
-            let loaded = try await social.profileAndFavorites(of: profile.id)
-            if let latest = loaded.profile { current = latest }
-            favorites = loaded.favorites
+            guard let page = try await social.profilePage(of: profile) else {
+                isUnavailable = true
+                favorites = []
+                loadError = nil
+                return
+            }
+            isUnavailable = false
+            // profile_view leaves out accepts_text_messages: keep what a fuller source said.
+            var loaded = page.profile
+            if loaded.acceptsTextMessages == nil {
+                loaded.acceptsTextMessages = (current ?? profile).acceptsTextMessages
+            }
+            current = loaded
+            sharesFavorites = page.favorites != nil
+            favorites = page.favorites ?? []
             loadError = nil
         } catch is CancellationError {
             return
@@ -163,6 +182,9 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var ownContent: some View {
+        // Until the account has loaded (the first launch after an update, or offline then) the
+        // setting is unknown: a placeholder switch, never a wrong "Only you".
+        let isKnown = pendingShows != nil || session.showsFavorites != nil
         Toggle(isOn: showsFavoritesBinding) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Show favorites to friends")
@@ -171,10 +193,13 @@ struct ProfileView: View {
                     : "Only you can see your favorites.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .redacted(reason: isKnown ? [] : .placeholder)
             }
             .fixedSize(horizontal: false, vertical: true)
         }
-        .disabled(isUpdatingSetting || session.profile == nil)
+        .disabled(isUpdatingSetting || !isKnown)
+        .redacted(reason: isKnown ? [] : .placeholder)
+        .accessibilityValue(isKnown ? Text(showsFavorites ? "On" : "Off") : Text("Loading"))
         .marginCardRow(.single, outerSpacing: Theme.Spacing.s)
 
         Text("Your other quotes always stay private.")
@@ -206,8 +231,9 @@ struct ProfileView: View {
         }
     }
 
-    /// The switch's value: the one being saved, else yours as the server last said.
-    private var showsFavorites: Bool { pendingShows ?? person.showsFavorites }
+    /// The switch's value: the one being saved, else yours as the server last said (off while it is
+    /// unknown; the switch is then a disabled placeholder).
+    private var showsFavorites: Bool { pendingShows ?? session.showsFavorites ?? false }
 
     private var showsFavoritesBinding: Binding<Bool> {
         Binding(
@@ -235,7 +261,13 @@ struct ProfileView: View {
     @ViewBuilder
     private var friendContent: some View {
         MarginSectionHeader("Favorites")
-        if !isFriend && social.hasLoaded {
+        if isUnavailable {
+            messageCard(
+                systemImage: "person.slash",
+                title: "This profile isn\u{2019}t available",
+                message: "The account may have been deleted."
+            )
+        } else if !isFriend && social.hasLoaded {
             messageCard(
                 systemImage: "person.2",
                 title: "You\u{2019}re not friends",
@@ -251,7 +283,7 @@ struct ProfileView: View {
                 )
                 .marginCardRow(MarginCardPosition(index: index, count: favorites.count))
             }
-        } else if favorites != nil, !person.showsFavorites {
+        } else if favorites != nil, !sharesFavorites {
             messageCard(
                 systemImage: "lock",
                 title: "\(person.displayName) keeps favorites private",
@@ -296,7 +328,7 @@ struct ProfileView: View {
         Task {
             // The ID only covers a retry after a lost answer; once saved, a later Save (after
             // deleting the copy) is a new quote.
-            if await library.saveFavorite(favorite, id: id) != nil {
+            if await library.saveFavorite(favorite, of: profile.id, id: id) != nil {
                 copyIDs[favorite.id] = nil
             }
             saving.remove(favorite.id)
@@ -372,14 +404,17 @@ private struct FavoriteRow: View {
 
 #Preview("A friend's profile") {
     NavigationStack {
-        ProfileView(profile: Samples.maya, favorites: Samples.mayaFavorites)
+        ProfileView(
+            profile: Samples.maya,
+            page: ProfilePage(profile: Samples.maya, relationship: .friend, favorites: Samples.mayaFavorites)
+        )
     }
     .previewEnvironment()
 }
 
 #Preview("A friend's profile, private") {
     NavigationStack {
-        ProfileView(profile: Samples.jordan, favorites: [])
+        ProfileView(profile: Samples.jordan, page: ProfilePage(profile: Samples.jordan, relationship: .friend))
     }
     .previewEnvironment()
 }

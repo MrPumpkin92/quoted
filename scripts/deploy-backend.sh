@@ -112,6 +112,11 @@ supabase link --project-ref "$PROJECT_REF"
 step "Pending migrations (dry run)"
 if ! dry_run="$(supabase db push --linked --dry-run 2>&1)"; then
   printf '%s\n' "$dry_run"
+  if grep -q -- '--include-all' <<<"$dry_run"; then
+    echo "A local migration sorts before the newest one on hosted. Don't push with --include-all, which"
+    echo "applies it out of the order the local tests used: if it was never deployed, rename it to sort"
+    echo "after the newest hosted migration, commit, test and run this again (docs/system-design.md)."
+  fi
   die "the dry run failed; nothing was pushed"
 fi
 printf '%s\n' "$dry_run"
@@ -159,7 +164,8 @@ if grep -q '_catalog_batch_' <<<"$dry_run"; then
         location or link.
       * Each batch fails as a whole if any of its ids is already stored with
         different text (insert-or-verify, never update), then reseals users'
-        matching quotes and shares. App writes to quotes wait for the reseal
+        matching quotes and shares (quotes, quote messages and posts once the
+        social redesign is in). App writes to quotes wait for the reseal
         (seconds). The report to read is supabase/catalog/batches/NNN.md.
 CHECKS
 fi

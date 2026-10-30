@@ -5,8 +5,13 @@ import Supabase
 /// Every error a QuotedKit repository throws, apart from `CancellationError`, which passes through
 /// untouched so a cancelled task never shows a toast.
 ///
-/// Show ``userMessage`` to the user. The `String` payloads of ``validation(_:)`` are already
-/// user-facing; the payload of ``server(_:)`` is a diagnostic for logs, not for display.
+/// Show ``userMessage`` to the user. The `String` payloads of ``validation(_:)``,
+/// ``blockedWords(_:)`` and ``unavailable(_:)`` are already user-facing; the payload of
+/// ``server(_:)`` is a diagnostic for logs, not for display.
+///
+/// The server writes its own refusals for people (a capital letter, a full stop: "This quote is not
+/// available."), so those reach the user as they are; Postgres's own messages ("permission denied
+/// for table …") never do.
 public enum QuotedError: Error, Hashable, Sendable {
     /// The request never reached the server (offline, timed out, DNS, TLS).
     case network
@@ -23,6 +28,22 @@ public enum QuotedError: Error, Hashable, Sendable {
     case rateLimited
     /// Anything else. The message is a diagnostic, not user-facing.
     case server(String)
+    /// The current Terms of Use aren't accepted yet (42501 "Accept the Terms of use first."). Every
+    /// social write answers this first: show the Terms sheet, call `accept_terms`, then retry.
+    case termsRequired
+    /// The account is suspended (42501 "This account is suspended."): it can read, not post or send.
+    case suspended
+    /// QR003: the text holds a word Quoted doesn't allow. The payload is user-facing and names the
+    /// field ("…in posts and messages.", "…in names.", "…in playlist titles."). Keep the typed text
+    /// and focus its field.
+    case blockedWords(String)
+    /// QR004: the friend turned off "Friends can text me". Quotes and playlists still go through.
+    case textsOff
+    /// 42501 "This conversation is closed.": unfriended or blocked. It stays readable, not writable.
+    case conversationClosed
+    /// The item is gone or hidden from you (deleted, unsent, reported, blocked, unfriended), in the
+    /// server's words, for example "This quote is not available.". Show the screen's gone state.
+    case unavailable(String)
 
     /// A short, friendly message for an alert or toast.
     public var userMessage: String {
@@ -43,8 +64,36 @@ public enum QuotedError: Error, Hashable, Sendable {
             "Too many tries. Wait a moment and try again."
         case .server:
             "Something went wrong. Please try again."
+        case .termsRequired:
+            "Accept the Terms of Use first."
+        case .suspended:
+            "You can't send messages right now. Contact support in Settings."
+        case .blockedWords(let message):
+            message
+        case .textsOff:
+            // Without the friend's handle; the composer, which knows it, uses textsOffMessage(handle:).
+            "This friend receives quotes only. Attach a quote to send it with a note."
+        case .conversationClosed:
+            "This conversation is closed."
+        case .unavailable(let message):
+            message
         }
     }
+
+    /// The QR004 toast with the friend's handle (docs/ui-spec.md, Conversation: "@alice receives
+    /// quotes only. Attach a quote to send it with a note."). `handle` is "@alice" or "alice".
+    /// ``userMessage`` of ``textsOff`` is the fallback when no handle is at hand.
+    public static func textsOffMessage(handle: String) -> String {
+        let name = handle.hasPrefix("@") ? handle : "@\(handle)"
+        return "\(name) receives quotes only. Attach a quote to send it with a note."
+    }
+
+    /// The QR003 message for posts and messages (the server's own text).
+    public static let blockedWordsInPostsAndMessages = "Quoted doesn't allow some words in posts and messages."
+    /// The QR003 message for display names and usernames.
+    public static let blockedWordsInNames = "Quoted doesn't allow some words in names."
+    /// The QR003 message for playlist titles.
+    public static let blockedWordsInPlaylistTitles = "Quoted doesn't allow some words in playlist titles."
 }
 
 extension QuotedError: LocalizedError {
@@ -67,6 +116,8 @@ extension QuotedError {
         case let error as QuotedError:
             return error
         case let error as PostgrestError:
+            // Terms and suspension come before every other check on the server, for every call.
+            if let account = map(accountRefusal: error) { return account }
             if let override, let mapped = override(error) { return mapped }
             return map(postgrest: error)
         case let error as AuthError:
@@ -87,6 +138,8 @@ extension QuotedError {
             return .validation(error.errorDescription ?? "Choose a different username.")
         case let error as DisplayNameError:
             return .validation(error.errorDescription ?? "Choose a different name.")
+        case let error as SocialTextError:
+            return .validation(error.errorDescription ?? "Check the text and try again.")
         default:
             let nsError = error as NSError
             if nsError.domain == NSURLErrorDomain { return .network }
@@ -96,15 +149,34 @@ extension QuotedError {
 
     typealias PostgrestOverride = @Sendable (PostgrestError) -> QuotedError?
 
+    /// The account-level refusals every social write gives before anything else (terms, suspension).
+    static func map(accountRefusal error: PostgrestError) -> QuotedError? {
+        guard error.code == "42501" else { return nil }
+        switch error.message {
+        case "Accept the Terms of use first.": return .termsRequired
+        case "This account is suspended.": return .suspended
+        default: return nil
+        }
+    }
+
     /// Postgres SQLSTATE and PostgREST `PGRST…` codes.
     static func map(postgrest error: PostgrestError) -> QuotedError {
         switch error.code {
         // The server's write limits (migration 20261021090000_abuse_limits_privacy_cleanup): QR001 is
-        // a rolling 24-hour limit (friend requests, shares, reports), QR002 an account total.
+        // a rolling 24-hour limit (friend requests, posts, messages, playlists, reports), QR002 an
+        // account total. The server names the limit in words for people ("You can post at most 20
+        // quotes a day."); a few read better in the app's own words (``limitCopy``).
         case "QR001":
-            return .validation("You've reached today's limit for this. Try again tomorrow.")
+            return .validation(limitCopy[error.message]
+                ?? (isWrittenForPeople(error.message) ? error.message : "You've reached today's limit for this. Try again tomorrow."))
         case "QR002":
-            return .validation("You've reached the limit for your account.")
+            return .validation(limitCopy[error.message]
+                ?? (isWrittenForPeople(error.message) ? error.message : "You've reached the limit for your account."))
+        // The word filter and "Friends can text me" (migrations 20261030030000 and 20261030030300).
+        case "QR003":
+            return .blockedWords(blockedWordsInPostsAndMessages)
+        case "QR004":
+            return .textsOff
         case "23505":
             return .validation("That already exists.")
         case "23514", "23502", "22001", "22P02":
@@ -112,7 +184,7 @@ extension QuotedError {
         case "23503":
             return .notFound
         case "42501":
-            return .server("Permission denied: \(error.message)")
+            return map(refusal: error.message)
         case "PGRST116":
             return .notFound
         case "PGRST301", "PGRST302", "PGRST303":
@@ -120,6 +192,30 @@ extension QuotedError {
         default:
             return .server(error.code.map { "\($0): \(error.message)" } ?? error.message)
         }
+    }
+
+    /// Server limit messages the app words its own way (docs/ui-spec.md, States checklist).
+    static let limitCopy: [String: String] = [
+        "You can make at most 20 playlists a day.": "You can make 20 playlists a day. Try again tomorrow.",
+        "You can keep at most 100 playlists.": "You can keep up to 100 playlists. Delete one to make another.",
+        "A playlist can hold at most 200 quotes.": "A playlist holds up to 200 quotes.",
+    ]
+
+    /// 42501. The server's own refusals are sentences for people; Postgres's (RLS, grants) are not.
+    static func map(refusal message: String) -> QuotedError {
+        if message == "Accept the Terms of use first." { return .termsRequired }
+        if message == "This account is suspended." { return .suspended }
+        if message == "This conversation is closed." { return .conversationClosed }
+        if message.hasPrefix("Sign in to ") { return .notSignedIn }
+        guard isWrittenForPeople(message) else { return .server("Permission denied: \(message)") }
+        return message.hasSuffix(" is not available.") ? .unavailable(message) : .validation(message)
+    }
+
+    /// Whether a server message was written for people: it starts with a capital letter and ends
+    /// with a full stop. Postgres's own messages start lowercase and have no full stop.
+    static func isWrittenForPeople(_ message: String) -> Bool {
+        guard let first = message.unicodeScalars.first, message.hasSuffix(".") else { return false }
+        return CharacterSet.uppercaseLetters.contains(first)
     }
 
     static func map(auth error: AuthError) -> QuotedError {
@@ -229,5 +325,13 @@ extension PostgrestError {
     /// Whether the message or details mention `name` (a constraint or column).
     func mentions(_ name: String) -> Bool {
         message.contains(name) || (details?.contains(name) ?? false) || (hint?.contains(name) ?? false)
+    }
+
+    /// Whether a retried insert with a client-chosen id may have landed the first time and only lost
+    /// its answer: the primary key refuses it (23505), or a BEFORE INSERT check that runs before the
+    /// primary key no longer passes (42501), for example a source quote deleted since, or the
+    /// tombstone an Undo used up. Read the row back by id before treating it as a failure.
+    var mayHideEarlierInsert: Bool {
+        code == "23505" || code == "42501"
     }
 }

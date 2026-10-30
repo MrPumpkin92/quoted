@@ -2,10 +2,17 @@
 -- profiles readable only when linked, exact lookup and availability RPCs,
 -- reserved and immutable usernames, server-owned last_active_at and
 -- purge_exempt, touch_activity, and the purge of abandoned anonymous accounts.
+-- Ported to 20261030030000_provenance_and_accounts: clients cannot write
+-- username, last_active_at or purge_exempt at all (column grants, 42501), the
+-- friend request needs accepted terms, and a purged account's username is
+-- retired for good instead of becoming free again.
+-- Ported to 20261030030300_conversations_and_messages: a conversation (either
+-- member) links two profiles where a share (either side) did; the purged
+-- account's share with B became a conversation with a message. Removed: none.
 begin;
 set local client_min_messages = warning;
 create extension if not exists pgtap with schema extensions;
-select plan(69);
+select plan(71);
 
 -- ---- test helpers (rolled back with the transaction) ----------------------
 create schema tests;
@@ -67,6 +74,12 @@ begin
 end
 $$;
 
+-- The user has accepted the current terms (social writes need them).
+create function tests.accept_terms(who text) returns void language sql security definer as $$
+  update public.profiles set terms_version = private.current_terms_version(), terms_accepted_at = now()
+  where id = tests.uid(who)
+$$;
+
 -- Matches among accounts this test did not create (a shared local stack may
 -- hold some), so the purge counts below can be exact. Rules from the contract.
 create function tests.other_matches(p_now timestamptz, out rule_a int, out rule_b int) language sql as $$
@@ -85,6 +98,7 @@ select tests.create_user(w, false, interval '0') from unnest(array['a', 'b', 'f'
 insert into public.profiles (id, username, display_name) values
   (tests.uid('a'), 'alice', 'Alice'), (tests.uid('b'), 'bob', null), (tests.uid('f'), 'fred', 'Fred'),
   (tests.uid('s'), 'stella', 'Stella S.'), (tests.uid('x'), 'xena', null);
+select tests.accept_terms(w) from unnest(array['a', 'f']) w;
 
 -- ---- schema and privileges ------------------------------------------------
 select results_eq(
@@ -153,7 +167,7 @@ select tests.authenticate_as('a');
 select results_eq(
   $$ select username from public.profiles order by username $$,
   $$ values ('alice') $$,
-  'with no friends, shares or blocks, A reads only their own profile'
+  'with no friends, conversations or blocks, A reads only their own profile'
 );
 
 select is_empty(
@@ -207,9 +221,11 @@ select lives_ok(
   'F accepts'
 );
 
+select public.open_conversation(tests.uid('a'));
 select lives_ok(
-  $$ insert into public.shares (recipient_id, body) values (tests.uid('a'), 'F to A') $$,
-  'F shares a quote with A'
+  $$ insert into public.messages (conversation_id, kind, text)
+     select c.id, 'text', 'F to A' from public.conversations c where tests.uid('a') in (c.user_a, c.user_b) $$,
+  'F opens a conversation with A and sends a message'
 );
 
 select lives_ok(
@@ -220,15 +236,15 @@ select lives_ok(
 select results_eq(
   $$ select username from public.profiles where id = tests.uid('a') $$,
   $$ values ('alice') $$,
-  'the share still links them: F (sender) reads A'
+  'the conversation (now closed) still links them: F reads A'
 );
 
 select tests.authenticate_as('a');
 
 select results_eq(
-  $$ select s.body, p.username from public.shares s left join public.profiles p on p.id = s.sender_id $$,
+  $$ select m.text, p.username from public.messages m left join public.profiles p on p.id = m.sender_id $$,
   $$ values ('F to A', 'fred') $$,
-  'and A (recipient) reads F, so the inbox embed resolves'
+  'and A (the other member) reads F, so the conversation''s embed resolves'
 );
 
 select lives_ok(
@@ -325,17 +341,22 @@ select tests.authenticate_as('a');
 
 select throws_ok(
   $$ update public.profiles set username = 'alice_two' where id = tests.uid('a') $$,
-  '42501', 'usernames cannot be changed once set',
-  'a client cannot change their username'
+  '42501', 'permission denied for table profiles',
+  'a client cannot change their username (no column grant)'
 );
 
 select results_eq(
-  $$ update public.profiles set display_name = 'Alice A.', username = 'alice' where id = tests.uid('a') returning display_name $$,
+  $$ update public.profiles set display_name = 'Alice A.' where id = tests.uid('a') returning display_name $$,
   $$ values ('Alice A.') $$,
-  'the display name can still change (setting the same username is not a change)'
+  'the display name can still change'
 );
 
 select tests.clear_authentication();
+
+select lives_ok(
+  $$ update public.profiles set username = 'alice' where id = tests.uid('a') $$,
+  'setting the same username is not a change'
+);
 
 select throws_ok(
   $$ update public.profiles set username = 'alice_two' where id = tests.uid('a') $$,
@@ -356,22 +377,28 @@ select tests.clear_authentication();
 -- ---- last_active_at and purge_exempt are server-owned -----------------------
 select tests.authenticate_as('m');
 
-select results_eq(
+select throws_ok(
   $$ insert into public.profiles (id, username, last_active_at, purge_exempt)
-     values (tests.uid('m'), 'mona', '2000-01-01', true)
-     returning last_active_at = now(), purge_exempt $$,
-  $$ values (true, false) $$,
-  'on insert a client''s last_active_at becomes now() and purge_exempt false'
+     values (tests.uid('m'), 'mona', '2000-01-01', true) $$,
+  '42501', null,
+  'a client cannot send last_active_at or purge_exempt on insert'
 );
 
-select results_eq(
-  $$ update public.profiles set last_active_at = '2000-01-01', purge_exempt = true where id = tests.uid('m')
-     returning last_active_at = now(), purge_exempt $$,
-  $$ values (true, false) $$,
+insert into public.profiles (id, username) values (tests.uid('m'), 'mona');
+
+select throws_ok(
+  $$ update public.profiles set last_active_at = '2000-01-01', purge_exempt = true where id = tests.uid('m') $$,
+  '42501', null,
   'a client cannot change last_active_at or purge_exempt later either'
 );
 
 select tests.clear_authentication();
+
+select results_eq(
+  $$ select last_active_at = now(), purge_exempt from public.profiles where id = tests.uid('m') $$,
+  $$ values (true, false) $$,
+  'a new profile gets last_active_at now() and purge_exempt false'
+);
 set local role service_role;
 
 select results_eq(
@@ -445,10 +472,15 @@ insert into public.profiles (id, username, last_active_at, purge_exempt) values
   (tests.uid('g4'), 'exempt_guest', now() - interval '400 days', true),
   (tests.uid('g5'), 'recent_guest', now() - interval '300 days', false),
   (tests.uid('e2'), 'old_email', now() - interval '1000 days', false);
--- g3 has a quote, a friendship and a share with B, and reported B.
+-- g3 has a quote, a friendship and a conversation with B, and reported B.
 insert into public.quotes (owner_id, body) values (tests.uid('g3'), 'G3 quote');
 insert into public.friendships (requester_id, addressee_id, status) values (tests.uid('g3'), tests.uid('b'), 'accepted');
-insert into public.shares (sender_id, recipient_id, body) values (tests.uid('g3'), tests.uid('b'), 'G3 to B');
+insert into public.conversations (id, user_a, user_b) values
+  ('c0a00000-0000-4000-8000-0000000000a3', least(tests.uid('g3'), tests.uid('b')), greatest(tests.uid('g3'), tests.uid('b')));
+insert into public.conversation_members (conversation_id, user_id) values
+  ('c0a00000-0000-4000-8000-0000000000a3', tests.uid('g3')), ('c0a00000-0000-4000-8000-0000000000a3', tests.uid('b'));
+insert into public.messages (conversation_id, sender_id, kind, text)
+values ('c0a00000-0000-4000-8000-0000000000a3', tests.uid('g3'), 'text', 'G3 to B');
 insert into public.reports (id, reporter_id, reported_user_id, reason)
 values ('7e000000-0000-4000-8000-000000000003', tests.uid('g3'), tests.uid('b'), 'spam');
 
@@ -494,9 +526,10 @@ select results_eq(
   $$ select (select count(*)::int from public.profiles where id = tests.uid('g3')),
             (select count(*)::int from public.quotes where owner_id = tests.uid('g3')),
             (select count(*)::int from public.friendships where tests.uid('g3') in (requester_id, addressee_id)),
-            (select count(*)::int from public.shares where sender_id = tests.uid('g3')) $$,
+            (select count(*)::int from public.conversations where id = 'c0a00000-0000-4000-8000-0000000000a3')
+              + (select count(*)::int from public.messages where sender_id = tests.uid('g3')) $$,
   $$ values (0, 0, 0, 0) $$,
-  'g3''s profile, quotes, friendship and share went with the account'
+  'g3''s profile, quotes, friendship, conversation and message went with the account'
 );
 
 select results_eq(
@@ -508,11 +541,12 @@ select results_eq(
 
 select tests.authenticate_as('k');
 
-select is(public.is_username_available('old_guest'), true, 'the purged account''s username is free again');
+select is(public.is_username_available('old_guest'), false, 'the purged account''s username is retired, not free');
 
-select lives_ok(
+select throws_ok(
   $$ insert into public.profiles (id, username) values (tests.uid('k'), 'old_guest') $$,
-  'and a new account can take it'
+  '23505', 'username "old_guest" is reserved',
+  'and a new account cannot take it'
 );
 
 select tests.clear_authentication();

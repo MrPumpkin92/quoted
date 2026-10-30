@@ -2,21 +2,24 @@ import QuotedCore
 import SwiftUI
 
 /// The people you blocked, each with Unblock (after a confirmation that says what does and doesn't
-/// come back) and, from the context menu or VoiceOver actions, Report. Loads with
-/// `SocialStore.loadBlocked()`; pull to reload. `Route.blockedUsers` maps to `BlockedUsersView()`.
+/// come back, docs/ui-spec.md §12) and, from the context menu or VoiceOver actions, Report. Someone
+/// who blocked you back is listed too, as "Blocked account" (the server no longer shows you their
+/// profile), with Unblock only; their confirmation claims nothing about what they can do, since
+/// their own block still keeps you apart. Loads with `SocialStore.loadBlocked()`; pull to reload.
+/// `Route.blockedUsers` maps to `BlockedUsersView()`.
 struct BlockedUsersView: View {
     @Environment(SocialStore.self) private var social
 
     @State private var hasLoaded = false
     @State private var loadFailed = false
-    @State private var unblockTarget: Profile?
+    @State private var unblockTarget: BlockedUser?
     @State private var reportTarget: Profile?
 
     init() {}
 
     var body: some View {
         BlockedUsersContent(
-            profiles: social.blockedProfiles,
+            users: social.blockedUsers,
             isLoading: !hasLoaded,
             loadFailed: loadFailed,
             onRetry: { Task { await load() } },
@@ -31,19 +34,31 @@ struct BlockedUsersView: View {
             await load()
         }
         .confirmationDialog(
-            "Unblock \(unblockTarget?.handle ?? "this person")?",
+            unblockTarget?.profile.map { "Unblock \($0.handle)?" } ?? "Unblock this account?",
             isPresented: isConfirmingUnblock,
             titleVisibility: .visible,
             presenting: unblockTarget
-        ) { profile in
+        ) { user in
             Button("Unblock") {
-                Task { await social.unblock(profile) }
+                Task { await social.unblock(user) }
             }
             Button("Cancel", role: .cancel) {}
-        } message: { profile in
-            Text("\(profile.displayName) will be able to find you by username and send you friend requests again. Your old friendship and shared quotes don\u{2019}t come back.")
+        } message: { user in
+            Text(Self.unblockMessage(for: user))
         }
         .reportUserConfirmation(item: $reportTarget, context: .blockedUser)
+    }
+
+    /// What Unblock changes (docs/ui-spec.md §12). Blocking deleted the friendship and closed the
+    /// conversation but kept its messages, so nothing shared "comes back": it never left. Someone
+    /// whose profile you can't see blocked you too, and their block still stops the username lookup
+    /// and friend requests both ways (`private.is_blocked_pair`), so their copy promises nothing.
+    static func unblockMessage(for user: BlockedUser) -> String {
+        if let profile = user.profile {
+            "\(profile.handle) can find you by username and send a friend request again. Your old conversation reopens only if you become friends again."
+        } else {
+            "You can find each other again only if neither of you blocks the other. Your old conversation reopens only if you become friends again."
+        }
     }
 
     /// Loads the list; a failure shows inline with Try again (instead of "No blocked users").
@@ -62,17 +77,17 @@ struct BlockedUsersView: View {
 
 /// The list itself, separate from loading so previews can show sample people.
 private struct BlockedUsersContent: View {
-    let profiles: [Profile]
+    let users: [BlockedUser]
     let isLoading: Bool
     var loadFailed = false
     var onRetry: () -> Void = {}
-    let onUnblock: (Profile) -> Void
+    let onUnblock: (BlockedUser) -> Void
     var onReport: (Profile) -> Void = { _ in }
 
     private var separatorInset = SocialSeparatorInset()
 
     var body: some View {
-        if profiles.isEmpty {
+        if users.isEmpty {
             ScrollView {
                 if isLoading {
                     DelayedProgressView(label: "Loading blocked users")
@@ -97,22 +112,26 @@ private struct BlockedUsersContent: View {
             .groundBackground()
         } else {
             List {
-                ForEach(Array(profiles.enumerated()), id: \.element.id) { index, profile in
-                    BlockedUserRow(profile: profile, onReport: { onReport(profile) }) { onUnblock(profile) }
+                ForEach(Array(users.enumerated()), id: \.element.id) { index, user in
+                    BlockedUserRow(user: user, onReport: onReport) { onUnblock(user) }
                         .contextMenu {
-                            Button("Report \(profile.handle)\u{2026}", systemImage: "flag") { onReport(profile) }
+                            if let profile = user.profile {
+                                Button("Report \(profile.handle)\u{2026}", systemImage: "flag") { onReport(profile) }
+                            }
                         }
                         .marginCardRow(
-                            MarginCardPosition(index: index, count: profiles.count),
+                            MarginCardPosition(index: index, count: users.count),
                             separatorInset: separatorInset.value,
                             outerSpacing: Theme.Spacing.xs
                         )
                 }
-                // Each claim holds on the server: the username lookup returns nothing for a blocked
-                // pair (the same as for a name nobody has), friend requests to or from a blocked pair
-                // fail like one to an unknown user, and shares need a friendship, which the block
-                // deleted. Nothing notifies the blocked person.
-                Text("Blocked people can\u{2019}t find you by username, send you friend requests or send you quotes. They aren\u{2019}t told that you blocked them.")
+                // Each claim holds on the server (docs/ui-spec.md §12): the username lookup returns
+                // nothing for a blocked pair (the same as for a name nobody has), and friend requests
+                // to or from one fail like one to an unknown user; profile_view, posts, playlists and
+                // favorites are hidden across a block; the block deleted the friendship and closed
+                // the conversation (its messages stay), and only a new friendship reopens it.
+                // Nothing notifies the blocked person.
+                Text("People you block can\u{2019}t find you by username, see your profile, posts, playlists or favorites, or message you. They aren\u{2019}t told. Unblocking doesn\u{2019}t make you friends again or reopen your conversation.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .marginPlainRow(top: Theme.Spacing.xs, bottom: Theme.Spacing.l)
@@ -124,9 +143,10 @@ private struct BlockedUsersContent: View {
 
 /// One blocked person with an Unblock button (which moves under the name at large text sizes).
 /// Report is a VoiceOver action on the person (the row's context menu has it for everyone else).
+/// Someone who blocked you back shows as "Blocked account", without Report.
 private struct BlockedUserRow: View {
-    let profile: Profile
-    let onReport: () -> Void
+    let user: BlockedUser
+    let onReport: (Profile) -> Void
     let onUnblock: () -> Void
 
     var body: some View {
@@ -144,11 +164,16 @@ private struct BlockedUserRow: View {
         .accessibilityElement(children: .contain)
     }
 
+    @ViewBuilder
     private var person: some View {
-        SocialPersonLabel(profile: profile)
-            .accessibilityActions {
-                Button("Report\u{2026}", action: onReport)
-            }
+        if let profile = user.profile {
+            SocialPersonLabel(profile: profile)
+                .accessibilityActions {
+                    Button("Report\u{2026}") { onReport(profile) }
+                }
+        } else {
+            UnavailablePersonLabel()
+        }
     }
 
     private var unblockButton: some View {
@@ -160,13 +185,42 @@ private struct BlockedUserRow: View {
         .buttonBorderShape(.capsule)
         .tint(Color.primary)
         .fixedSize()
-        .accessibilityLabel("Unblock \(profile.displayName)")
+        .accessibilityLabel("Unblock \(user.profile?.displayName ?? "blocked account")")
+    }
+}
+
+/// A blocked person whose profile you can no longer see (they blocked you too), in the place of
+/// `SocialPersonLabel`.
+private struct UnavailablePersonLabel: View {
+    @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = SocialPersonLabel.avatarSize
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.s) {
+            Image(systemName: "person.slash")
+                .foregroundStyle(.secondary)
+                .frame(width: avatarSize, height: avatarSize)
+                .background(Circle().fill(Color(.tertiarySystemFill)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Blocked account")
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                Text("Their profile isn\u{2019}t available")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Blocked account. Their profile isn\u{2019}t available.")
     }
 }
 
 #Preview("Blocked users") {
     NavigationStack {
-        BlockedUsersContent(profiles: [Samples.sam, Samples.riley], isLoading: false, onUnblock: { _ in })
+        BlockedUsersContent(
+            users: [BlockedUser(Samples.sam), BlockedUser(Samples.riley), BlockedUser(id: UUID())],
+            isLoading: false,
+            onUnblock: { _ in }
+        )
             .navigationTitle("Blocked users")
     }
     .previewEnvironment()
@@ -174,7 +228,7 @@ private struct BlockedUserRow: View {
 
 #Preview("Blocked users empty") {
     NavigationStack {
-        BlockedUsersContent(profiles: [], isLoading: false, onUnblock: { _ in })
+        BlockedUsersContent(users: [], isLoading: false, onUnblock: { _ in })
             .navigationTitle("Blocked users")
     }
     .previewEnvironment()

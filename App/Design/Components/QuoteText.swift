@@ -48,7 +48,7 @@ struct QuoteText: View {
         self.highlighting = highlighting
     }
 
-    /// Renders any quote-like value (`Quote`, `SharedQuote`, `StarterQuote`, `SnapshotQuote`).
+    /// Renders any quote-like value (`Quote`, `InboxQuote`, `StarterQuote`, `SnapshotQuote`).
     init(
         _ content: some RichTextContent,
         style: QuoteStyle = .row,

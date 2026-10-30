@@ -32,6 +32,8 @@ struct RootView: View {
                     .transition(.opacity)
             case .ready:
                 MainTabView()
+                    // A social write from a pushed screen asks for the terms here (§22).
+                    .termsSheet()
                     .transition(.opacity)
             }
         }

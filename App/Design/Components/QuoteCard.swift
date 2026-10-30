@@ -17,7 +17,7 @@ struct QuoteCard: View {
     private let showsWordmark: Bool
 
     /// - Parameters:
-    ///   - content: A `Quote`, `SharedQuote`, `StarterQuote` or `SnapshotQuote`.
+    ///   - content: A `Quote`, `InboxQuote`, `StarterQuote` or `SnapshotQuote`.
     ///   - inReminders: Shows the bell glyph. Nil asks the quote (a `Quote` in the Rotation shows it).
     ///   - showsWordmark: Adds a small "Quoted." footer, for the share image.
     init(_ content: some QuoteContent, inReminders: Bool? = nil, showsWordmark: Bool = false) {

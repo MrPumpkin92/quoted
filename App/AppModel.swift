@@ -87,6 +87,7 @@ final class AppModel {
             preferences: preferences,
             widgets: widgets
         )
+        social.session = session
         if sideEffects {
             notificationDelegate = NotificationDelegate { [weak self] link in
                 self?.open(link)
@@ -155,7 +156,7 @@ final class AppModel {
         Task {
             await social.refreshIfStale()
             // Seen here: a later background alert must not announce them again.
-            InboxAlerts().markSeenInApp(shares: social.unseenShares, requests: social.incomingRequests)
+            InboxAlerts().markSeenInApp(quotes: social.unseenQuotes, requests: social.incomingRequests)
             await InboxAlerts.setBadge(social.badgeCount)
         }
     }
@@ -188,10 +189,10 @@ final class AppModel {
         if await library.refresh() {
             await reminders.replan().value
         }
-        // New shares and friend requests: one best-effort alert, and the icon badge (no push).
+        // New quotes from friends and friend requests: one best-effort alert, and the icon badge (no push).
         if await social.refresh() {
             await InboxAlerts().alertNew(
-                shares: social.unseenShares, requests: social.incomingRequests, permission: reminders.permission
+                quotes: social.unseenQuotes, requests: social.incomingRequests, permission: reminders.permission
             )
             await InboxAlerts.setBadge(social.badgeCount)
         }
@@ -205,7 +206,7 @@ final class AppModel {
         guard sideEffects else { return }
         if let lastActivityTouch, Date.now.timeIntervalSince(lastActivityTouch) < 6 * 60 * 60 { return }
         lastActivityTouch = .now
-        await backend.social.touchActivity()
+        await backend.profiles.touchActivity()
     }
 }
 
@@ -246,14 +247,20 @@ extension View {
 
 extension AppModel {
     /// A model seeded with the mockup data (signed in as Alex, eight quotes, six in reminders, two
-    /// friends, a request each way, two unseen shares) and no side effects. Network calls fail quietly.
+    /// friends, a request each way, two unseen quotes from friends) and no side effects. Network calls
+    /// fail quietly.
     static func preview(phase: SessionPhase = .ready, emptyLibrary: Bool = false) -> AppModel {
         let url = URL(string: "http://127.0.0.1:54321") ?? URL(filePath: "/")
         let backend = Backend(config: SupabaseConfig(url: url, publishableKey: "sb_publishable_preview"), sessionPersistence: .inMemory)
         let model = AppModel(backend: backend, appGroup: nil, sideEffects: false)
         model.session.seedPreview(phase: phase, profile: Samples.alex, email: "alex@example.com")
         model.library.seedPreview(quotes: emptyLibrary ? [] : Samples.quotes)
-        model.social.seedPreview(friendships: Samples.friendships, inbox: Samples.inbox, me: Samples.alex.id)
+        model.social.seedPreview(
+            friendships: Samples.friendships,
+            conversations: Samples.conversations,
+            messages: Samples.inboxMessages,
+            me: Samples.alex.id
+        )
         model.starter.seedPreview(quotes: Samples.starters)
         model.catalog.seedPreview(quotes: Samples.catalog)
         model.reminders.seedPreview(permission: .authorized)

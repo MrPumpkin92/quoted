@@ -20,16 +20,25 @@ struct SearchIndexTests {
         quote(7, "Whatever you are, be a good one.", author: "Abraham Lincoln"),
     ]
 
-    let shared = [
-        SharedQuote(
-            id: Fixture.id(100), senderID: Fixture.id(200), recipientID: Fixture.id(300),
-            body: "Stay hungry, stay foolish.", author: "Steve Jobs", source: "Stanford commencement",
+    let inbox = [
+        Message(
+            id: Fixture.id(100), conversationID: Fixture.id(300), senderID: Fixture.id(200), kind: .quote,
+            note: "for the interview",
+            quote: QuoteSnapshot(body: "Stay hungry, stay foolish.", author: "Steve Jobs", source: "Stanford commencement"),
             createdAt: created
+        ),
+        Message(
+            id: Fixture.id(101), conversationID: Fixture.id(300), senderID: Fixture.id(200), kind: .text,
+            text: "See you at the zoo", createdAt: created
+        ),
+        Message(
+            id: Fixture.id(102), conversationID: Fixture.id(300), senderID: Fixture.id(200), kind: .playlist,
+            playlistID: Fixture.id(400), playlistTitle: "Morning Pages", createdAt: created
         ),
     ]
 
     func ids(_ query: String) -> [Int] {
-        SearchIndex.search(query, quotes: library, shared: shared).library.map { library.firstIndex(of: $0)! + 1 }
+        SearchIndex.search(query, quotes: library, inbox: inbox).library.map { library.firstIndex(of: $0)! + 1 }
     }
 
     @Test func caseAndDiacriticInsensitive() {
@@ -42,7 +51,7 @@ struct SearchIndexTests {
     }
 
     @Test func trimsAndRequiresEveryWord() {
-        let results = SearchIndex.search("   life   lived  ", quotes: library, shared: shared)
+        let results = SearchIndex.search("   life   lived  ", quotes: library, inbox: inbox)
         #expect(results.webQuery == "life lived")
         #expect(results.library.map(\.id) == [Fixture.id(4)])
         #expect(ids("life pizza").isEmpty)
@@ -61,34 +70,38 @@ struct SearchIndexTests {
             Self.quote(5, "Nothing here.", author: "Talia Shire"),
             Self.quote(6, "Nothing at all.", author: "Unknown", source: "Ali's book"),
         ]
-        let results = SearchIndex.search("ali", quotes: corpus, shared: [])
+        let results = SearchIndex.search("ali", quotes: corpus, inbox: [])
         #expect(results.library.map(\.id) == [4, 1, 2, 3, 5, 6].map(Fixture.id))
     }
 
     @Test func tiesKeepInputOrder() {
-        let results = SearchIndex.search("be", quotes: library, shared: [])
+        let results = SearchIndex.search("be", quotes: library, inbox: [])
         // "Be yourself" starts with the query, two bodies contain "be" as a word (kept in input
         // order), and "Albert Einstein" only matches inside the author's name.
         #expect(results.library.map(\.id) == [1, 4, 7, 2].map(Fixture.id))
     }
 
-    @Test func searchesSharedQuotes() {
-        let results = SearchIndex.search("hungry jobs", quotes: library, shared: shared)
+    @Test func searchesMessages() {
+        let results = SearchIndex.search("hungry jobs", quotes: library, inbox: inbox)
         #expect(results.library.isEmpty)
-        #expect(results.shared.map(\.id) == [Fixture.id(100)])
+        #expect(results.inbox.map(\.id) == [Fixture.id(100)])
         #expect(!results.isEmpty)
-        #expect(SearchIndex.search("zebra", quotes: library, shared: shared).isEmpty)
+        // A quote's note, a text and a playlist's title are searched too.
+        #expect(SearchIndex.search("interview", quotes: library, inbox: inbox).inbox.map(\.id) == [Fixture.id(100)])
+        #expect(SearchIndex.search("zoo", quotes: library, inbox: inbox).inbox.map(\.id) == [Fixture.id(101)])
+        #expect(SearchIndex.search("morning", quotes: library, inbox: inbox).inbox.map(\.id) == [Fixture.id(102)])
+        #expect(SearchIndex.search("zebra", quotes: library, inbox: inbox).isEmpty)
     }
 
     @Test func emptyQueryReturnsEverything() {
-        let results = SearchIndex.search("  \n ", quotes: library, shared: shared)
+        let results = SearchIndex.search("  \n ", quotes: library, inbox: inbox)
         #expect(results.library == library)
-        #expect(results.shared == shared)
+        #expect(results.inbox == inbox)
         #expect(results.webQuery.isEmpty)
     }
 
     @Test func reusableIndex() {
-        let index = SearchIndex(quotes: library, shared: shared)
+        let index = SearchIndex(quotes: library, inbox: inbox)
         #expect(index.search("wilde").library.map(\.id) == [Fixture.id(1)])
         #expect(index.search("count").library.map(\.id) == [Fixture.id(5)])
     }
@@ -109,7 +122,7 @@ struct SearchIndexTests {
     }
 
     @Test func resultsCarryTheWebURL() {
-        let results = SearchIndex.search(" stoic  calm ", quotes: library, shared: shared)
+        let results = SearchIndex.search(" stoic  calm ", quotes: library, inbox: inbox)
         #expect(results.webURL.absoluteString == "https://www.google.com/search?q=stoic%20calm%20quotes")
     }
 

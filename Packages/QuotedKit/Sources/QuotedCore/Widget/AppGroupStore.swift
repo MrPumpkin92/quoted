@@ -7,7 +7,10 @@ public enum AppGroup {
 }
 
 /// The offline library cache, written to `library-cache.json` so launch renders without a network.
-public struct LibraryCache: Codable, Hashable, Sendable {
+///
+/// Caches written by builds before the social redesign hold a `shared` list of shares; it is ignored
+/// (shares became quote messages, which the next refresh brings back), so those files still decode.
+public struct LibraryCache: Hashable, Sendable {
     /// Bump when the format changes incompatibly; older caches are then ignored.
     public static let currentVersion = 1
 
@@ -15,21 +18,54 @@ public struct LibraryCache: Codable, Hashable, Sendable {
     /// The user the cache belongs to, so a different sign-in never shows someone else's library.
     public var userID: UUID?
     public var savedAt: Date
+    /// The library, provenance included, so "Added by" reads offline.
     public var quotes: [Quote]
-    public var shared: [SharedQuote]
+    /// Messages kept for offline reading and search (for example received quote messages).
+    public var messages: [Message]
+    /// The Inbox rows those messages belong to, so their senders' names read offline.
+    public var conversations: [InboxConversation]
 
     public init(
         version: Int = LibraryCache.currentVersion,
         userID: UUID? = nil,
         savedAt: Date = Date(),
         quotes: [Quote],
-        shared: [SharedQuote]
+        messages: [Message] = [],
+        conversations: [InboxConversation] = []
     ) {
         self.version = version
         self.userID = userID
         self.savedAt = savedAt
         self.quotes = quotes
-        self.shared = shared
+        self.messages = messages
+        self.conversations = conversations
+    }
+}
+
+extension LibraryCache: Codable {
+    enum CodingKeys: String, CodingKey {
+        case version, userID, savedAt, quotes, messages, conversations
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        userID = try container.decodeIfPresent(UUID.self, forKey: .userID)
+        savedAt = try container.decode(Date.self, forKey: .savedAt)
+        quotes = try container.decode([Quote].self, forKey: .quotes)
+        // Optional extras: a list that no longer decodes costs only itself, never the library.
+        messages = (try? container.decodeIfPresent([Message].self, forKey: .messages)) ?? []
+        conversations = (try? container.decodeIfPresent([InboxConversation].self, forKey: .conversations)) ?? []
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(version, forKey: .version)
+        try container.encode(userID, forKey: .userID)
+        try container.encode(savedAt, forKey: .savedAt)
+        try container.encode(quotes, forKey: .quotes)
+        try container.encode(messages, forKey: .messages)
+        try container.encode(conversations, forKey: .conversations)
     }
 }
 

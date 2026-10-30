@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Create (or refresh) the founder's demo account on the LOCAL Supabase stack:
-#   demo@quoted.local, username @alex ("Alex"), the first 6 starter quotes in reminders, and one
-#   friend, @maya, who has shared one quote (via scripts/seed-local-friend.sh).
+#   demo@quoted.local, username @alex ("Alex"), the first 6 Quoted Catalog quotes in reminders, and
+#   one friend, @maya, who has sent one quote (via scripts/seed-local-friend.sh).
 #
 # The password is a fresh `openssl rand -base64 12` on every run. It is written only to
 # build/demo-account.txt (build/ is gitignored) and never printed.
@@ -73,32 +73,38 @@ TOKEN="$(curl --silent --show-error --fail-with-body --max-time 15 \
 # --- Profile ------------------------------------------------------------------------------------
 EXISTING="$(admin GET "/rest/v1/profiles?id=eq.$USER_ID&select=username" | jq -r '.[0].username // empty')"
 if [[ -z "$EXISTING" ]]; then
-  as_demo POST /rest/v1/profiles \
+  as_demo POST "/rest/v1/profiles?select=id" \
     "$(jq -n --arg id "$USER_ID" --arg u "$USERNAME" --arg n "$DISPLAY_NAME" '{id: $id, username: $u, display_name: $n}')" >/dev/null
   log "Created the profile @$USERNAME."
 elif [[ "$EXISTING" != "$USERNAME" ]]; then
   die "$EMAIL already has the username @$EXISTING"
 fi
 
-# --- Starter quotes in reminders ----------------------------------------------------------------
+# --- Catalog quotes in reminders -----------------------------------------------------------------
+# The server adds catalog quotes (origin starter, "Quoted Catalog") only through add_catalog_quotes.
 QUOTE_COUNT="$(as_demo GET "/rest/v1/quotes?select=id" | jq 'length')"
 if [[ "$QUOTE_COUNT" == 0 ]]; then
-  starters="$(as_demo GET "/rest/v1/starter_quotes?select=body,body_format,author,source&order=sort_order&limit=$STARTER_COUNT")"
-  rows="$(jq '[to_entries[] | .value + {origin: "starter", rotation_position: .key}]' <<<"$starters")"
-  as_demo POST /rest/v1/quotes "$rows" >/dev/null
-  log "Added $STARTER_COUNT starter quotes to the library and reminders."
+  starter_ids="$(as_demo GET "/rest/v1/starter_quotes?select=id&order=sort_order&limit=$STARTER_COUNT" | jq '[.[].id]')"
+  ids="$(for _ in $(seq "$(jq 'length' <<<"$starter_ids")"); do uuidgen | tr '[:upper:]' '[:lower:]'; done | jq -R . | jq -s .)"
+  as_demo POST "/rest/v1/rpc/add_catalog_quotes?select=id" \
+    "$(jq -n --argjson s "$starter_ids" --argjson i "$ids" '{p_starter_ids: $s, p_ids: $i, p_in_reminders: true}')" >/dev/null
+  log "Added $STARTER_COUNT Quoted Catalog quotes to the library and reminders."
 else
   log "The library already has $QUOTE_COUNT quotes; left as is."
 fi
 
-# --- Friend @maya with one shared quote ---------------------------------------------------------
+# --- Friend @maya with one quote sent -----------------------------------------------------------
 MAYA_ID="$(admin GET "/rest/v1/profiles?username=eq.maya&select=id" | jq -r '.[0].id // empty')"
-SHARES=0
+SENT=0
 if [[ -n "$MAYA_ID" ]]; then
-  SHARES="$(admin GET "/rest/v1/shares?sender_id=eq.$MAYA_ID&recipient_id=eq.$USER_ID&select=id" | jq 'length')"
+  CONVERSATION_ID="$(admin GET "/rest/v1/conversations?or=(and(user_a.eq.$MAYA_ID,user_b.eq.$USER_ID),and(user_a.eq.$USER_ID,user_b.eq.$MAYA_ID))&select=id" |
+    jq -r '.[0].id // empty')"
+  if [[ -n "$CONVERSATION_ID" ]]; then
+    SENT="$(admin GET "/rest/v1/messages?conversation_id=eq.$CONVERSATION_ID&sender_id=eq.$MAYA_ID&kind=eq.quote&select=id" | jq 'length')"
+  fi
 fi
-if [[ "$SHARES" == 0 ]]; then
-  # A line that isn't among the six starters, so the share stands out in the library.
+if [[ "$SENT" == 0 ]]; then
+  # A line that isn't among the six catalog quotes, so it stands out in the library.
   "$ROOT/scripts/seed-local-friend.sh" "$USERNAME" --accept \
     --quote "But screw your courage to the sticking-place, and we’ll not fail." \
     --author "William Shakespeare" --source "Macbeth" --note "This one made me think of you"
