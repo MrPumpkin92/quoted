@@ -2,6 +2,7 @@
 outlives build/. Run `scripts/catalog.sh sources-doc` after each batch."""
 
 import datetime
+import glob
 import os
 import re
 
@@ -13,6 +14,12 @@ STRICT_FAILS_NOTE = ("These starters fail the strict rule today. They stay live 
 
 def _y(y):
     return "?" if y is None else ("%d BCE" % -y if y < 0 else str(y))
+
+
+def _change(key, was, now):
+    if key == "edition_year":
+        return "edition %s → %s" % (_y(was), _y(now))
+    return "%s %s → %s" % (key, "none" if was is None else was, "none" if now is None else now)
 
 
 def _cell(s):
@@ -91,6 +98,20 @@ def write(path=None):
             ("; edits: " + ", ".join(edits)) if edits else "", pinned, _y(w["edition_year"]), "; ".join(deaths), ctx))
     if not quotes:
         out.append("| | No catalog quotes beyond the starters yet. | | | | | |")
+    repins = sorted(glob.glob(os.path.join(config.data_dir(), "repins", "*.jsonl")))
+    if repins:
+        out += ["", "## Re-pins", "",
+                "A live quote checked again against another pinned edition. Its body, author and source did not",
+                "change, so no seal moved; the table above shows where it is checked now.", ""]
+        for p in repins:
+            rows = registry.read_jsonl(p)
+            meta = rows[0]
+            moved = ["#%d from %s to %s" % (r["id"], r["from_ref"], r["to_ref"]) for r in rows if r["kind"] == "quote"]
+            works = ["work %d %s" % (r["id"], ", ".join(_change(k, r["from"][k], r["to"][k])
+                                                       for k in sorted(r["to"]) if r["from"][k] != r["to"][k]))
+                     for r in rows if r["kind"] == "work"]
+            out.append("- **Re-pin %s** (`supabase/catalog/repins/%s.jsonl`): %s%s. %s" % (
+                meta["repin"], meta["repin"], "; ".join(moved), ("; " + "; ".join(works)) if works else "", meta["reason"]))
     out += ["", "## The 60 starters", "",
             "Their locations and sources are in docs/starter-pack-sources.md. The verifier's gate re-renders all 60",
             "byte for byte from their pinned sources. It found these edits, which the starter doc does not always note:",

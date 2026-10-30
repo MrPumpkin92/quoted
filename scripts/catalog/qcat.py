@@ -14,6 +14,8 @@ Commands:
   excerpts                        write the committed excerpt fixtures from the pinned corpus
   review build --run DIR          the static review page
   generate batch NNN | generate check
+  generate repin --quote ID --reason TEXT
+                                  re-pin live quotes to their works' new pins (same body, author, source)
   sources-doc                     write docs/catalog-sources.md
 Exit codes: 0 ok, 1 error, 2 usage, 3 drift, 4 gate failure.
 """

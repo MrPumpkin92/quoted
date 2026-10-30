@@ -4,13 +4,23 @@
   generate batch NNN [--timestamp YYYYMMDDHHMMSS]
                 freeze the batch's rows into batches/NNN.jsonl, then write
                 supabase/migrations/<ts>_catalog_batch_NNN.sql and batches/NNN.md
+  generate repin --quote ID [--quote ID ...] --reason TEXT [--timestamp YYYYMMDDHHMMSS]
+                re-verify live quotes against their works' current pins in works.jsonl, require the
+                same body, freeze old and new provenance into repins/NNN.jsonl, then write
+                supabase/migrations/<ts>_catalog_repin_NNN.sql and update quotes.jsonl
   generate check
-                every batch regenerates byte for byte from its own snapshot, and quotes.jsonl still
-                holds exactly the snapshotted rows (an emitted row never changes)
+                every batch and re-pin regenerates byte for byte from its own snapshot, and
+                quotes.jsonl and works.jsonl hold exactly what those migrations store
 
-Each migration stages rows in temp tables, inserts with `on conflict (id) do nothing`, raises if
-anything staged differs from what is stored (insert-or-verify, never update), reseals users'
+Each batch migration stages rows in temp tables, inserts with `on conflict (id) do nothing`, raises
+if anything staged differs from what is stored (insert-or-verify, never update), reseals users'
 matching quotes, and drops its temp tables. It never updates or deletes a catalog row.
+
+A re-pin moves only where a live quote was checked (a Gutenberg text for an unscanned Wikisource
+page, say): its provenance columns and the work it cites. Id, body, author and source never change
+(catalog_quotes_guard), so no seal moves. Each update is compare-and-set: it applies only to a row
+that still holds the values it was emitted with, and the migration fails if any row ends up holding
+anything but the re-pinned values.
 """
 
 import datetime
@@ -18,6 +28,7 @@ import glob
 import json
 import os
 import re
+import textwrap
 
 from . import config, pd, registry, version
 
@@ -33,10 +44,27 @@ QUOTE_COLS = ["id", "body", "body_format", "author", "source", "source_location"
 QUOTE_FROZEN = ["body", "body_format", "author", "source", "source_location", "source_url", "is_starter",
                 "author_id", "work_id", "speaker", "checked_ebook_id", "checked_wikisource_oldid",
                 "checked_body_sha256", "checked_start", "checked_end", "match_kind", "checked_at", "verifier_version"]
+# What a re-pin may move. A work keeps its id, author and citation (the seal's source string).
+REPIN_QUOTE_COLS = ["source_location", "source_url", "checked_ebook_id", "checked_wikisource_oldid",
+                    "checked_body_sha256", "checked_start", "checked_end", "match_kind", "checked_at",
+                    "verifier_version"]
+REPIN_WORK_COLS = ["edition_year", "translator", "reporter", "contributors_last_died_year", "gutenberg_id"]
+PASSING = ("PASS_EXACT", "PASS_TYPOGRAPHIC", "PASS_ELIDED")
 
 
 class GenerateError(SystemExit):
     pass
+
+
+def _next_timestamp(timestamp=None):
+    """A migration version later than every existing one. Two migrations generated in the same second
+    (batches 001 and 002 did) would otherwise share a version, which the CLI refuses."""
+    if timestamp:
+        return timestamp
+    latest = max((os.path.basename(p).split("_", 1)[0] for p in glob.glob(os.path.join(config.migrations_dir(), "*.sql"))),
+                 default="0")
+    now = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    return now if now > latest else "%014d" % (int(latest) + 1)
 
 
 def _data(*parts):
@@ -64,7 +92,7 @@ def approve(batch, run_name):
         if d["decision"] != "keep" or lead_id in have:
             continue
         r = results.get(lead_id)
-        if r is None or r.get("final") not in ("PASS_EXACT", "PASS_TYPOGRAPHIC", "PASS_ELIDED"):
+        if r is None or r.get("final") not in PASSING:
             raise GenerateError("%s: kept but its verify result is %s" % (lead_id, r and r.get("final")))
         w = reg.works[r["work_id"]]
         a = reg.author(r["author"])
@@ -192,7 +220,7 @@ def generate_batch(number, timestamp=None):
             f.write(json.dumps(dict(kind="work", **_db_work(reg.works[w])), ensure_ascii=False, sort_keys=True) + "\n")
         for q in quotes:
             f.write(json.dumps(dict(kind="quote", **_db_quote(q)), ensure_ascii=False, sort_keys=True) + "\n")
-    ts = timestamp or datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    ts = _next_timestamp(timestamp)
     for old in glob.glob(os.path.join(config.migrations_dir(), "*_catalog_batch_%s.sql" % batch)):
         os.remove(old)
     mig = os.path.join(config.migrations_dir(), "%s_catalog_batch_%s.sql" % (ts, batch))
@@ -318,43 +346,243 @@ def render_sql(snap):
     return "\n".join(lines)
 
 
+# ---- re-pin -----------------------------------------------------------------------------------------
+
+def _events():
+    """Every emitted batch and re-pin in migration order, as (version, kind, number, snapshot, migrations)."""
+    out = []
+    for kind, folder in (("batch", "batches"), ("repin", "repins")):
+        for path in glob.glob(_data(folder, "*.jsonl")):
+            number = os.path.basename(path)[:-6]
+            migs = glob.glob(os.path.join(config.migrations_dir(), "*_catalog_%s_%s.sql" % (kind, number)))
+            version_ = os.path.basename(migs[0]).split("_", 1)[0] if len(migs) == 1 else ""
+            out.append((version_, kind, number, path, migs))
+    return sorted(out)
+
+
+def read_repin(path):
+    snap = {"works": [], "quotes": []}
+    for r in registry.read_jsonl(path):
+        k = r.pop("kind")
+        if k == "meta":
+            snap["meta"] = r
+        else:
+            snap[k + "s"].append(r)
+    return snap
+
+
+def effective_state(problems=None, events=None):
+    """What the catalog migrations leave in the database, replayed in order: each batch inserts its
+    rows, each re-pin then moves provenance. Returns ({quote id: row}, {work id: row}) and adds to
+    `problems` anything the database would refuse."""
+    quotes, works = {}, {}
+    note = problems.append if problems is not None else (lambda _: None)
+    for _, kind, number, path, _ in events if events is not None else _events():
+        if kind == "batch":
+            snap = read_snapshot(path)
+            for w in snap["works"]:
+                if w["id"] in works and works[w["id"]] != w:
+                    note("batch %s: work %d differs from what an earlier migration stored" % (number, w["id"]))
+                works.setdefault(w["id"], dict(w))
+            for q in snap["quotes"]:
+                if q["id"] in quotes:
+                    note("batch %s: id %d is used by an earlier batch" % (number, q["id"]))
+                quotes[q["id"]] = dict(q)
+            continue
+        snap = read_repin(path)
+        for table, rows in ((works, snap["works"]), (quotes, snap["quotes"])):
+            for r in rows:
+                cur = table.get(r["id"])
+                if cur is None or any(cur[k] != v for k, v in r["from"].items()):
+                    note("re-pin %s: %s %d does not hold the values it re-pins from" % (
+                        number, "work" if table is works else "quote", r["id"]))
+                if cur is not None:
+                    cur.update(r["to"])
+    return quotes, works
+
+
+def generate_repin(quote_ids, reason, timestamp=None):
+    """Re-pin live quotes to their works' current pins in works.jsonl (change the work's ref there
+    first): the same body, author and source, checked against another edition."""
+    from . import corpus, fetch, verify
+    from .rejects import RejectList
+    reason = re.sub(r"\s+", " ", reason or "").strip()
+    if not quote_ids or not reason:
+        raise GenerateError("usage: generate repin --quote ID [--quote ID ...] --reason TEXT")
+    problems = []
+    state_quotes, state_works = effective_state(problems)
+    if problems:
+        raise GenerateError("the emitted migrations don't replay (run generate check):\n  " + "\n  ".join(problems))
+    reg = registry.Registry.load()
+    lock = corpus.load_lock()
+    rejects = RejectList.load(live=True)
+    rows = quotes_rows()
+    by_id = {q["id"]: q for q in rows}
+    ids = sorted(set(quote_ids))
+    # A work whose stored values no longer match works.jsonl moves with this re-pin, and so must every
+    # emitted quote that cites it: no quote may name a pin its work doesn't.
+    changed_works = sorted(wid for wid, w in state_works.items() if _db_work(reg.works[wid]) != w)
+    work_events = []
+    for wid in changed_works:
+        now = _db_work(reg.works[wid])
+        if (now["author_id"], now["citation"]) != (state_works[wid]["author_id"], state_works[wid]["citation"]):
+            raise GenerateError("work %d: author and citation are the seal's source and never change" % wid)
+        missing = sorted(qid for qid, q in state_quotes.items() if q["work_id"] == wid and qid not in ids)
+        if missing:
+            raise GenerateError("work %d changed in works.jsonl: re-pin %s with it" % (
+                wid, ", ".join("--quote %d" % i for i in missing)))
+        work_events.append({"kind": "work", "id": wid, "from": {k: state_works[wid][k] for k in REPIN_WORK_COLS},
+                            "to": {k: now[k] for k in REPIN_WORK_COLS}})
+    tree = version.tree_id()
+    checked_at = fetch.now()
+    quote_events = []
+    for qid in ids:
+        q, stored = by_id.get(qid), state_quotes.get(qid)
+        if q is None or stored is None or stored["status"] != "live":
+            raise GenerateError("#%d is not a live emitted catalog quote" % qid)
+        if any(_db_quote(q)[k] != stored[k] for k in QUOTE_FROZEN):
+            raise GenerateError("#%d in quotes.jsonl differs from what the migrations store (run generate check)" % qid)
+        w = reg.works[q["work_id"]]
+        ref, old_ref = w["ref"], q["checked"]["ref"]
+        if ref == old_ref:
+            raise GenerateError("#%d is already checked against %s: change work %d's pin in works.jsonl first" % (
+                qid, ref, w["id"]))
+        r = verify.verify({"lead_id": "repin-%d" % qid, "text": q["body"], "author": q["author"], "work": w["id"],
+                           "speaker": q.get("speaker"), "speaker_ok": q.get("speaker") is not None},
+                          reg, lock, None, rejects)
+        final = verify.final_class(r)
+        if final not in PASSING or r.get("body") != q["body"]:
+            raise GenerateError("#%d: %s gives %s %r, not the stored body. Another wording is a withdrawal and a "
+                                "new row, never a re-pin." % (qid, ref, final, r.get("body")))
+        if not r["pd"]["ok"]:
+            raise GenerateError("#%d fails the public-domain rule against %s: %s" % (qid, ref, "; ".join(r["pd"]["blocking"])))
+        q.update({
+            "source_url": w["source_url"], "pd": r["pd"], "edits": r.get("edits"),
+            "prefix_dropped": r.get("prefix_dropped"), "gaps": r.get("gaps"),
+            "context_before": r.get("context_before", "")[-300:], "context_after": r.get("context_after", "")[:300],
+            "checked": {
+                "ebook_id": w["gutenberg_id"] if ref.startswith("pg") else None,
+                "wikisource_oldid": lock[ref]["oldid"] if ref.startswith("ws:") else None,
+                "ref": ref, "body_sha256": r["body_sha256"], "start": r["start"], "end": r["end"],
+                "match_kind": "elided" if final == "PASS_ELIDED" else "exact",
+                "checked_at": checked_at, "verifier_version": tree,
+            },
+        })
+        new = _db_quote(q)
+        quote_events.append({"kind": "quote", "id": qid, "from_ref": old_ref, "to_ref": ref,
+                             "from": {k: stored[k] for k in REPIN_QUOTE_COLS},
+                             "to": {k: new[k] for k in REPIN_QUOTE_COLS}})
+        print("#%d: %s → %s, %s, flags %s" % (qid, old_ref, ref, final, r["flags"]))
+    number = "%03d" % (1 + max([0] + [int(os.path.basename(p)[:-6]) for p in glob.glob(_data("repins", "*.jsonl"))]))
+    path = _data("repins", "%s.jsonl" % number)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        meta = {"kind": "meta", "repin": number, "ids": ids, "reason": reason, "generated_with": tree}
+        for r in [meta] + work_events + quote_events:
+            f.write(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n")
+    mig = os.path.join(config.migrations_dir(), "%s_catalog_repin_%s.sql" % (_next_timestamp(timestamp), number))
+    with open(mig, "w", encoding="utf-8") as f:
+        f.write(render_repin_sql(read_repin(path)))
+    registry.write_jsonl(_data("quotes.jsonl"), rows)
+    print("wrote", os.path.relpath(path, config.REPO), "and", os.path.relpath(mig, config.REPO))
+    return 0
+
+
+def _set_and_match(table, row, cols, tag):
+    changed = [c for c in cols if row["from"][c] != row["to"][c]]
+    return [
+        "update public.%s" % table,
+        "set " + ",\n    ".join("%s = %s" % (c, _lit(row["to"][c], tag, KINDS.get(c))) for c in changed),
+        "where id = %d" % row["id"],
+        "  and (%s)" % ", ".join(cols),
+        "      is not distinct from (%s);" % ", ".join(_lit(row["from"][c], tag, KINDS.get(c)) for c in cols),
+        "",
+    ]
+
+
+def _holds(table, row, cols, tag):
+    return "not exists (select 1 from public.%s where id = %d and (%s) is not distinct from (%s))" % (
+        table, row["id"], ", ".join(cols), ", ".join(_lit(row["to"][c], tag, KINDS.get(c)) for c in cols))
+
+
+def render_repin_sql(snap):
+    meta = snap["meta"]
+    number = meta["repin"]
+    tag = _tag([str(v) for r in snap["works"] + snap["quotes"] for side in ("from", "to") for v in r[side].values()])
+    why = textwrap.wrap("Why: " + meta["reason"], 96)
+    lines = [
+        "-- GENERATED by `scripts/catalog.sh generate repin`. Do not edit: change supabase/catalog/ and",
+        "-- regenerate (`generate check` fails on any hand edit).",
+        "--",
+        "-- Catalog re-pin %s: %s now checked against another pinned edition." % (
+            number, ", ".join("#%d" % q["id"] for q in snap["quotes"])),
+    ] + ["-- " + w for w in why] + [
+        "-- Record: supabase/catalog/repins/%s.jsonl and docs/catalog-sources.md. Generated with verifier %s." % (
+            number, meta["generated_with"][:12]),
+        "--",
+    ] + ["-- #%d: %s -> %s" % (q["id"], q["from_ref"], q["to_ref"]) for q in snap["quotes"]] + [
+        "--",
+        "-- Body, author and source never change (catalog_quotes_guard), so no seal moves and nothing is",
+        "-- resealed; only where the text was checked does. Compare-and-set: each update applies only to a",
+        "-- row that still holds the values it was emitted with, and the check at the end fails the",
+        "-- migration if any row holds anything but the re-pinned values.",
+        "",
+    ]
+    for w in snap["works"]:
+        lines += _set_and_match("catalog_works", w, REPIN_WORK_COLS, tag)
+    for q in snap["quotes"]:
+        lines += _set_and_match("catalog_quotes", q, REPIN_QUOTE_COLS, tag)
+    lines += ["do $$", "begin"]
+    for kind, table, rows, cols in (("work", "catalog_works", snap["works"], REPIN_WORK_COLS),
+                                    ("quote", "catalog_quotes", snap["quotes"], REPIN_QUOTE_COLS)):
+        for r in rows:
+            lines += ["  if %s then" % _holds(table, r, cols, tag),
+                      "    raise exception 'catalog re-pin %s: %s %d holds neither its emitted values nor the re-pinned ones';" % (
+                          number, kind, r["id"]),
+                      "  end if;"]
+    lines += ["end", "$$;", ""]
+    return "\n".join(lines)
+
+
 # ---- check ------------------------------------------------------------------------------------------
 
 def check():
-    snaps = sorted(glob.glob(_data("batches", "*.jsonl")))
-    rows = {q["id"]: q for q in quotes_rows()}
+    events = _events()
     problems = []
-    seen = set()
-    for path in snaps:
-        batch = os.path.basename(path)[:-6]
-        snap = read_snapshot(path)
-        migs = glob.glob(os.path.join(config.migrations_dir(), "*_catalog_batch_%s.sql" % batch))
+    for _, kind, number, path, migs in events:
         if len(migs) != 1:
-            problems.append("batch %s: %d migration files" % (batch, len(migs)))
+            problems.append("%s %s: %d migration files" % (kind, number, len(migs)))
             continue
+        sql = render_sql(read_snapshot(path)) if kind == "batch" else render_repin_sql(read_repin(path))
         with open(migs[0], encoding="utf-8") as f:
-            if f.read() != render_sql(snap):
-                problems.append("batch %s: %s differs from what its snapshot generates" % (batch, os.path.basename(migs[0])))
-        for q in snap["quotes"]:
-            if q["id"] in seen:
-                problems.append("batch %s: id %d is used by an earlier batch" % (batch, q["id"]))
-            seen.add(q["id"])
-            src = rows.get(q["id"])
-            if src is None:
-                problems.append("batch %s: id %d is no longer in quotes.jsonl" % (batch, q["id"]))
-            else:
-                now = _db_quote(src)
-                diff = [k for k in QUOTE_FROZEN if now[k] != q[k]]
-                if diff:
-                    problems.append("batch %s: id %d changed in quotes.jsonl (%s); emitted rows never change" % (
-                        batch, q["id"], ", ".join(diff)))
-    orphans = [m for m in glob.glob(os.path.join(config.migrations_dir(), "*_catalog_batch_*.sql"))
-               if not os.path.exists(_data("batches", re.search(r"_catalog_batch_(\d+)\.sql$", m).group(1) + ".jsonl"))]
-    for m in orphans:
-        problems.append("%s has no snapshot in supabase/catalog/batches/" % os.path.basename(m))
+            if f.read() != sql:
+                problems.append("%s %s: %s differs from what its snapshot generates" % (kind, number, os.path.basename(migs[0])))
+    state_quotes, state_works = effective_state(problems, events)
+    rows = {q["id"]: q for q in quotes_rows()}
+    for qid, stored in sorted(state_quotes.items()):
+        src = rows.get(qid)
+        if src is None:
+            problems.append("id %d is no longer in quotes.jsonl" % qid)
+            continue
+        diff = [k for k in QUOTE_FROZEN if _db_quote(src)[k] != stored[k]]
+        if diff:
+            problems.append("id %d in quotes.jsonl differs from what the migrations store (%s): an emitted row changes "
+                            "only through a re-pin" % (qid, ", ".join(diff)))
+    reg = registry.Registry.load()
+    for wid, stored in sorted(state_works.items()):
+        diff = [k for k, v in _db_work(reg.works[wid]).items() if stored[k] != v]
+        if diff:
+            problems.append("work %d in works.jsonl differs from what the migrations store (%s): re-pin its quotes "
+                            "(generate repin)" % (wid, ", ".join(diff)))
+    for kind, folder in (("batch", "batches"), ("repin", "repins")):
+        for m in glob.glob(os.path.join(config.migrations_dir(), "*_catalog_%s_*.sql" % kind)):
+            n = re.search(r"_catalog_%s_(\d+)\.sql$" % kind, m).group(1)
+            if not os.path.exists(_data(folder, n + ".jsonl")):
+                problems.append("%s has no snapshot in supabase/catalog/%s/" % (os.path.basename(m), folder))
     for p in problems:
         print("-", p)
-    print("generate check: %d batches, %d problems" % (len(snaps), len(problems)))
+    print("generate check: %d batches, %d re-pins, %d problems" % (
+        sum(1 for e in events if e[1] == "batch"), sum(1 for e in events if e[1] == "repin"), len(problems)))
     return 1 if problems else 0
 
 

@@ -163,6 +163,16 @@ if grep -q '_catalog_batch_' <<<"$dry_run"; then
         (seconds). The report to read is supabase/catalog/batches/NNN.md.
 CHECKS
 fi
+if grep -q '_catalog_repin_' <<<"$dry_run"; then
+  cat <<'CHECKS'
+  - catalog re-pins (*_catalog_repin_NNN): a live quote is now checked against
+    another pinned edition. Body, author and source don't change, so no seal
+    moves; the Verified sheet's link and the edition year can. Each row is
+    updated only if it still holds the values it was emitted with, and the
+    migration fails otherwise. The record: supabase/catalog/repins/NNN.jsonl
+    and the Re-pins section of docs/catalog-sources.md.
+CHECKS
+fi
 if grep -q '_catalog_withdraw_' <<<"$dry_run"; then
   cat <<'CHECKS'
   - catalog withdrawals (*_catalog_withdraw_<id>): the seal comes off that

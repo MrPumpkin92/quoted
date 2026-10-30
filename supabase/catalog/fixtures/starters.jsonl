@@ -43,7 +43,7 @@
 {"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 43, "judgements": [], "speaker": null, "work_id": 43}
 {"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 44, "judgements": [], "speaker": null, "work_id": 44}
 {"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 45, "judgements": [], "speaker": null, "work_id": 45}
-{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 46, "judgements": [{"kind": "unbacked_source", "note": "the Wikisource page has no scan"}], "speaker": null, "work_id": 46}
+{"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 46, "speaker": null, "work_id": 46}
 {"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 47, "judgements": [{"kind": "unbacked_source", "note": "the Wikisource page has no scan and names no source"}, {"kind": "reported_transcription", "note": "Marius Robinson's report in the Anti-Slavery Bugle, 1851"}], "speaker": null, "work_id": 47}
 {"expect": {"cls": "PASS_EXACT", "edits": []}, "id": 48, "judgements": [{"kind": "manuscript_wording", "note": "the Pickering Manuscript, unpunctuated"}], "speaker": null, "work_id": 48}
 {"expect": {"cls": "PASS_EXACT", "edits": [{"kind": "trim_start"}, {"kind": "capitalise_first"}]}, "id": 49, "judgements": [{"kind": "trim_undocumented", "note": "drops “But believe me, my dear boy, ”; not noted in docs/starter-pack-sources.md (plan section 3.2)"}], "speaker": "Kutúzov", "work_id": 49}
