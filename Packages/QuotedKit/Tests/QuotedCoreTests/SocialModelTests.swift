@@ -455,3 +455,133 @@ struct SocialModelTests {
         #expect(ReportContent(post: post) == ReportContent(body: "P", note: "c"))
     }
 }
+
+@Suite("Catalog quote of the day")
+struct QuoteOfTheDayTests {
+    /// Five live catalog quotes, out of id order, so the pick must sort by id. Two are starters whose
+    /// onboarding order runs against their ids; the Feed ignores it.
+    let catalog = [
+        CatalogQuote(id: 3, body: "Quote 3"),
+        CatalogQuote(id: 1, body: "Quote 1", isStarter: true, sortOrder: 2),
+        CatalogQuote(id: 5, body: "Quote 5"),
+        CatalogQuote(id: 2, body: "Quote 2", isStarter: true, sortOrder: 1),
+        CatalogQuote(id: 4, body: "Quote 4"),
+    ]
+
+    func calendar(_ zone: String) throws -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: zone))
+        return calendar
+    }
+
+    func date(_ text: String) throws -> Date {
+        try #require(ISO8601DateFormatter().date(from: text))
+    }
+
+    @Test func countsWholeDaysSince2001() throws {
+        let utc = try calendar("UTC")
+        #expect(CatalogQuote.dayNumber(of: try date("2001-01-01T00:00:00Z"), calendar: utc) == 0)
+        #expect(CatalogQuote.dayNumber(of: try date("2001-01-01T23:59:59Z"), calendar: utc) == 0)
+        #expect(CatalogQuote.dayNumber(of: try date("2001-01-02T00:00:00Z"), calendar: utc) == 1)
+        #expect(CatalogQuote.dayNumber(of: try date("2000-12-31T12:00:00Z"), calendar: utc) == -1)
+        #expect(CatalogQuote.dayNumber(of: try date("2026-10-30T12:00:00Z"), calendar: utc) == 9433)
+    }
+
+    @Test func countsLocalDaysAcrossADaylightSavingChange() throws {
+        // New York leaves daylight saving time on 2026-11-01, a 25-hour day.
+        let newYork = try calendar("America/New_York")
+        let justAfterMidnight = CatalogQuote.dayNumber(of: try date("2026-11-01T04:30:00Z"), calendar: newYork)
+        let lateThatEvening = CatalogQuote.dayNumber(of: try date("2026-11-02T04:30:00Z"), calendar: newYork)
+        let nextMidnight = CatalogQuote.dayNumber(of: try date("2026-11-02T05:00:00Z"), calendar: newYork)
+        #expect(justAfterMidnight == 9435)
+        #expect(lateThatEvening == 9435)
+        #expect(nextMidnight == 9436)
+    }
+
+    @Test func picksInIDOrderAndWraps() throws {
+        let utc = try calendar("UTC")
+        // Day 0 is the lowest id, not the first starter; day 5 wraps back to it.
+        #expect(CatalogQuote.ofTheDay(from: catalog, on: try date("2001-01-01T08:00:00Z"), calendar: utc)?.id == 1)
+        #expect(CatalogQuote.ofTheDay(from: catalog, on: try date("2001-01-03T08:00:00Z"), calendar: utc)?.id == 3)
+        #expect(CatalogQuote.ofTheDay(from: catalog, on: try date("2001-01-06T08:00:00Z"), calendar: utc)?.id == 1)
+        // Before 2001 the index stays in range.
+        #expect(CatalogQuote.ofTheDay(from: catalog, on: try date("2000-12-31T08:00:00Z"), calendar: utc)?.id == 5)
+        #expect(CatalogQuote.ofTheDay(from: [], on: .now) == nil)
+    }
+
+    @Test func picksOnlyLiveQuotes() throws {
+        let utc = try calendar("UTC")
+        let day1 = try date("2001-01-02T08:00:00Z")
+        let day5 = try date("2001-01-06T08:00:00Z")
+        let notLive = [
+            CatalogQuote(id: 6, body: "Retired", status: .retired),
+            CatalogQuote(id: 7, body: "Withdrawn", status: .withdrawn),
+        ]
+        // Rows that are not live don't count: day 5 still wraps to the first live quote.
+        #expect(CatalogQuote.ofTheDay(from: catalog + notLive, on: day5, calendar: utc)?.id == 1)
+        // One retired in the middle moves the later ones up.
+        var withRetired = catalog
+        withRetired[3].status = .retired
+        #expect(CatalogQuote.ofTheDay(from: withRetired, on: day1, calendar: utc)?.id == 3)
+        #expect(CatalogQuote.ofTheDay(from: notLive, on: day1, calendar: utc) == nil)
+    }
+
+    @Test func staysTheSameAllDayAndChangesAtLocalMidnight() throws {
+        let tokyo = try calendar("Asia/Tokyo")
+        // 2026-10-29 in Tokyo runs from 15:00 UTC on the 28th to 15:00 UTC on the 29th.
+        let morning = CatalogQuote.ofTheDay(from: catalog, on: try date("2026-10-28T15:00:00Z"), calendar: tokyo)
+        let night = CatalogQuote.ofTheDay(from: catalog, on: try date("2026-10-29T14:59:59Z"), calendar: tokyo)
+        let nextDay = CatalogQuote.ofTheDay(from: catalog, on: try date("2026-10-29T15:00:00Z"), calendar: tokyo)
+        #expect(morning == night)
+        #expect(nextDay != night)
+        // The same instant is a different local day in New York.
+        let newYork = try calendar("America/New_York")
+        let instant = try date("2026-10-29T02:00:00Z")
+        #expect(CatalogQuote.dayNumber(of: instant, calendar: tokyo) == CatalogQuote.dayNumber(of: instant, calendar: newYork) + 1)
+    }
+
+    @Test func picksByDayNumberLikeByDate() throws {
+        let utc = try calendar("UTC")
+        let instant = try date("2026-10-30T12:00:00Z")
+        let day = CatalogQuote.dayNumber(of: instant, calendar: utc)
+        #expect(CatalogQuote.ofTheDay(from: catalog, day: day) == CatalogQuote.ofTheDay(from: catalog, on: instant, calendar: utc))
+        #expect(CatalogQuote.ofTheDay(from: catalog, day: 2)?.id == 3)
+        #expect(CatalogQuote.ofTheDay(from: catalog, day: -1)?.id == 5)
+        #expect(CatalogQuote.ofTheDay(from: [], day: 2) == nil)
+    }
+
+    @Test func keepsTheDaysPickWhenTheLiveCountChanges() {
+        // Day 9433 over five live quotes is index 3 (id 4). A batch of three more re-indexes the day
+        // to index 1 (id 2), but the kept pick stays.
+        let day = 9433
+        let pick = CatalogDayPick(day: day, catalogID: 4)
+        #expect(CatalogQuote.ofTheDay(from: catalog, day: day)?.id == 4)
+        let batch = (6...8).map { CatalogQuote(id: $0, body: "Quote \($0)") }
+        #expect(CatalogQuote.ofTheDay(from: catalog + batch, day: day)?.id == 2)
+        #expect(CatalogQuote.ofTheDay(from: catalog + batch, day: day, keeping: pick)?.id == 4)
+        // Retiring a lower id keeps it too.
+        var withRetired = catalog
+        withRetired[0].status = .retired
+        #expect(CatalogQuote.ofTheDay(from: withRetired, day: day, keeping: pick)?.id == 4)
+    }
+
+    @Test func replacesAKeptPickThatIsGoneOrFromAnotherDay() {
+        let day = 9433
+        let pick = CatalogDayPick(day: day, catalogID: 4)
+        // The kept quote was withdrawn: the day's index over what is still live (four quotes).
+        var withdrawn = catalog
+        withdrawn[4].status = .withdrawn
+        #expect(CatalogQuote.ofTheDay(from: withdrawn, day: day, keeping: pick)?.id == 2)
+        // Missing from the list altogether (a reload of live rows only).
+        #expect(CatalogQuote.ofTheDay(from: catalog.filter { $0.id != 4 }, day: day, keeping: pick)?.id == 2)
+        // The next day ignores yesterday's pick.
+        #expect(CatalogQuote.ofTheDay(from: catalog, day: day + 1, keeping: pick)?.id == 5)
+        #expect(CatalogQuote.ofTheDay(from: [], day: day, keeping: pick) == nil)
+    }
+
+    @Test func dayPickRoundTripsThroughJSON() throws {
+        let pick = CatalogDayPick(day: 9433, catalogID: 88)
+        let data = try JSONEncoder().encode(pick)
+        #expect(try JSONDecoder().decode(CatalogDayPick.self, from: data) == pick)
+    }
+}

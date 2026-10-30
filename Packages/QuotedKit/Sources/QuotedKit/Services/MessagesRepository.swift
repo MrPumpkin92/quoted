@@ -48,7 +48,9 @@ public struct MessagesRepository: Sendable {
 
     /// The Inbox (`public.inbox_conversations()`): one row per conversation you may read, newest
     /// first, with the other member, the latest message you can see, your unread count and your
-    /// read mark. Feed it to ``InboxBadge`` for the tab badge. A GET, so the SDK retries it.
+    /// read mark. Once conversations have their own screen, the tab badge counts its unread rows
+    /// (``InboxBadge/init(conversations:friendRequests:)``); until then the app counts the
+    /// conversations holding an unseen quote. A GET, so the SDK retries it.
     public func inbox() async throws -> [InboxConversation] {
         _ = try client.requireUserID()
         return try await mappingErrors {
@@ -83,9 +85,9 @@ public struct MessagesRepository: Sendable {
         }
     }
 
-    /// "Shared with you": every quote message someone sent you that you may read, across all your
-    /// conversations, newest first (`created_at desc, id`). Read in keyset pages to the end, so an
-    /// older quote is never cut off by a busy conversation; text and playlist messages and your own
+    /// The quotes the Inbox shows: every quote message someone sent you that you may read, across all
+    /// your conversations, newest first (`created_at desc, id`). Read in keyset pages to the end, so
+    /// an older quote is never cut off by a busy conversation; text and playlist messages and your own
     /// messages are left out. Row-level security limits it to what you may read (nothing before your
     /// "Delete Conversation", nothing you reported, nothing from someone who blocked you).
     ///

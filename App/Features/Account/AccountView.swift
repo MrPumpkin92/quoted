@@ -2,7 +2,8 @@ import OSLog
 import QuotedCore
 import SwiftUI
 
-/// Account (docs/ui-spec.md §12): your profile (the username is selectable; with anonymous accounts a
+/// Settings (docs/ui-spec.md §12), pushed by the Profile tab root's gear. Until Stage 6 rebuilds it as
+/// a grouped form, it keeps the Account layout: your profile (the username is selectable; with anonymous accounts a
 /// line says the account lives on this iPhone), your display name (editable), Your profile (favorites
 /// and whether friends see them), the Reminders status,
 /// blocked users, the legal pages, support, sign out (email accounts only) and account deletion, with
@@ -11,7 +12,7 @@ import SwiftUI
 /// Delete account asks first (it is permanent), shows progress while the server deletes everything,
 /// and on failure explains why and offers Try again. On success `SessionStore` cleans up the device
 /// and the app returns to Welcome, or with anonymous accounts starts a new one (Username).
-/// `Route.account` maps to `AccountView()`.
+/// `Route.settings` maps to `AccountView()`.
 struct AccountView: View {
     @Environment(SessionStore.self) private var session
     @Environment(ReminderStore.self) private var reminders
@@ -45,7 +46,7 @@ struct AccountView: View {
             footer
         }
         .marginCardList()
-        .navigationTitle("Account")
+        .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .disabled(isDeleting || isSigningOut)
         .navigationBarBackButtonHidden(isDeleting)
@@ -227,7 +228,7 @@ struct AccountView: View {
         Button {
             router.push(.blockedUsers)
         } label: {
-            AccountRowLabel(title: "Blocked users", systemImage: "hand.raised", accessory: .disclosure)
+            AccountRowLabel(title: "Blocked Users", systemImage: "hand.raised", accessory: .disclosure)
         }
         .marginCardRow(.single)
     }

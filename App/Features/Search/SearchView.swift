@@ -7,8 +7,8 @@ import UIKit
 ///
 /// The field is the shell's `.searchable` on the search tab's stack, bound to `router.searchText`, so
 /// this view only reads it (the shell's `.onSubmit(of: .search)` records the term in Recent). With an empty query it shows recent searches and suggestion chips. While
-/// typing it searches the library and the shared inbox on the device (`QuotedCore.SearchIndex`) and
-/// lists "In your library", then "Shared with you", then always the "Search the web" row last.
+/// typing it searches the library and the quotes friends sent on the device (`QuotedCore.SearchIndex`)
+/// and lists "In your library", then "Inbox", then always the "Search the web" row last.
 ///
 /// The web row opens Google in an in-app browser (`SafariView`, presented as the shell's `.safari` sheet),
 /// as the founder chose (docs/decisions/2026-10-19-web-search-browser.md). When the browser closes and
@@ -32,10 +32,15 @@ struct SearchView: View {
     /// `UIPasteboard.changeCount` when the card was offered. Copying anything else since makes the
     /// card stale, so it goes.
     @State private var pasteboardCountAtOffer: Int?
+    /// Bumped each time the tab appears. The body reads it, so it re-reads the query on return: Close
+    /// clears the text as it leaves the tab, and iOS can bring the tab back still showing the old
+    /// results under the empty field.
+    @State private var appearances = 0
 
     init() {}
 
     var body: some View {
+        let _ = appearances
         let results = indexCache.index(quotes: library.quotes, inbox: social.inbox).search(router.searchText)
         ScrollViewReader { proxy in
             ScrollView {
@@ -86,7 +91,10 @@ struct SearchView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { hideCopiedQuoteIfStale() }
             }
-            .onAppear(perform: hideCopiedQuoteIfStale)
+            .onAppear {
+                appearances += 1
+                hideCopiedQuoteIfStale()
+            }
         }
     }
 
@@ -287,7 +295,7 @@ private struct SearchResultsContent: View {
 
         if !results.shared.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                SearchSectionTitle("Shared with you")
+                SearchSectionTitle("Inbox")
                 HairlineDivider()
                 ForEach(results.shared) { share in
                     SharedResultRow(share: share, terms: terms)
@@ -358,8 +366,9 @@ private struct LibraryResultRow: View {
 }
 
 /// A shared match (a quote a friend sent): "Jordan Lee · yesterday", a Save (bookmark) button, then
-/// the quote. Tapping the quote opens the shared inbox, where it can be reported or the sender
-/// blocked. Save works as it does in the inbox: the quote goes to the library and the reminders.
+/// the quote. Tapping the quote opens the Inbox (until conversations have their own screen), where it
+/// can be reported or the sender blocked. Save works as it does in the Inbox: the quote goes to the
+/// library and the reminders.
 private struct SharedResultRow: View {
     let share: InboxQuote
     let terms: [String]
@@ -388,7 +397,7 @@ private struct SharedResultRow: View {
                 }
             }
             Button {
-                router.push(.sharedInbox)
+                router.showInbox()
             } label: {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     QuoteText(share, highlighting: terms)
@@ -399,7 +408,7 @@ private struct SharedResultRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            .accessibilityHint("Opens Shared with you")
+            .accessibilityHint("Opens the Inbox")
         }
         .padding(.vertical, Theme.Spacing.m)
     }

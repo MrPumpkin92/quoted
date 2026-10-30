@@ -50,6 +50,10 @@ final class ToastCenter {
     private(set) var current: Toast?
     /// The host that draws toasts: the last one registered (the topmost sheet, else the root).
     private(set) var activeHostID: UUID?
+    /// The height of a bar the screen on top pins above the tab bar (the empty Feed's guidance and
+    /// Add a friend), which the tab-bar host's toasts stay clear of. The screen sets it while it is on
+    /// screen (`View.reportsPinnedBarHeight()`); 0 otherwise.
+    var pinnedBarHeight: CGFloat = 0
 
     private var action: (@MainActor () async -> Void)?
     private var pendingCommit: (@MainActor () async -> Void)?
@@ -281,13 +285,14 @@ enum ToastClearance: Equatable, Sendable {
 
     /// The bottom padding for a host whose bottom safe-area inset is `safeAreaBottom`, with a pinned
     /// primary button `buttonHeight` tall (it grows with Dynamic Type).
-    func bottomPadding(safeAreaBottom: CGFloat, buttonHeight: CGFloat) -> CGFloat {
+    func bottomPadding(safeAreaBottom: CGFloat, buttonHeight: CGFloat, pinnedBarHeight: CGFloat = 0) -> CGFloat {
         switch self {
         case .fixed(let padding):
             padding
         case .tabBar:
             // With the keyboard up the inset is the keyboard, which hides the bar: just a small gap.
-            max(Theme.Spacing.xs, Self.tabBarTopFromScreenBottom + Self.gap - safeAreaBottom)
+            // A screen's bar pinned above the tab bar (`ToastCenter.pinnedBarHeight`) adds its height.
+            max(Theme.Spacing.xs, Self.tabBarTopFromScreenBottom + Self.gap - safeAreaBottom) + pinnedBarHeight
         case .bottomButton:
             // The onboarding bars pin the button `Theme.Spacing.m` above the safe area.
             buttonHeight + Theme.Spacing.m + Theme.Spacing.xs
@@ -308,6 +313,37 @@ extension View {
     /// signed in, the pinned Continue button during onboarding).
     func toastHost(clearance: ToastClearance) -> some View {
         modifier(ToastHostModifier(clearance: clearance))
+    }
+
+    /// Reports this bar's height (`ToastCenter.pinnedBarHeight`) while it is on screen, so the shell's
+    /// toasts sit above it instead of over its button. Apply it to the content of a tab root's bottom
+    /// `.safeAreaBar`.
+    func reportsPinnedBarHeight() -> some View {
+        modifier(PinnedBarHeightReporter())
+    }
+}
+
+private struct PinnedBarHeightReporter: ViewModifier {
+    @Environment(ToastCenter.self) private var center
+    @State private var height: CGFloat = 0
+    @State private var isVisible = false
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { newHeight in
+                height = newHeight
+                if isVisible { center.pinnedBarHeight = newHeight }
+            }
+            .onAppear {
+                isVisible = true
+                center.pinnedBarHeight = height
+            }
+            .onDisappear {
+                isVisible = false
+                center.pinnedBarHeight = 0
+            }
     }
 }
 
@@ -342,7 +378,8 @@ private struct ToastHostModifier: ViewModifier {
                     .padding(.horizontal, Theme.Spacing.gutter)
                     .padding(.bottom, clearance.bottomPadding(
                         safeAreaBottom: safeAreaBottom,
-                        buttonHeight: max(buttonHeight, Theme.Metrics.primaryButtonHeight)
+                        buttonHeight: max(buttonHeight, Theme.Metrics.primaryButtonHeight),
+                        pinnedBarHeight: center.pinnedBarHeight
                     ))
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .id(toast.id)

@@ -32,7 +32,7 @@ struct FriendRequestResult: Hashable, Sendable {
 }
 
 /// A quote a friend sent you: one quote message you received, with the friend who sent it (from the
-/// Inbox row of its conversation). "Shared with you", Search and the inbox alerts show these.
+/// Inbox row of its conversation). The Inbox and Search show these.
 struct InboxQuote: Identifiable, Hashable, Sendable {
     let message: ConversationMessage
     /// The server-built snapshot the message carries.
@@ -107,7 +107,10 @@ final class SocialStore {
     private(set) var reportedMessageIDs: Set<UUID> = []
     /// People you blocked (load with `loadBlocked()`). One who blocked you back has no profile.
     private(set) var blockedUsers: [BlockedUser] = []
-    /// True once the server has answered (or the cache was restored for the inbox).
+    /// Whether `blockedUsers` came from the server this session (Friends shows the count only then).
+    private(set) var hasLoadedBlocked = false
+    /// True once the server has answered. Restoring the cached inbox doesn't set it: friendships
+    /// aren't cached, and the Feed's guidance reads an empty list as "no friends" only after this.
     private(set) var hasLoaded = false
     /// True while `refresh()` runs.
     private(set) var isRefreshing = false
@@ -157,31 +160,18 @@ final class SocialStore {
     var unseenQuotes: [InboxQuote] { inbox.filter { unreadInboxIDs.contains($0.id) } }
     /// The number of unseen quotes.
     var unseenCount: Int { unreadInboxIDs.count }
-    /// The Friends tab badge: incoming requests plus unseen quotes.
-    var badgeCount: Int { incomingRequests.count + unseenCount }
+    /// The Inbox tab badge (docs/ui-spec.md, Badges): pending incoming requests plus unread
+    /// conversations, each conversation once. Until conversations have their own screen (Stage 5),
+    /// where text and playlist messages get read, a conversation counts only while it holds an unseen
+    /// quote the Inbox shows (the quotes `markInboxSeen()` marks), so opening the Inbox always clears it.
+    var inboxBadge: InboxBadge {
+        InboxBadge(
+            unreadConversations: Set(unseenQuotes.map(\.conversationID)).count,
+            friendRequests: incomingRequests.count
+        )
+    }
     /// Your friends' profiles, by name (the share sheet).
     var friendProfiles: [Profile] { friends.map(\.profile) }
-
-    /// "From Maya", "From Maya and Jordan" or "From Maya, Jordan and 2 others" for unseen quotes, or nil.
-    var unseenSummary: String? {
-        Self.fromSummary(Self.senderNames(unseenQuotes))
-    }
-
-    /// The senders of unseen quotes, newest first, without repeats (for `AvatarStack`).
-    var unseenSenders: [Profile] {
-        Self.senders(unseenQuotes)
-    }
-
-    /// "From Maya", "From Maya and Jordan" or "From Maya, Jordan and 2 others" for every quote in the
-    /// inbox (seen or not), or nil when it is empty. Friends' "N shared with you" row.
-    var inboxSummary: String? {
-        Self.fromSummary(Self.senderNames(inbox))
-    }
-
-    /// The senders of every quote in the inbox, newest first, without repeats (for `AvatarStack`).
-    var inboxSenders: [Profile] {
-        Self.senders(inbox)
-    }
 
     /// Your connection (friend or request) with a user, if any.
     func connection(with userID: UUID) -> Connection? {
@@ -222,6 +212,7 @@ final class SocialStore {
             if writes.isQuiet(since: token) {
                 let known = Dictionary(blockedUsers.compactMap { user in user.profile.map { (user.id, $0) } }) { first, _ in first }
                 blockedUsers = users.map { BlockedUser(id: $0.id, profile: $0.profile ?? known[$0.id]) }
+                hasLoadedBlocked = true
             }
             return true
         } catch {
@@ -569,7 +560,7 @@ final class SocialStore {
 
     // MARK: Inbox
 
-    /// Marks the conversations with an unseen quote read (opening Friends or the inbox), each up to
+    /// Marks the conversations with an unseen quote read (opening the Inbox), each up to
     /// the newest quote the app shows from it (`InboxConversation.seenMarks`), so those quotes count
     /// as seen. Nothing later: a message the app has not fetched or shown (a text, or a quote that
     /// arrived after the last refresh) stays unread and comes up as new. Optimistic; failures are
@@ -640,6 +631,7 @@ final class SocialStore {
         unreadInboxIDs = []
         reportedMessageIDs = []
         blockedUsers = []
+        hasLoadedBlocked = false
         hasLoaded = false
         isRefreshing = false
         lastError = nil
@@ -946,31 +938,6 @@ final class SocialStore {
         messages.sorted { lhs, rhs in
             if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
             return lhs.id.uuidString < rhs.id.uuidString
-        }
-    }
-
-    private static func senderNames(_ items: [InboxQuote]) -> [String] {
-        var names: [String] = []
-        for item in items {
-            let name = firstName(item.sender?.displayName ?? "a friend")
-            if !names.contains(name) { names.append(name) }
-        }
-        return names
-    }
-
-    private static func senders(_ items: [InboxQuote]) -> [Profile] {
-        var seen: Set<UUID> = []
-        return items.compactMap(\.sender).filter { seen.insert($0.id).inserted }
-    }
-
-    private static func fromSummary(_ names: [String]) -> String? {
-        switch names.count {
-        case 0: return nil
-        case 1: return "From \(names[0])"
-        case 2: return "From \(names[0]) and \(names[1])"
-        default:
-            let others = names.count - 2
-            return "From \(names[0]), \(names[1]) and \(others) \(others == 1 ? "other" : "others")"
         }
     }
 

@@ -12,6 +12,7 @@ struct StarterFlowView: View {
     @Environment(SessionStore.self) private var session
     @Environment(LibraryStore.self) private var library
     @Environment(ReminderStore.self) private var reminders
+    @Environment(StarterStore.self) private var starter
 
     @State private var step: Step = .pick
     @State private var isImporting = false
@@ -56,13 +57,16 @@ struct StarterFlowView: View {
     // MARK: Actions
 
     /// Imports the picked quotes (in list order) into the library and the end of the reminders.
-    /// A failure already showed a toast, so the picker stays open.
+    /// A failure already showed a toast, so the picker stays open, and reloads the starters: the server
+    /// adds only live ones and fails the whole add for any other (23503), so one retired since the
+    /// pack loaded drops out of the list and the count instead of failing every Continue.
     private func importQuotes(_ picked: [StarterQuote]) {
         guard !isImporting, !picked.isEmpty else { return }
         isImporting = true
         Task {
             let imported = await library.importStarter(picked)
             guard imported else {
+                await starter.load(force: true)
                 isImporting = false
                 return
             }

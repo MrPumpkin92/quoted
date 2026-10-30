@@ -477,7 +477,7 @@ final class SessionStore {
 
     /// Permanently deletes the account on the server, then cleans up like `signOut()` and also resets
     /// the reminder settings and this user's onboarding flag. Throws `QuotedError` (the account stays)
-    /// so the Account screen can show it.
+    /// so Settings can show it.
     ///
     /// Safe to retry: when an earlier attempt deleted the account but its answer was lost, QuotedKit
     /// confirms the user is gone and this returns normally. `.notSignedIn` means the session can no
@@ -753,9 +753,13 @@ final class SessionStore {
     }
 
     /// Shows the main tabs and starts the ready-state work: refreshes, permission, replan, the
-    /// deferred deep link and the background refresh schedule.
+    /// deferred deep link and the background refresh schedule. The launch tab is chosen first, so
+    /// the tabs never draw on one tab and jump to another, and a deferred link opens over it. The app
+    /// icon badge, which earlier builds set, is cleared.
     private func enterReady() {
         guard phase != .ready else { return }
+        let opensOnFeed = (activeUserID ?? userID).map { preferences.opensOnFeed(userID: $0) } ?? false
+        router.selectLaunchTab(opensOnFeed: opensOnFeed)
         phase = .ready
         launchError = nil
         Logger.session.info("Session ready")
@@ -772,6 +776,7 @@ final class SessionStore {
         }
         Task { await library.refreshIfStale(maxAge: 30) }
         Task { await social.refresh() }
+        Task { await InboxAlerts.clearAppIconBadge() }
     }
 
     private func refreshProfile(userID id: UUID) async {

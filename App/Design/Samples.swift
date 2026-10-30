@@ -117,7 +117,7 @@ enum Samples {
         ),
     ]
 
-    /// The quotes in `inboxMessages`, as "Shared with you" shows them.
+    /// The quotes in `inboxMessages`, as the Inbox shows them.
     static let inbox: [InboxQuote] = [
         InboxQuote(message: inboxMessages[0], sender: maya),
         InboxQuote(message: inboxMessages[1], sender: jordan),
@@ -134,8 +134,9 @@ enum Samples {
             )
         }
 
-    /// The verified catalog for Verified Quotes: the sample starters with themes, then two quotes from
-    /// a later batch (one spoken by a character).
+    /// The verified catalog for Verified Quotes and the empty Feed's quote of the day (every preview
+    /// model): the sample starters with themes, then two quotes from a later batch (one spoken by a
+    /// character).
     static let catalog: [CatalogQuote] = {
         let themes: [[CatalogTheme]] = [[.courage], [.nature, .purpose], [.selfhood, .courage], [.courage], [.time, .purpose], [.selfhood]]
         let starters = zip(Samples.starters, themes).map { starter, themes in

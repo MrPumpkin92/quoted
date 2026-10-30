@@ -8,6 +8,9 @@ public enum DeepLink: Hashable, Sendable {
     case quote(UUID)
     /// `quoted://rotation`, from the empty widget.
     case rotation
+    /// `quoted://inbox`: the Inbox at its root. A tap on an inbox alert posted by an earlier build
+    /// opens it.
+    case inbox
 
     public static let scheme = "quoted"
 
@@ -29,6 +32,8 @@ public enum DeepLink: Hashable, Sendable {
             return .quote(id)
         case "rotation":
             return pathParts.isEmpty ? .rotation : nil
+        case "inbox":
+            return pathParts.isEmpty ? .inbox : nil
         default:
             return nil
         }
@@ -54,6 +59,8 @@ public enum DeepLink: Hashable, Sendable {
             return URL(string: "\(Self.scheme)://quote/\(id.uuidString.lowercased())")!
         case .rotation:
             return URL(string: "\(Self.scheme)://rotation")!
+        case .inbox:
+            return URL(string: "\(Self.scheme)://inbox")!
         }
     }
 }

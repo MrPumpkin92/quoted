@@ -53,8 +53,11 @@ enum QuoteStyle: Hashable, Sendable {
     case spotlight
     /// The editor: about 26 pt, scaled relative to `.title2`. Never truncates.
     case editor
-    /// Compact cards (shared-with-you cards in Friends): `.body`, line limit 6.
+    /// Compact cards (received quotes in the Inbox): `.body`, line limit 6.
     case compact
+    /// A page quote set a step or more below `.hero` (`.title`, `.title2` or `.title3`) so a screen
+    /// fits without scrolling, as on the empty Feed. Never truncates.
+    case fitted(Font.TextStyle)
 
     /// The text style the size scales with.
     var textStyle: Font.TextStyle {
@@ -63,6 +66,7 @@ enum QuoteStyle: Hashable, Sendable {
         case .hero, .spotlight: .largeTitle
         case .editor: .title2
         case .compact: .body
+        case .fitted(let style): style
         }
     }
 
@@ -72,7 +76,7 @@ enum QuoteStyle: Hashable, Sendable {
         case .row: 4
         case .excerpt: 1
         case .compact: 6
-        case .hero, .spotlight, .editor: nil
+        case .hero, .spotlight, .editor, .fitted: nil
         }
     }
 
@@ -81,7 +85,7 @@ enum QuoteStyle: Hashable, Sendable {
         switch self {
         case .row, .compact: 2
         case .excerpt: 0
-        case .hero, .editor: 4
+        case .hero, .editor, .fitted: 4
         case .spotlight: 6
         }
     }

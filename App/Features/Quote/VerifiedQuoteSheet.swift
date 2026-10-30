@@ -7,9 +7,14 @@ import SwiftUI
 /// author's own voice), where in the work it is, and opens that full text in the in-app browser.
 ///
 /// Presented from the quote detail's "Verified quote" button for the quote's `verifiedStarterID` (any
-/// catalog id, a starter or not). The location and link come from `catalog_quotes` through
-/// `CatalogStore`, looked up once per session; offline, a starter still resolves from the starter
-/// pack if it was loaded, and otherwise the sheet explains the check without them.
+/// catalog id, a starter or not), and from the empty Feed's provenance block for its catalog quote.
+/// The location and link come from `catalog_quotes` through `CatalogStore`, looked up once per
+/// session; offline, a starter still resolves from the starter pack if it was loaded, and otherwise
+/// the sheet explains the check without them.
+///
+/// Both present it with their own `.sheet`, which the router can't see, so it holds deep links: a
+/// reminder or widget tap opens once it is dismissed, since the full-screen quote can't be presented
+/// over it.
 struct VerifiedQuoteSheet: View {
     let catalogID: Int
     let author: String?
@@ -56,6 +61,8 @@ struct VerifiedQuoteSheet: View {
                 SafariView(url: url)
             }
         }
+        // A local sheet: a link tapped under it waits until it closes (see above).
+        .holdsDeepLinks()
     }
 
     private var header: some View {

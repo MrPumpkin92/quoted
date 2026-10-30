@@ -184,8 +184,10 @@ public struct QuotesRepository: Sendable {
     /// server appends them to the end of the Rotation in that order.
     ///
     /// `ids` (one per catalog id, in order) are the new quotes' IDs; pass the same ones to retry after
-    /// a lost answer and get the same quotes back. Missing IDs are generated. An unknown catalog id
-    /// fails with ``QuotedError/notFound``.
+    /// a lost answer and get the same quotes back, as they are now (a retry doesn't move them into or
+    /// out of the Rotation). A retry that overlaps the first try waits for it and gets 23505, which
+    /// reads them back too. Missing IDs are generated. An unknown or no longer live catalog id fails
+    /// with ``QuotedError/notFound``.
     public func addCatalogQuotes(_ catalogIDs: [Int], ids: [UUID] = [], inReminders: Bool = false) async throws -> [Quote] {
         _ = try client.requireUserID()
         guard !catalogIDs.isEmpty else { return [] }
@@ -195,10 +197,12 @@ public struct QuotesRepository: Sendable {
             inReminders: inReminders
         )
         return try await mappingErrors(postgrest: Self.quoteLimitError) {
-            try await client.rpc(RPC.addCatalogQuotes, params: params)
-                .select(Columns.quote)
-                .execute()
-                .value
+            try await insertRecovering(ids: params.ids) {
+                try await client.rpc(RPC.addCatalogQuotes, params: params)
+                    .select(Columns.quote)
+                    .execute()
+                    .value
+            }
         }
     }
 

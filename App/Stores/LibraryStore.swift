@@ -50,7 +50,9 @@ final class LibraryStore {
     @ObservationIgnored private var refreshSerial = 0
     /// New quote IDs for catalog quotes (by catalog ID, which a starter shares) and saved messages (by
     /// message ID), kept for the session so a retry after a lost answer finds the first insert
-    /// (`QuotesRepository`).
+    /// (`QuotesRepository`). A catalog ID's entry lasts only until its add answers, and is reused only
+    /// while its quote isn't in the library (a refresh may bring in an add whose answer was lost): a
+    /// later add of the same catalog quote is a new copy.
     @ObservationIgnored private var catalogImportIDs: [Int: UUID] = [:]
     @ObservationIgnored private var sharedSaveIDs: [UUID: UUID] = [:]
     @ObservationIgnored private var cacheWrite: Task<Void, Never>?
@@ -94,19 +96,31 @@ final class LibraryStore {
     /// The quote with `id`, if it is in the library.
     func quote(id: UUID) -> Quote? { quotes.first { $0.id == id } }
 
-    /// Whether a starter quote is already in the library (same body and author).
+    /// Whether a starter quote is already in the library (`CopyKey`: same body and author).
     func contains(starter: StarterQuote) -> Bool {
-        quotes.contains { $0.body == starter.body && $0.author == starter.author }
+        copy(of: CopyKey(body: starter.body, author: starter.author)) != nil
     }
 
-    /// The IDs of the catalog quotes in `candidates` that the library already holds (same body and
-    /// author, as `contains(starter:)`), in one pass over each list.
+    /// The library's copy of a catalog quote, a starter or not (`CopyKey`: same body and author, as
+    /// `ownedCatalogIDs(in:)` dims them in Verified Quotes), if it has one.
+    func quote(matching catalogQuote: CatalogQuote) -> Quote? {
+        copy(of: CopyKey(body: catalogQuote.body, author: catalogQuote.author))
+    }
+
+    private func copy(of key: CopyKey) -> Quote? {
+        quotes.first { CopyKey(body: $0.body, author: $0.author) == key }
+    }
+
+    /// The IDs of the catalog quotes in `candidates` that the library already holds (`CopyKey`: same
+    /// body and author), in one pass over each list.
     func ownedCatalogIDs(in candidates: [CatalogQuote]) -> Set<Int> {
         let held = Set(quotes.map { CopyKey(body: $0.body, author: $0.author) })
         return Set(candidates.filter { held.contains(CopyKey(body: $0.body, author: $0.author)) }.map(\.id))
     }
 
-    /// What makes two quotes the same for "already in your library".
+    /// What makes a library quote a copy of a catalog quote for "already in your library": the same
+    /// body and author. Broader than the server's seal (`verifiedStarterID`, which also needs the same
+    /// source), so a copy whose source was changed still counts as held.
     private struct CopyKey: Hashable {
         var body: String
         var author: String?
@@ -464,18 +478,25 @@ final class LibraryStore {
     // MARK: Verified quotes, received quotes and favorites
 
     /// Adds starter quotes (onboarding) to the library and the end of the reminders; see
-    /// `importCatalog(_:)`.
+    /// `importCatalog(_:inReminders:)`. Returns whether they were added.
     @discardableResult
     func importStarter(_ starters: [StarterQuote]) async -> Bool {
-        await importCatalog(starters.map(CatalogQuote.init(starter:)))
+        await importCatalog(starters.map(CatalogQuote.init(starter:))) != nil
     }
 
-    /// Adds Quoted Catalog quotes to the library and the end of the reminders, in the given order
-    /// (`add_catalog_quotes`: the server gives a starter origin `starter` and the rest `catalog`, with
-    /// no creator). Waits for the server; on failure shows a toast and returns false.
+    /// Adds Quoted Catalog quotes to the library and, unless `inReminders` is false (the Feed's Save
+    /// and Send), the end of the reminders, in the given order (`add_catalog_quotes`: the server
+    /// gives a starter origin `starter` and the rest `catalog`, with no creator). Waits for the
+    /// server and returns the library quotes it made, in order; on failure shows a toast and returns
+    /// nil.
+    ///
+    /// A catalog quote added earlier this session whose copy is still in the library gets a new copy
+    /// (the earlier one may have been edited since); the earlier ID is resent only for an add that
+    /// never answered. That add may have been the Feed's, outside the reminders: with `inReminders`, a
+    /// copy it returns outside them joins them now.
     @discardableResult
-    func importCatalog(_ picked: [CatalogQuote]) async -> Bool {
-        guard !picked.isEmpty else { return true }
+    func importCatalog(_ picked: [CatalogQuote], inReminders: Bool = true) async -> [Quote]? {
+        guard !picked.isEmpty else { return [] }
         let owner = userID
         beginWrite()
         let assertion = BackgroundTaskAssertion("Add verified quotes")
@@ -485,26 +506,31 @@ final class LibraryStore {
         }
         do {
             // The same catalog quote gets the same new ID on a retry, so a lost answer adds nothing
-            // twice.
+            // twice. An ID whose quote the library holds already answered: resending it would return
+            // that copy, edited or not, instead of adding one.
             let ids = picked.map { quote in
-                if let id = catalogImportIDs[quote.id] { return id }
+                if let id = catalogImportIDs[quote.id], self.quote(id: id) == nil { return id }
                 let id = UUID()
                 catalogImportIDs[quote.id] = id
                 return id
             }
-            let inserted = try await backend.quotes.addCatalogQuotes(picked.map(\.id), ids: ids, inReminders: true)
-            guard userID == owner else { return false }
+            let inserted = try await backend.quotes.addCatalogQuotes(picked.map(\.id), ids: ids, inReminders: inReminders)
+            guard userID == owner else { return nil }
+            for quote in picked { catalogImportIDs[quote.id] = nil }
             for quote in inserted { upsertLocal(quote) }
             hasLoaded = true
             writeCache()
             reminders.replan()
             Haptics.success()
-            return true
+            if inReminders {
+                await addToReminders(inserted.filter { !$0.isInRotation }.map(\.id))
+            }
+            return inserted.map { quote(id: $0.id) ?? $0 }
         } catch {
-            guard userID == owner else { return false }
+            guard userID == owner else { return nil }
             refreshAfterWrites = true
             toasts.show(error: error)
-            return false
+            return nil
         }
     }
 

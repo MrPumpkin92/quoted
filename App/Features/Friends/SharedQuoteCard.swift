@@ -1,149 +1,14 @@
 import QuotedCore
 import SwiftUI
 
-/// "Shared with you": every quote friends sent (the quote messages you received in your
-/// conversations), newest first, as cards with the sender's note, Save (or Saved), and Report / Block
-/// in the "…" menu. Swipe right to save; swipe left to block or report. Opening it marks the
-/// conversations read. `Route.sharedInbox` maps to `SharedInboxView()`.
-///
-/// A received message can't be deleted on its own (only its sender can unsend it), so there is no
-/// Delete; the conversation screens (Stage 5) bring "Delete Conversation".
-struct SharedInboxView: View {
-    @Environment(SocialStore.self) private var social
-    @Environment(LibraryStore.self) private var library
-    @Environment(Router.self) private var router
-
-    @State private var isVisible = false
-    @State private var confirmation: SocialConfirmation?
-
-    /// The inbox shows whole quotes, at every text size: a fixed cap (it was 40 lines) cut long
-    /// quotes off at accessibility sizes, where a card has no detail view to read the rest in.
-    private static let fullQuoteLineLimit = Int.max
-
-    init() {}
-
-    var body: some View {
-        ZStack {
-            content
-        }
-        .navigationTitle("Shared with you")
-        .refreshable {
-            await social.refresh(userInitiated: true)
-        }
-        .task {
-            await social.refreshIfStale()
-        }
-        .onAppear {
-            isVisible = true
-            markSharesSeen()
-        }
-        .onDisappear {
-            isVisible = false
-        }
-        .onChange(of: social.unseenCount) {
-            // Quotes that arrive while the inbox is on screen count as seen too.
-            if isVisible { markSharesSeen() }
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if social.inbox.isEmpty {
-            ScrollView {
-                emptyContent
-                    .frame(maxWidth: .infinity)
-            }
-            .groundBackground()
-        } else {
-            List {
-                ForEach(social.inbox) { share in
-                    SharedQuoteCard(
-                        share: share,
-                        lineLimit: Self.fullQuoteLineLimit,
-                        confirmation: $confirmation
-                    )
-                    .marginCardRow(.single, outerSpacing: 6)
-                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        if !library.containsCopy(of: share), !social.reportedMessageIDs.contains(share.id) {
-                            Button {
-                                Task { await library.saveShared(share, addToReminders: true) }
-                            } label: {
-                                Label("Save", systemImage: "bookmark")
-                            }
-                            .tint(Color.accentColor)
-                        }
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            confirmation = .blockSender(shareID: share.id)
-                        } label: {
-                            Label("Block", systemImage: "hand.raised")
-                        }
-                        .tint(SwipeTint.block)
-                        Button {
-                            confirmation = .report(shareID: share.id)
-                        } label: {
-                            Label("Report", systemImage: "flag")
-                        }
-                        .tint(SwipeTint.report)
-                    }
-                }
-                footer
-            }
-            .marginCardList()
-        }
-    }
-
-    @ViewBuilder
-    private var emptyContent: some View {
-        if !social.hasLoaded, let error = social.lastError {
-            EmptyStateView(
-                systemImage: "wifi.exclamationmark",
-                title: "Couldn\u{2019}t load shared quotes",
-                message: "\(error.friendlyMessage)",
-                actionTitle: "Try again",
-                action: { Task { await social.refresh(userInitiated: true) } }
-            )
-        } else if !social.hasLoaded {
-            DelayedProgressView(label: "Loading shared quotes")
-                .padding(.top, Theme.Spacing.xxl)
-        } else {
-            EmptyStateView(
-                systemImage: "tray",
-                title: "Nothing shared yet",
-                message: "When friends send you a quote, it shows up here. Save the ones you want to keep.",
-                actionTitle: "Find friends",
-                action: showFriends
-            )
-        }
-    }
-
-    private var footer: some View {
-        Text("Saved quotes go to your library and your reminders.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .marginPlainRow(top: Theme.Spacing.s, bottom: Theme.Spacing.l)
-    }
-
-    private func markSharesSeen() {
-        guard social.unseenCount > 0 else { return }
-        Task { await social.markInboxSeen() }
-    }
-
-    /// Goes to the Friends tab root, where "Add by username" is.
-    private func showFriends() {
-        router.popToRoot(.friends)
-        router.select(.friends)
-    }
-}
-
 // MARK: - Shared quote card
 
 /// A quote a friend sent, as a card: the sender and when, a "…" menu (Report…, Block @x), the
 /// sender's note, the quote and its attribution, then Save (or Saved, when the library already holds
 /// the same text and author).
 ///
-/// Used by `SharedInboxView`. Save sits under the quote at every text size, so the card reads who →
+/// Used by `InboxView` until conversations have their own screen (Stage 5). Save sits under the quote
+/// at every text size, so the card reads who →
 /// what they said → the quote → act. Save adds the quote to the library and to reminders (the same
 /// default as Add). The Report and Block confirmations hang off the "…" button, so they point at this
 /// card; set `confirmation` to `.report` / `.blockSender` with this message's ID (from a swipe
@@ -513,10 +378,10 @@ private struct ReportUserConfirmation: ViewModifier {
 /// What blocking does, said the same way everywhere (docs/ui-spec.md, Report and block). Every claim
 /// holds on the server: the username lookup, friend requests and messages ignore a blocked pair,
 /// posts, playlists and the profile page are hidden from them, and the block ends the friendship and
-/// closes the conversation without deleting a message. "Account" until Settings replaces it.
+/// closes the conversation without deleting a message.
 enum BlockCopy {
     static func consequences(name: String) -> String {
-        "\(name) won\u{2019}t be able to find you or message you, and won\u{2019}t see your posts, playlists or profile. Your friendship ends. You keep your conversation, read only, so you can report from it. They aren\u{2019}t told. You can unblock them in Account."
+        "\(name) won\u{2019}t be able to find you or message you, and won\u{2019}t see your posts, playlists or profile. Your friendship ends. You keep your conversation, read only, so you can report from it. They aren\u{2019}t told. You can unblock them in Settings."
     }
 }
 
@@ -561,18 +426,6 @@ extension View {
 }
 
 // MARK: - Previews
-
-#Preview("Shared inbox") {
-    NavigationStack { SharedInboxView() }
-        .previewEnvironment()
-}
-
-#Preview("Shared inbox empty") {
-    let model = AppModel.preview()
-    model.social.seedPreview(friendships: Samples.friendships, conversations: [], messages: [], me: Samples.alex.id)
-    return NavigationStack { SharedInboxView() }
-        .previewEnvironment(model)
-}
 
 #Preview("SharedQuoteCard dark") {
     @Previewable @State var confirmation: SocialConfirmation?
